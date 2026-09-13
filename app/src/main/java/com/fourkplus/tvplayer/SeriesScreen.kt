@@ -1,0 +1,1078 @@
+package com.fourkplus.tvplayer
+
+import android.content.Context
+import android.content.res.Configuration
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
+import com.fourkplus.tvplayer.data.LoadedPlaylist
+import com.fourkplus.tvplayer.data.MediaKind
+import com.fourkplus.tvplayer.data.PlaylistInput
+import com.fourkplus.tvplayer.data.PlaylistItem
+import com.fourkplus.tvplayer.data.PlaylistKind
+import com.fourkplus.tvplayer.data.SeriesDetailsInfo
+import com.fourkplus.tvplayer.data.SeriesEpisode
+import com.fourkplus.tvplayer.ui.theme.*
+
+private enum class SeriesView { BROWSE, CATEGORY, DETAILS, PLAYER }
+private val seasonEpisodePattern = Regex("s(\\d{1,2})[\\s._-]*e(\\d{1,3})", RegexOption.IGNORE_CASE)
+
+@Composable
+internal fun SeriesScreen(
+    playlist: LoadedPlaylist?,
+    loadDetails: suspend (PlaylistItem) -> Result<SeriesDetailsInfo>,
+    source: PlaylistInput?,
+    onBack: () -> Unit,
+    requirePin: (() -> Unit) -> Unit,
+    resumeRequest: ResumeRequest? = null,
+    onResumeHandled: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val parental = remember { context.getSharedPreferences("parental_settings", Context.MODE_PRIVATE) }
+    var hiddenCategories by remember {
+        mutableStateOf(parental.getStringSet("hidden_series_categories", emptySet()).orEmpty().toSet())
+    }
+    val lockedCategories = remember { parental.getStringSet("locked_series_categories", emptySet()).orEmpty().toSet() }
+    val seriesItems = remember(playlist, hiddenCategories) {
+        playlist?.items?.filter { it.kind == MediaKind.SERIES && it.group !in hiddenCategories }.orEmpty()
+    }
+    val categories = remember(seriesItems) { seriesItems.map { it.group }.distinct() }
+    val store = remember { context.getSharedPreferences("series_library", Context.MODE_PRIVATE) }
+    var view by remember { mutableStateOf(SeriesView.BROWSE) }
+    var selectedCategory by remember { mutableStateOf("Continue watching") }
+    var selectedSeries by remember { mutableStateOf<PlaylistItem?>(null) }
+    var selectedEpisode by remember { mutableStateOf<SeriesEpisode?>(null) }
+    var details by remember { mutableStateOf<SeriesDetailsInfo?>(null) }
+    var detailsLoading by remember { mutableStateOf(false) }
+    var detailsError by remember { mutableStateOf<String?>(null) }
+    var selectedSeason by remember { mutableIntStateOf(1) }
+    var search by remember { mutableStateOf("") }
+    var favoriteIds by remember {
+        mutableStateOf(store.getStringSet("favorites", emptySet()).orEmpty().toSet())
+    }
+    var recentIds by remember {
+        mutableStateOf(store.getString("recent_v1", "").orEmpty().split('\u001F').filter(String::isNotBlank))
+    }
+    var continueSeriesIds by remember {
+        mutableStateOf(store.getStringSet("continue_series", emptySet()).orEmpty().toSet())
+    }
+    var progress by remember {
+        mutableStateOf(
+            store.all.mapNotNull { (key, value) ->
+                if (key.startsWith("episode_progress_") && value is Long && value > 0L) {
+                    key.removePrefix("episode_progress_") to value
+                } else null
+            }.toMap()
+        )
+    }
+    var watchedEpisodeIds by remember {
+        mutableStateOf(store.getStringSet("watched_episodes", emptySet()).orEmpty().toSet())
+    }
+
+    val byId = remember(seriesItems) { seriesItems.associateBy(::channelKey) }
+    val favorites = remember(seriesItems, favoriteIds) { seriesItems.filter { channelKey(it) in favoriteIds } }
+    val recent = remember(byId, recentIds) { recentIds.mapNotNull(byId::get) }
+    val continueWatching = remember(seriesItems, continueSeriesIds) {
+        seriesItems.filter { channelKey(it) in continueSeriesIds }
+    }
+
+    fun toggleFavorite(series: PlaylistItem) {
+        val id = channelKey(series)
+        val updated = if (id in favoriteIds) favoriteIds - id else favoriteIds + id
+        favoriteIds = updated
+        store.edit().putStringSet("favorites", updated).apply()
+    }
+
+    // M3U playlists (including MAC-activation accounts that resolve to an M3U link rather than
+    // Xtream) list every episode as its own flat entry instead of a series+episode API hierarchy,
+    // so there is no series_id to fetch episodes from. Synthesize the season/episode breakdown
+    // from sibling entries sharing the same group instead of calling the Xtream-only endpoint.
+    fun buildLocalSeriesDetails(series: PlaylistItem): SeriesDetailsInfo {
+        val siblings = seriesItems.filter { it.group == series.group }
+        val episodes = siblings.mapIndexed { index, item ->
+            val match = seasonEpisodePattern.find(item.name)
+            val season = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+            val episodeNumber = match?.groupValues?.get(2)?.toIntOrNull() ?: (index + 1)
+            val title = match?.let { item.name.removeRange(it.range).trim(' ', '-', '.', '_', ':') }
+                ?.ifBlank { item.name } ?: item.name
+            SeriesEpisode(
+                id = item.streamUrl,
+                seasonNumber = season,
+                episodeNumber = episodeNumber,
+                title = title,
+                streamUrl = item.streamUrl,
+                thumbnailUrl = item.logoUrl,
+                duration = item.duration,
+                description = item.description
+            )
+        }.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        return SeriesDetailsInfo(posterUrl = series.logoUrl, episodes = episodes)
+    }
+
+    fun episodePlaylistItem(series: PlaylistItem, episode: SeriesEpisode) = PlaylistItem(
+        name = "${series.name} • S${episode.seasonNumber} E${episode.episodeNumber} • ${episode.title}",
+        streamUrl = episode.streamUrl,
+        group = series.name,
+        logoUrl = episode.thumbnailUrl ?: series.logoUrl,
+        channelId = episode.id,
+        kind = MediaKind.SERIES,
+        description = episode.description,
+        duration = episode.duration
+    )
+
+    fun openDetails(series: PlaylistItem) {
+        selectedSeries = series
+        selectedEpisode = null
+        details = null
+        detailsError = null
+        selectedSeason = store.getInt("last_season_${channelKey(series)}", 1)
+        view = SeriesView.DETAILS
+    }
+
+    fun recordRecent(series: PlaylistItem) {
+        val id = channelKey(series)
+        val updated = (listOf(id) + recentIds.filterNot { it == id }).take(30)
+        recentIds = updated
+        store.edit().putString("recent_v1", updated.joinToString("\u001F")).apply()
+    }
+
+    fun saveEpisodeProgress(series: PlaylistItem, episode: SeriesEpisode, position: Long, duration: Long) {
+        val finished = duration > 0L && position >= duration - 20_000L
+        val normalized = if (finished) 0L else position.coerceAtLeast(0L)
+        progress = if (normalized == 0L) progress - episode.id else progress + (episode.id to normalized)
+        val updatedContinue = if (normalized > 0L) continueSeriesIds + channelKey(series) else {
+            val otherEpisodeInProgress = details?.episodes.orEmpty().any { it.id != episode.id && (progress[it.id] ?: 0L) > 0L }
+            if (otherEpisodeInProgress) continueSeriesIds else continueSeriesIds - channelKey(series)
+        }
+        continueSeriesIds = updatedContinue
+        val editor = store.edit()
+            .putLong("episode_progress_${episode.id}", normalized)
+            .putStringSet("continue_series", updatedContinue)
+            .putString("last_episode_${channelKey(series)}", episode.id)
+        if (finished && episode.id !in watchedEpisodeIds) {
+            watchedEpisodeIds = watchedEpisodeIds + episode.id
+            editor.putStringSet("watched_episodes", watchedEpisodeIds)
+        }
+        editor.apply()
+        if (normalized > 0L) {
+            com.fourkplus.tvplayer.data.ContinueWatchingStore.record(context, MediaKind.SERIES, channelKey(series), episode.id)
+        } else {
+            com.fourkplus.tvplayer.data.ContinueWatchingStore.clear(context, channelKey(series))
+        }
+    }
+
+    fun goBack() {
+        when (view) {
+            SeriesView.BROWSE -> onBack()
+            SeriesView.CATEGORY -> { search = ""; view = SeriesView.BROWSE }
+            SeriesView.DETAILS -> view = SeriesView.BROWSE
+            SeriesView.PLAYER -> view = SeriesView.DETAILS
+        }
+    }
+    BackHandler(onBack = ::goBack)
+
+    LaunchedEffect(selectedSeries, view) {
+        val series = selectedSeries
+        if (series != null && view == SeriesView.DETAILS && details == null && !detailsLoading) {
+            if (source == null || source.kind == PlaylistKind.PROVIDER_LOGIN) {
+                detailsLoading = true
+                loadDetails(series)
+                    .onSuccess { loaded ->
+                        details = loaded
+                        val available = loaded.seasons
+                        if (selectedSeason !in available) selectedSeason = available.firstOrNull() ?: 1
+                    }
+                    .onFailure { detailsError = it.message }
+                detailsLoading = false
+            } else {
+                val loaded = buildLocalSeriesDetails(series)
+                details = loaded
+                val available = loaded.seasons
+                if (selectedSeason !in available) selectedSeason = available.firstOrNull() ?: 1
+            }
+        }
+    }
+
+    LaunchedEffect(resumeRequest, byId) {
+        val request = resumeRequest ?: return@LaunchedEffect
+        val series = byId[request.itemKey]
+        if (series == null) {
+            onResumeHandled()
+            return@LaunchedEffect
+        }
+        selectedSeries = series
+        selectedEpisode = null
+        details = null
+        detailsError = null
+        selectedSeason = store.getInt("last_season_${channelKey(series)}", 1)
+        view = SeriesView.DETAILS
+        if (request.episodeId == null) onResumeHandled()
+    }
+
+    LaunchedEffect(details, resumeRequest) {
+        val request = resumeRequest ?: return@LaunchedEffect
+        val episodeId = request.episodeId ?: return@LaunchedEffect
+        val loadedDetails = details ?: return@LaunchedEffect
+        val series = selectedSeries?.takeIf { channelKey(it) == request.itemKey } ?: return@LaunchedEffect
+        loadedDetails.episodes.firstOrNull { it.id == episodeId }?.let { episode ->
+            selectedEpisode = episode
+            selectedSeason = episode.seasonNumber
+            if (request.autoPlay) view = SeriesView.PLAYER
+        }
+        onResumeHandled()
+    }
+
+    // No flat background fill here otherwise: the themed backdrop is painted app-wide behind the
+    // Scaffold in MainActivity. The series' own backdrop/poster below is a per-title image, not a
+    // decorative one, so it's drawn on top of that shared background instead of replacing it.
+    Box(Modifier.fillMaxSize()) {
+        if (view == SeriesView.DETAILS) {
+            val pageBackdrop = details?.backdropUrl ?: details?.posterUrl ?: selectedSeries?.logoUrl
+            if (!pageBackdrop.isNullOrBlank()) {
+                AsyncImage(
+                    model = pageBackdrop,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = .56f),
+                                MaterialTheme.colorScheme.background.copy(alpha = .78f),
+                                MaterialTheme.colorScheme.background.copy(alpha = .96f)
+                            )
+                        )
+                    )
+                )
+            }
+        }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val landscape = maxWidth > maxHeight
+        // Rendered here, above the landscape/portrait split, as a single orientation- and
+        // layout-independent overlay so its call site never changes position in the
+        // composition — required both to keep the player instance alive across rotation and
+        // for picture-in-picture (which needs the video to fill the Activity's own window).
+        if (view == SeriesView.PLAYER) {
+            val series = selectedSeries
+            val episode = selectedEpisode
+            if (series != null && episode != null) {
+                val allEpisodes = details?.episodes.orEmpty()
+                val relatedItems = remember(series, allEpisodes) {
+                    allEpisodes.map { episodePlaylistItem(series, it) }
+                }
+                MoviePlayer(
+                    movie = episodePlaylistItem(series, episode),
+                    startPosition = progress[episode.id] ?: 0L,
+                    onProgress = { position, duration ->
+                        saveEpisodeProgress(series, episode, position, duration)
+                    },
+                    onExit = { view = SeriesView.DETAILS },
+                    modifier = Modifier.fillMaxSize(),
+                    relatedItems = relatedItems,
+                    onRelatedItemChange = { item ->
+                        allEpisodes.firstOrNull { it.id == item.channelId }?.let { next ->
+                            selectedEpisode = next
+                            selectedSeason = next.seasonNumber
+                            recordRecent(series)
+                        }
+                    }
+                )
+            }
+            return@BoxWithConstraints
+        }
+        if (landscape && view in setOf(SeriesView.BROWSE, SeriesView.CATEGORY)) {
+            LandscapeSeriesBrowser(
+                seriesItems = seriesItems,
+                categories = categories,
+                selectedCategory = selectedCategory,
+                search = search,
+                favoriteIds = favoriteIds,
+                recent = recent,
+                favorites = favorites,
+                continueWatching = continueWatching,
+                onCategory = { category ->
+                    fun enter() { selectedCategory = category; search = ""; view = SeriesView.CATEGORY }
+                    if (category in lockedCategories) requirePin(::enter) else enter()
+                },
+                onSearch = { search = it },
+                onFavorite = ::toggleFavorite,
+                onSeries = ::openDetails,
+                onHide = { category ->
+                    val updated = hiddenCategories + category
+                    hiddenCategories = updated
+                    parental.edit().putStringSet("hidden_series_categories", updated).apply()
+                    selectedCategory = categories.firstOrNull { it != category }.orEmpty()
+                },
+                onBack = {
+                    if (view == SeriesView.CATEGORY) view = SeriesView.BROWSE else onBack()
+                }
+            )
+            return@BoxWithConstraints
+        }
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = if (landscape) 34.dp else 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AnimatedIconButton(onClick = ::goBack) { Icon(Icons.Default.ArrowBack, stringResource(R.string.cd_back)) }
+                Text(
+                    when (view) {
+                        SeriesView.BROWSE -> stringResource(R.string.nav_series)
+                        SeriesView.CATEGORY -> localizedSectionTitle(selectedCategory)
+                        else -> details?.originalTitle ?: selectedSeries?.name ?: stringResource(R.string.nav_series)
+                    },
+                    modifier = Modifier.weight(1f),
+                    fontSize = if (landscape) 23.sp else 22.sp,
+                    lineHeight = if (landscape) 27.sp else 26.sp,
+                    fontWeight = FontWeight.Black
+                )
+                if (view == SeriesView.CATEGORY && selectedCategory !in setOf("Continue watching", "Recently watched", "Favorites")) {
+                    TextButton(onClick = {
+                        hiddenCategories = hiddenCategories + selectedCategory
+                        parental.edit().putStringSet("hidden_series_categories", hiddenCategories).apply()
+                        search = ""
+                        view = SeriesView.BROWSE
+                    }) {
+                        Icon(Icons.Default.VisibilityOff, null)
+                        Spacer(Modifier.width(5.dp))
+                        Text(stringResource(R.string.action_hide))
+                    }
+                }
+                if (view == SeriesView.DETAILS && selectedSeries != null) {
+                    AnimatedIconButton(onClick = { toggleFavorite(selectedSeries!!) }) {
+                        Icon(
+                            if (channelKey(selectedSeries!!) in favoriteIds) Icons.Default.Star else Icons.Default.StarBorder,
+                            if (channelKey(selectedSeries!!) in favoriteIds) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add),
+                            tint = if (channelKey(selectedSeries!!) in favoriteIds) Orange else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            when (view) {
+                SeriesView.BROWSE -> {
+                    SeriesSearch(search, { search = it })
+                    if (search.isNotBlank()) {
+                        val results = seriesItems.filter { it.name.contains(search.trim(), true) }
+                        SeriesGrid(results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape)
+                    } else {
+                        val sections = buildList {
+                            if (continueWatching.isNotEmpty()) add("Continue watching" to continueWatching)
+                            add("Recently watched" to recent)
+                            add("Favorites" to favorites)
+                            categories.forEach { category -> add(category to seriesItems.filter { it.group == category }) }
+                        }
+                        if (sections.isEmpty()) {
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Text(stringResource(R.string.no_series_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        } else {
+                            LazyColumn(
+                                Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(18.dp),
+                                contentPadding = PaddingValues(bottom = 20.dp)
+                            ) {
+                                items(sections) { (title, sectionItems) ->
+                                    SeriesShelf(
+                                        title = title,
+                                        seriesItems = sectionItems,
+                                        favoriteIds = favoriteIds,
+                                        onSeeAll = {
+                                            fun enter() { selectedCategory = title; view = SeriesView.CATEGORY }
+                                            if (title in lockedCategories) requirePin(::enter) else enter()
+                                        },
+                                        onHide = if (title in setOf("Continue watching", "Recently watched", "Favorites")) null else {{
+                                            val updated = hiddenCategories + title
+                                            hiddenCategories = updated
+                                            parental.edit().putStringSet("hidden_series_categories", updated).apply()
+                                        }},
+                                        onFavorite = ::toggleFavorite,
+                                        onSeries = ::openDetails
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SeriesView.CATEGORY -> {
+                    SeriesSearch(search, { search = it })
+                    val base = when (selectedCategory) {
+                        "Continue watching" -> continueWatching
+                        "Recently watched" -> recent
+                        "Favorites" -> favorites
+                        else -> seriesItems.filter { it.group == selectedCategory }
+                    }
+                    val results = if (search.isBlank()) base else seriesItems.filter { it.name.contains(search.trim(), true) }
+                    SeriesGrid(results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape)
+                }
+
+                SeriesView.DETAILS -> selectedSeries?.let { series ->
+                    SeriesDetails(
+                        series = series,
+                        details = details,
+                        loading = detailsLoading,
+                        error = detailsError,
+                        selectedSeason = selectedSeason,
+                        onSeason = {
+                            selectedSeason = it
+                            store.edit().putInt("last_season_${channelKey(series)}", it).apply()
+                        },
+                        favorite = channelKey(series) in favoriteIds,
+                        progress = progress,
+                        watchedEpisodeIds = watchedEpisodeIds,
+                        onFavorite = { toggleFavorite(series) },
+                        onEpisode = { episode ->
+                            selectedEpisode = episode
+                            selectedSeason = episode.seasonNumber
+                            recordRecent(series)
+                            view = SeriesView.PLAYER
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                // Rendered as a full-screen overlay above this BoxWithConstraints instead
+                // (see the early return at the top of it) — see comment there for why.
+                SeriesView.PLAYER -> Unit
+            }
+        }
+    }
+    }
+}
+
+@Composable
+private fun LandscapeSeriesBrowser(
+    seriesItems: List<PlaylistItem>,
+    categories: List<String>,
+    selectedCategory: String,
+    search: String,
+    favoriteIds: Set<String>,
+    recent: List<PlaylistItem>,
+    favorites: List<PlaylistItem>,
+    continueWatching: List<PlaylistItem>,
+    onCategory: (String) -> Unit,
+    onSearch: (String) -> Unit,
+    onFavorite: (PlaylistItem) -> Unit,
+    onSeries: (PlaylistItem) -> Unit,
+    onHide: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    val special = listOf("Continue watching", "Recently watched", "Favorites")
+    val allCategories = special + categories
+    val base = when (selectedCategory) {
+        "Continue watching" -> continueWatching
+        "Recently watched" -> recent
+        "Favorites" -> favorites
+        else -> seriesItems.filter { it.group == selectedCategory }
+    }
+    val displayed = if (search.isBlank()) base else seriesItems.filter { it.name.contains(search.trim(), true) }
+    val context = LocalContext.current
+    val isTv = remember { context.isTvDevice() }
+    val continueWatchingFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(isTv) { if (isTv) runCatching { continueWatchingFocusRequester.requestFocus() } }
+    // Pressing OK on a category should move the remote's focus straight into that category's
+    // grid rather than leaving it on the category button — 0 means "not from a press yet".
+    var categorySelectionTick by remember { mutableIntStateOf(0) }
+    val firstItemFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(categorySelectionTick) {
+        if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
+    }
+    Row(
+        Modifier.fillMaxSize().padding(horizontal = if (isTv) 40.dp else 18.dp, vertical = if (isTv) 22.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Surface(
+            Modifier.width(240.dp).fillMaxHeight(),
+            shape = RoundedCornerShape(15.dp),
+            color = Color.Black.copy(alpha = .34f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+        ) {
+            Column(Modifier.fillMaxSize().padding(9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AnimatedIconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, stringResource(R.string.cd_back)) }
+                    Text(stringResource(R.string.nav_series), fontSize = 19.sp, fontWeight = FontWeight.Black)
+                }
+                SeriesSearch(search, onSearch)
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    items(allCategories) { category ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth()
+                                .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
+                                .focusableClickable(cornerRadius = 11.dp) {
+                                    categorySelectionTick++
+                                    onCategory(category)
+                                },
+                            shape = RoundedCornerShape(11.dp),
+                            color = if (category == selectedCategory) Cyan.copy(alpha = .24f) else Color.Transparent
+                        ) {
+                            Row(Modifier.padding(start = 12.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(localizedSectionTitle(category), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, fontWeight = if (category == selectedCategory) FontWeight.Bold else FontWeight.Normal)
+                                if (category !in special) {
+                                    AnimatedIconButton(onClick = { onHide(category) }, modifier = Modifier.size(32.dp)) {
+                                        Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, category), modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            Text(localizedSectionTitle(selectedCategory).ifBlank { stringResource(R.string.nav_series) }, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Spacer(Modifier.height(6.dp))
+            SeriesGrid(displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true, firstItemFocusRequester)
+        }
+    }
+}
+
+@Composable
+private fun SeriesSearch(value: String, onChange: (String) -> Unit) {
+    val context = LocalContext.current
+    val isTv = remember { context.isTvDevice() }
+    if (!isTv) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(15.dp),
+            placeholder = { Text(stringResource(R.string.search_all_series)) },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            trailingIcon = {
+                if (value.isNotEmpty()) AnimatedIconButton(onClick = { onChange("") }) {
+                    Icon(Icons.Default.Close, stringResource(R.string.cd_clear))
+                }
+            }
+        )
+        return
+    }
+    var active by remember { mutableStateOf(false) }
+    var hasFocusedOnce by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    if (active) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                .onFocusChanged {
+                    // See MainActivity's SearchField for why this can't just be !it.isFocused:
+                    // the pre-requestFocus() unfocused callback would otherwise undo activation
+                    // before the user gets a chance to type.
+                    if (it.isFocused) hasFocusedOnce = true
+                    else if (hasFocusedOnce) active = false
+                },
+            singleLine = true,
+            shape = RoundedCornerShape(15.dp),
+            placeholder = { Text(stringResource(R.string.search_all_series)) },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            trailingIcon = {
+                if (value.isNotEmpty()) AnimatedIconButton(onClick = { onChange("") }) {
+                    Icon(Icons.Default.Close, stringResource(R.string.cd_clear))
+                }
+            },
+            keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); active = false })
+        )
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    } else {
+        Surface(
+            modifier = Modifier.fillMaxWidth().focusableClickable(cornerRadius = 15.dp) { hasFocusedOnce = false; active = true },
+            shape = RoundedCornerShape(15.dp),
+            color = Color.Transparent,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(10.dp))
+                Text(value.ifBlank { stringResource(R.string.search_all_series) }, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesShelf(
+    title: String,
+    seriesItems: List<PlaylistItem>,
+    favoriteIds: Set<String>,
+    onSeeAll: () -> Unit,
+    onHide: (() -> Unit)?,
+    onFavorite: (PlaylistItem) -> Unit,
+    onSeries: (PlaylistItem) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(localizedSectionTitle(title), Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            onHide?.let {
+                AnimatedIconButton(onClick = it, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, localizedSectionTitle(title)), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            TextButton(onClick = onSeeAll) {
+                Text(stringResource(R.string.action_see_all), color = Cyan)
+                Icon(Icons.Default.ChevronRight, null, tint = Cyan)
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+            if (seriesItems.isEmpty()) {
+                item {
+                    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = .72f), shape = RoundedCornerShape(13.dp)) {
+                        Text(
+                            if (title == "Favorites") stringResource(R.string.series_star_empty) else stringResource(R.string.series_watch_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)
+                        )
+                    }
+                }
+            } else {
+                items(seriesItems.take(16)) { series ->
+                    SeriesPoster(
+                        series,
+                        channelKey(series) in favoriteIds,
+                        { onFavorite(series) },
+                        { onSeries(series) },
+                        Modifier.width(128.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesGrid(
+    seriesItems: List<PlaylistItem>,
+    favoriteIds: Set<String>,
+    onFavorite: (PlaylistItem) -> Unit,
+    onSeries: (PlaylistItem) -> Unit,
+    modifier: Modifier,
+    landscape: Boolean,
+    firstItemFocusRequester: FocusRequester? = null
+) {
+    if (seriesItems.isEmpty()) {
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(stringResource(R.string.no_series_match), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(if (landscape) 7 else 3),
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(if (landscape) 9.dp else 16.dp),
+            contentPadding = PaddingValues(bottom = 20.dp)
+        ) {
+            gridItemsIndexed(seriesItems) { index, series ->
+                SeriesPoster(
+                    series,
+                    channelKey(series) in favoriteIds,
+                    { onFavorite(series) },
+                    { onSeries(series) },
+                    modifier = if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesPoster(
+    series: PlaylistItem,
+    favorite: Boolean,
+    onFavorite: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier.clip(RoundedCornerShape(14.dp)).focusableClickable(cornerRadius = 14.dp, onClick = onClick)) {
+        Surface(
+            Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+            RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.VideoLibrary, null, tint = BrandBlue.copy(alpha = .55f), modifier = Modifier.size(38.dp))
+                if (!series.logoUrl.isNullOrBlank()) {
+                    AsyncImage(series.logoUrl, series.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                AnimatedIconButton(
+                    onClick = onFavorite,
+                    modifier = Modifier.align(Alignment.TopEnd).size(34.dp)
+                        .background(Color.Black.copy(alpha = .55f), RoundedCornerShape(10.dp))
+                ) {
+                    Icon(
+                        if (favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                        if (favorite) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add),
+                        tint = if (favorite) Orange else Color.White,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(series.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+    }
+}
+
+@Composable
+private fun SeriesDetails(
+    series: PlaylistItem,
+    details: SeriesDetailsInfo?,
+    loading: Boolean,
+    error: String?,
+    selectedSeason: Int,
+    onSeason: (Int) -> Unit,
+    favorite: Boolean,
+    progress: Map<String, Long>,
+    watchedEpisodeIds: Set<String>,
+    onFavorite: () -> Unit,
+    onEpisode: (SeriesEpisode) -> Unit,
+    modifier: Modifier
+) {
+    val context = LocalContext.current
+    val poster = details?.posterUrl ?: series.logoUrl
+    val backdrop = details?.backdropUrl ?: poster
+    val episodes = details?.episodes.orEmpty().filter { it.seasonNumber == selectedSeason }
+    val seasons = details?.seasons.orEmpty()
+    val displayTitle = details?.originalTitle ?: series.name
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val trailerSearchTerm = stringResource(R.string.trailer_search_term)
+    val trailerQuery = listOfNotNull(details?.originalTitle ?: series.name, details?.year, trailerSearchTerm).joinToString(" ")
+    // Series details has no single Play/Resume button the way movies do - playback always starts
+    // from a specific episode - so the nearest equivalent is landing D-pad focus on the first
+    // episode row once the page (and its episode list) has actually loaded.
+    val isTv = remember { context.isTvDevice() }
+    val firstEpisodeFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(series, episodes.firstOrNull()?.id, isTv) {
+        if (isTv && episodes.isNotEmpty()) runCatching { firstEpisodeFocusRequester.requestFocus() }
+    }
+
+    @Composable
+    fun SeasonsAndEpisodes() {
+        if (seasons.isNotEmpty()) {
+            Text(stringResource(R.string.seasons_label), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                seasons.forEach { season ->
+                    FilterChip(
+                        selected = selectedSeason == season,
+                        onClick = { onSeason(season) },
+                        label = { Text(stringResource(R.string.season_number, season)) }
+                    )
+                }
+            }
+            Text(stringResource(R.string.episodes_label), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            episodes.forEachIndexed { index, episode ->
+                EpisodeRow(
+                    episode = episode,
+                    progress = progress[episode.id] ?: 0L,
+                    watched = episode.id in watchedEpisodeIds,
+                    focusRequester = if (index == 0) firstEpisodeFocusRequester else null,
+                    onClick = { onEpisode(episode) }
+                )
+            }
+        } else if (error != null) {
+            Text(stringResource(R.string.episodes_unavailable), color = MaterialTheme.colorScheme.error)
+        } else {
+            Text(stringResource(R.string.no_episodes_supplied), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    if (landscape) {
+        // TV has the full screen width to work with, so poster/actions/pills sit in a fixed-width
+        // left column instead of stacked above a single scrolling column that used to run the
+        // full width of the screen for a title, some pills, and two buttons.
+        Row(modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Column(Modifier.width(200.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shadowElevation = 12.dp,
+                    border = BorderStroke(2.dp, Color.White.copy(alpha = .18f))
+                ) {
+                    if (!poster.isNullOrBlank()) AsyncImage(poster, series.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { openTrailer(context, details?.trailerUrl, trailerQuery) }, modifier = Modifier.weight(1f).height(44.dp)) {
+                        Icon(Icons.Default.SmartDisplay, null)
+                    }
+                    AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(44.dp)) {
+                        Icon(if (favorite) Icons.Default.Star else Icons.Default.StarBorder, if (favorite) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add), tint = if (favorite) Orange else Cyan)
+                    }
+                }
+            }
+            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(displayTitle, fontSize = 24.sp, fontWeight = FontWeight.Black, lineHeight = 28.sp)
+                if (!details?.originalTitle.isNullOrBlank() && details?.originalTitle != series.name) {
+                    Text(series.name, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                }
+                FlowRowPills {
+                    details?.rating?.takeIf { it != "0" && it != "0.0" }?.let { SeriesPill("★ $it/10", Orange) }
+                    details?.year?.takeIf(String::isNotBlank)?.let { SeriesPill(it, Cyan) }
+                    details?.genre?.takeIf(String::isNotBlank)?.let { SeriesPill(it, BrandBlue) }
+                    SeriesPill(series.group, Cyan)
+                }
+                if (loading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.loading_seasons_episodes), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text(
+                        details?.description?.takeIf(String::isNotBlank) ?: stringResource(R.string.no_series_details),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    )
+                    details?.cast?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.Groups, stringResource(R.string.cast_label), it) }
+                    details?.director?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.MovieCreation, stringResource(R.string.director_label), it) }
+                    SeasonsAndEpisodes()
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+        return
+    }
+
+    Column(
+        modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Surface(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Black,
+            shadowElevation = 10.dp
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                if (!backdrop.isNullOrBlank()) {
+                    AsyncImage(backdrop, series.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .9f)))))
+                Surface(
+                    Modifier.align(Alignment.BottomStart).offset(x = 14.dp).width(104.dp).aspectRatio(2f / 3f),
+                    shape = RoundedCornerShape(13.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shadowElevation = 12.dp,
+                    border = BorderStroke(2.dp, Color.White.copy(alpha = .18f))
+                ) {
+                    if (!poster.isNullOrBlank()) {
+                        AsyncImage(poster, series.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
+                }
+                Text(
+                    displayTitle,
+                    color = Color.White,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 3,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 132.dp, end = 14.dp, bottom = 16.dp)
+                )
+            }
+        }
+
+        if (!details?.originalTitle.isNullOrBlank() && details?.originalTitle != series.name) {
+            Text(series.name, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            details?.rating?.takeIf { it != "0" && it != "0.0" }?.let { SeriesPill("★ $it/10", Orange) }
+            details?.year?.takeIf(String::isNotBlank)?.let { SeriesPill(it, Cyan) }
+            details?.genre?.takeIf(String::isNotBlank)?.let { SeriesPill(it, BrandBlue) }
+            SeriesPill(series.group, Cyan)
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = { openTrailer(context, details?.trailerUrl, trailerQuery) },
+                modifier = Modifier.weight(1f).height(52.dp)
+            ) {
+                Icon(Icons.Default.SmartDisplay, null)
+                Spacer(Modifier.width(7.dp))
+                Text(stringResource(R.string.trailer_label))
+            }
+            AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(52.dp)) {
+                Icon(if (favorite) Icons.Default.Star else Icons.Default.StarBorder, if (favorite) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add), tint = if (favorite) Orange else Cyan)
+            }
+        }
+
+        if (loading) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(stringResource(R.string.loading_seasons_episodes), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Text(
+                details?.description?.takeIf(String::isNotBlank)
+                    ?: stringResource(R.string.no_series_details),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 15.sp,
+                lineHeight = 22.sp
+            )
+            details?.cast?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.Groups, stringResource(R.string.cast_label), it) }
+            details?.director?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.MovieCreation, stringResource(R.string.director_label), it) }
+            SeasonsAndEpisodes()
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun EpisodeRow(episode: SeriesEpisode, progress: Long, watched: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
+    val durationMs = remember(episode.duration) { parseDurationToMillis(episode.duration) }
+    val watchedFraction = if (progress > 0L && durationMs != null && durationMs > 0L) {
+        (progress.toFloat() / durationMs).coerceIn(0f, 1f)
+    } else null
+    ElevatedCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+        shape = RoundedCornerShape(15.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                Modifier.width(112.dp).aspectRatio(16f / 9f),
+                shape = RoundedCornerShape(10.dp),
+                color = Color.Black
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.PlayCircle, null, tint = Cyan, modifier = Modifier.size(30.dp))
+                    if (!episode.thumbnailUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            episode.thumbnailUrl,
+                            episode.title,
+                            Modifier.fillMaxSize().alpha(if (watched) .55f else 1f),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    // YouTube-style watched indicator: a red strip along the bottom edge of the
+                    // thumbnail sized to how far into the episode the user got.
+                    if (watchedFraction != null) {
+                        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = .35f))) {
+                            Box(Modifier.fillMaxHeight().fillMaxWidth(watchedFraction).background(Color(0xFFE50914)))
+                        }
+                    }
+                    if (watched) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).size(20.dp),
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = Color(0xFF2ECC71)
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(13.dp))
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.episode_title_format, episode.episodeNumber, episode.title),
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 3
+                )
+                val resumeLabel = stringResource(R.string.resume_time, seriesProgressTime(progress))
+                val watchedLabel = stringResource(R.string.watched_label)
+                val detail = buildList {
+                    episode.duration?.takeIf(String::isNotBlank)?.let(::add)
+                    if (progress > 0L) add(resumeLabel)
+                    if (watched) add(watchedLabel)
+                }.joinToString(" • ")
+                if (detail.isNotBlank()) {
+                    Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                }
+            }
+            Icon(Icons.Default.PlayArrow, stringResource(R.string.play_action), tint = Cyan)
+        }
+    }
+}
+
+@Composable
+private fun SeriesPill(text: String, accent: Color) {
+    Surface(
+        color = accent.copy(alpha = .14f),
+        shape = RoundedCornerShape(50),
+        border = BorderStroke(1.dp, accent.copy(alpha = .35f))
+    ) {
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
+    }
+}
+
+@Composable
+private fun SeriesCredit(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Icon(icon, null, tint = Cyan, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 20.sp)
+        }
+    }
+}
+
+private fun seriesProgressTime(milliseconds: Long): String {
+    val totalMinutes = milliseconds.coerceAtLeast(0L) / 60_000L
+    return if (totalMinutes >= 60L) "${totalMinutes / 60L}h ${totalMinutes % 60L}m" else "${totalMinutes}m"
+}
+
+/** Providers report episode duration as either "HH:MM:SS"/"MM:SS" or a plain seconds count —
+ *  parses either into milliseconds, or null if it's neither (so the watched-progress strip can be
+ *  skipped rather than drawn against a nonsense total). */
+internal fun parseDurationToMillis(duration: String?): Long? {
+    val text = duration?.trim()?.takeIf(String::isNotBlank) ?: return null
+    if (':' in text) {
+        val parts = text.split(':').map { it.toIntOrNull() ?: return null }
+        var seconds = 0L
+        for (part in parts) seconds = seconds * 60 + part
+        return seconds * 1000L
+    }
+    return text.toLongOrNull()?.times(1000L)
+}

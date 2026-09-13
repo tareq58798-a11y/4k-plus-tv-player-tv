@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">4K Plus TV Player</string>
+
+    <!-- Shared across screens. Never used for channel/movie/series names — those come from the
+         user's playlist and are never passed through string resources. -->
+    <string name="cd_back">واپس</string>
+    <string name="cd_search">تلاش کریں</string>
+    <string name="cd_settings">ترتیبات</string>
+    <string name="cd_clear">صاف کریں</string>
+    <string name="cd_clear_search">تلاش صاف کریں</string>
+    <string name="cd_favorite_add">پسندیدہ میں شامل کریں</string>
+    <string name="cd_favorite_remove">پسندیدہ سے ہٹائیں</string>
+    <string name="cd_play">چلائیں</string>
+    <string name="action_see_all">سب دیکھیں</string>
+    <string name="action_hide">چھپائیں</string>
+    <string name="action_cancel">منسوخ کریں</string>
+    <string name="action_remove">ہٹائیں</string>
+    <string name="action_switch">تبدیل کریں</string>
+    <string name="exit_app_title">ایپ سے باہر نکلیں؟</string>
+    <string name="exit_app_message">کیا آپ واقعی 4K Plus TV Player سے باہر نکلنا چاہتے ہیں؟</string>
+    <string name="exit_app_confirm">باہر نکلیں</string>
+    <string name="section_continue_watching">دیکھنا جاری رکھیں</string>
+    <string name="section_recently_watched">حال ہی میں دیکھا گیا</string>
+    <string name="section_favorites">پسندیدہ</string>
+    <string name="nav_live_tv">لائیو ٹی وی</string>
+    <string name="nav_movies">فلمیں</string>
+    <string name="nav_series">سیریز</string>
+
+    <!-- Home -->
+    <string name="home_greeting_morning">صبح بخیر</string>
+    <string name="home_greeting_afternoon">دن بخیر</string>
+    <string name="home_greeting_evening">شام بخیر</string>
+    <string name="home_tagline">شاندار کہانیاں ہمیشہ دستیاب ہیں۔</string>
+    <string name="home_switch_to_light">لائٹ تھیم پر جائیں</string>
+    <string name="home_switch_to_dark">ڈارک تھیم پر جائیں</string>
+    <string name="home_quick_access">فوری رسائی</string>
+    <string name="home_favorites_chip">پسندیدہ</string>
+    <string name="home_recently_watched_chip">حال ہی میں دیکھا گیا</string>
+    <string name="home_playlists_chip">پلے لسٹس</string>
+    <string name="home_no_favorites">ابھی تک کوئی پسندیدہ نہیں</string>
+    <string name="home_no_history">ابھی تک دیکھنے کی کوئی تاریخ نہیں</string>
+    <string name="home_recently_watched_live">حال ہی میں دیکھے گئے لائیو چینلز</string>
+    <string name="home_nothing_to_continue">جاری رکھنے کے لیے ابھی کچھ نہیں</string>
+    <string name="home_live_tv_default">1000+ چینلز</string>
+    <string name="home_live_tv_count">%1$d چینلز</string>
+    <string name="home_movies_default">نئی ریلیزز</string>
+    <string name="home_movies_count">%1$d فلمیں</string>
+    <string name="home_series_default">اپنی پسندیدہ سیریز سے لطف اندوز ہوں</string>
+    <string name="home_series_count">%1$d سیریز</string>
+    <string name="continue_watching_title">دیکھنا جاری رکھیں</string>
+    <string name="continue_watching_placeholder_title">آپ کا حالیہ مواد یہاں ظاہر ہوگا</string>
+    <string name="continue_watching_placeholder_subtitle">جہاں سے چھوڑا تھا وہیں سے جاری رکھیں</string>
+    <string name="home_live_badge">لائیو</string>
+
+    <!-- Activation / manual entry -->
+    <string name="welcome">خوش آمدید</string>
+    <string name="activation_hero">آپ کی تفریح یہیں سے شروع ہوتی ہے</string>
+    <string name="activation_subtitle">اپنی پلے لسٹ شامل کرنے کا آسان ترین طریقہ منتخب کریں۔</string>
+    <string name="cd_appearance">ظاہری شکل</string>
+    <string name="cd_language">زبان</string>
+    <string name="language_selection_coming_soon">زبان کا انتخاب جلد شامل کیا جائے گا</string>
+    <string name="language_system_default">سسٹم ڈیفالٹ</string>
+    <string name="activate_via_app">4K Plus TV کے ذریعے فعال کریں</string>
+    <string name="recommended">تجویز کردہ</string>
+    <string name="device_id">ڈیوائس آئی ڈی</string>
+    <string name="device_key">ڈیوائس کلید</string>
+    <string name="waiting_for_activation">فعال ہونے کا انتظار ہے</string>
+    <string name="cd_refresh_activation">فعال کاری ریفریش کریں</string>
+    <string name="activation_instructions">یہ کوڈز اپنے 4K Plus TV ڈیش بورڈ میں استعمال کریں۔ پلے لسٹ تفویض ہونے کے بعد یہاں ریفریش کریں۔</string>
+    <string name="activated_playlist_default_name">فعال کردہ پلے لسٹ</string>
+    <string name="no_playlist_assigned_yet">ابھی تک کوئی پلے لسٹ تفویض نہیں کی گئی</string>
+    <string name="add_playlist_manually">پلے لسٹ دستی طور پر شامل کریں</string>
+    <string name="add_playlist_manually_desc">اپنے پرووائیڈر کے سرور ایڈریس، صارف نام، اور پاس ورڈ کا استعمال کرتے ہوئے مربوط ہوں۔</string>
+    <string name="add_playlist">پلے لسٹ شامل کریں</string>
+    <string name="add_playlist_title">پلے لسٹ شامل کریں</string>
+    <string name="playlist_name_label">پلے لسٹ کا نام</string>
+    <string name="choose_your_server">اپنا سرور منتخب کریں</string>
+    <string name="server_index_label">سرور %1$d</string>
+    <string name="username_label">صارف نام</string>
+    <string name="password_label">پاس ورڈ</string>
+    <string name="credentials_stored_securely">آپ کی تفصیلات اس ڈیوائس پر محفوظ طریقے سے محفوظ ہیں۔</string>
+    <string name="connecting_playlist">آپ کی پلے لسٹ منسلک اور منظم کی جا رہی ہے…</string>
+    <string name="test_and_add_playlist">پلے لسٹ آزمائیں اور شامل کریں</string>
+    <string name="playlist_could_not_be_loaded">پلے لسٹ لوڈ نہیں ہو سکی۔</string>
+    <string name="not_a_media_provider">4K Plus TV Player ایک میڈیا پلیئر ہے اور یہ کوئی مواد شامل یا فراہم نہیں کرتا۔</string>
+    <string name="loading_your_playlist">آپ کی پلے لسٹ لوڈ ہو رہی ہے…</string>
+
+    <!-- Playlist manager -->
+    <string name="playlists_title">پلے لسٹس</string>
+    <string name="playlists_manager_desc">دیگر کو تبدیل یا حذف کیے بغیر محفوظ شدہ پلے لسٹس کے درمیان تبدیل ہوں۔</string>
+    <string name="active_playlist_status">فعال پلے لسٹ</string>
+    <string name="provider_login_status">پرووائیڈر لاگ ان • %1$s</string>
+    <string name="m3u_playlist_label">M3U پلے لسٹ</string>
+    <string name="add_another_playlist">ایک اور پلے لسٹ شامل کریں</string>
+    <string name="remove_playlist_confirm_title">%1$s ہٹائیں؟</string>
+    <string name="remove_playlist_confirm_body">اس پلے لسٹ کے لیے محفوظ شدہ لاگ ان اس ڈیوائس سے ہٹا دیا جائے گا۔</string>
+
+    <!-- Search -->
+    <string name="search_title">تلاش کریں</string>
+    <string name="search_placeholder">چینلز، فلمیں، اور سیریز تلاش کریں</string>
+    <string name="search_hint">اپنی پوری پلے لسٹ میں تلاش کرنے کے لیے ٹائپ کرنا شروع کریں۔</string>
+    <string name="search_no_results">”%1$s“ کے لیے کوئی نتیجہ نہیں ملا۔</string>
+
+    <!-- Live TV -->
+    <string name="live_tv_channels_count">%1$d چینلز</string>
+    <string name="epg_now_format">ابھی: %1$s</string>
+    <string name="epg_next_format">آگے: %1$s</string>
+    <string name="search_categories">قسمیں تلاش کریں</string>
+    <string name="search_channels">چینلز تلاش کریں</string>
+    <string name="cd_hide_category">%1$s چھپائیں</string>
+    <string name="no_channels_yet">ابھی تک کوئی چینل نہیں</string>
+    <string name="hide_category_action">قسم چھپائیں</string>
+    <string name="no_live_categories">کوئی لائیو قسم نہیں ملی۔</string>
+    <string name="no_categories_match">آپ کی تلاش سے مماثل کوئی قسم نہیں۔</string>
+    <string name="no_channels_match">آپ کی تلاش سے مماثل کوئی چینل نہیں۔</string>
+
+    <!-- Movies -->
+    <string name="movies_count">%1$d فلمیں</string>
+    <string name="search_all_movies">تمام فلمیں تلاش کریں</string>
+    <string name="search_movies">فلمیں تلاش کریں</string>
+    <string name="no_movies_found">کوئی فلم نہیں ملی۔</string>
+    <string name="no_movies_match">آپ کی تلاش سے مماثل کوئی فلم نہیں۔</string>
+    <string name="movies_star_empty">آپ کی پسندیدہ فلمیں یہاں ظاہر ہوں گی۔</string>
+    <string name="movies_watch_empty">آپ کی دیکھی گئی فلمیں یہاں ظاہر ہوں گی۔</string>
+    <string name="resume_time">%1$s سے دوبارہ شروع کریں</string>
+    <string name="play_action">چلائیں</string>
+    <string name="watch_trailer">ٹریلر دیکھیں</string>
+    <string name="loading_movie_info">فلم کی معلومات لوڈ ہو رہی ہیں…</string>
+    <string name="no_movie_details">اس فلم کے لیے تفصیلی معلومات فراہم نہیں کی گئیں۔</string>
+    <string name="cast_label">کاسٹ</string>
+    <string name="director_label">ہدایت کار</string>
+    <string name="no_additional_info">اس پلے لسٹ سے اضافی معلومات دستیاب نہیں ہیں۔</string>
+
+    <!-- Series -->
+    <string name="series_count">%1$d سیریز</string>
+    <string name="search_all_series">تمام سیریز تلاش کریں</string>
+    <string name="no_series_found">کوئی سیریز نہیں ملی۔</string>
+    <string name="no_series_match">آپ کی تلاش سے مماثل کوئی سیریز نہیں۔</string>
+    <string name="series_star_empty">آپ کی پسندیدہ سیریز یہاں ظاہر ہوں گی۔</string>
+    <string name="series_watch_empty">آپ کی دیکھی گئی سیریز یہاں ظاہر ہوں گی۔</string>
+    <string name="trailer_label">ٹریلر</string>
+    <string name="loading_seasons_episodes">سیزنز اور اقساط لوڈ ہو رہی ہیں…</string>
+    <string name="no_series_details">اس سیریز کے لیے تفصیلی معلومات فراہم نہیں کی گئیں۔</string>
+    <string name="seasons_label">سیزنز</string>
+    <string name="episodes_label">اقساط</string>
+    <string name="episodes_unavailable">اس پلے لسٹ سے اقساط دستیاب نہیں ہیں۔</string>
+    <string name="no_episodes_supplied">اس سیریز کے لیے کوئی قسط فراہم نہیں کی گئی۔</string>
+    <string name="season_number">سیزن %1$d</string>
+    <string name="episode_title_format">قسط%1$d • %2$s</string>
+    <string name="trailer_search_term">آفیشل ٹریلر</string>
+
+    <!-- Settings -->
+    <string name="settings_title">ترتیبات</string>
+    <string name="settings_playlists">پلے لسٹس</string>
+    <string name="settings_app_info">ایپ اور پلے لسٹ کی معلومات</string>
+    <string name="settings_playback">پلے بیک</string>
+    <string name="settings_appearance">ظاہری شکل</string>
+    <string name="settings_privacy_history">رازداری اور تاریخ</string>
+    <string name="settings_category_visibility">قسم کی نمائش</string>
+    <string name="settings_parental_controls">والدین کا کنٹرول</string>
+    <string name="footer_version">4K Plus TV Player • ورژن %1$s</string>
+
+    <string name="manage_saved_playlists">محفوظ شدہ پلے لسٹس کا نظم کریں</string>
+    <string name="manage_saved_playlists_desc">پلے لسٹ اکاؤنٹس تبدیل کریں، شامل کریں، یا ہٹائیں</string>
+    <string name="current_playlist">موجودہ پلے لسٹ</string>
+    <string name="rename_action">نام تبدیل کریں</string>
+    <string name="refresh_playlist">پلے لسٹ ریفریش کریں</string>
+    <string name="refresh_playlist_desc">تازہ ترین چینلز اور کیٹلاگ ڈاؤن لوڈ کریں</string>
+    <string name="add_another_playlist_desc">موجودہ پلے لسٹ برقرار رکھیں اور دوسری منسلک کریں</string>
+    <string name="remove_playlist_action">پلے لسٹ ہٹائیں</string>
+    <string name="remove_playlist_desc">محفوظ شدہ لاگ ان اور مقامی کیشے حذف کریں</string>
+    <string name="provider_account_label">پرووائیڈر اکاؤنٹ: %1$s</string>
+    <string name="remove_playlist_dialog_title">پلے لسٹ ہٹائیں؟</string>
+    <string name="remove_playlist_dialog_body">محفوظ شدہ پرووائیڈر لاگ ان اور کیشے شدہ پلے لسٹ اس ڈیوائس سے ہٹا دی جائے گی۔</string>
+
+    <string name="application_label">ایپلیکیشن</string>
+    <string name="app_name_label">ایپ کا نام</string>
+    <string name="version_label">ورژن</string>
+    <string name="android_label">اینڈرائیڈ</string>
+    <string name="name_label">نام</string>
+    <string name="no_active_playlist">کوئی فعال پلے لسٹ نہیں</string>
+    <string name="type_label">قسم</string>
+    <string name="provider_login_type">پرووائیڈر لاگ ان</string>
+    <string name="m3u_url_type">M3U یو آر ایل</string>
+    <string name="not_available">دستیاب نہیں</string>
+    <string name="username_row_label">صارف نام</string>
+    <string name="not_applicable">لاگو نہیں</string>
+    <string name="status_label">حیثیت</string>
+    <string name="not_provided">فراہم نہیں کیا گیا</string>
+    <string name="expiry_date_label">میعاد ختم ہونے کی تاریخ</string>
+    <string name="items_label">آئٹمز</string>
+
+    <string name="skip_interval">اسکپ کا وقفہ</string>
+    <string name="seconds_format">%1$d سیکنڈ</string>
+    <string name="start_muted">خاموش شروع کریں</string>
+    <string name="start_muted_desc">کوئی بھی پلیئر کھولتے وقت آواز بند کریں</string>
+    <string name="embedded_subtitles">شامل شدہ سب ٹائٹلز</string>
+    <string name="embedded_subtitles_desc">دستیاب سب ٹائٹل ٹریکس خودکار طور پر منتخب کریں</string>
+    <string name="preferred_subtitle_language">ترجیحی سب ٹائٹل زبان</string>
+    <string name="subtitle_lang_arabic">عربی</string>
+    <string name="subtitle_lang_english">انگریزی</string>
+    <string name="video_scaling">ویڈیو اسکیلنگ</string>
+    <string name="video_fit">فٹ کریں</string>
+    <string name="video_fill">بھریں</string>
+    <string name="video_stretch">پھیلائیں</string>
+    <string name="video_fill_desc">اسکرین بھر دیتا ہے اور کناروں کو کاٹ سکتا ہے۔</string>
+    <string name="video_stretch_desc">پوری اسکرین بھرنے کے لیے تصویر کو پھیلاتا ہے۔</string>
+    <string name="video_fit_desc">مکمل ویڈیو دکھاتا ہے اور سیاہ پٹیاں شامل کر سکتا ہے۔</string>
+    <string name="player_engine">پلیئر انجن</string>
+    <string name="player_default_name">4K Plus پلیئر</string>
+    <string name="player_default_desc">مکمل کنٹرولز، دوبارہ شروع کرنا، سب ٹائٹلز، اور پیش رفت</string>
+    <string name="player_vlc_desc">VLC انسٹال ہونا ضروری ہے</string>
+    <string name="player_mx_desc">MX Player انسٹال ہونا ضروری ہے</string>
+
+    <string name="theme_label">تھیم</string>
+    <string name="theme_system">سسٹم</string>
+    <string name="theme_light">لائٹ</string>
+    <string name="theme_dark">ڈارک</string>
+
+    <string name="clear_movie_activity">فلم کی سرگرمی صاف کریں</string>
+    <string name="clear_movie_activity_desc">پسندیدہ، حالیہ فلمیں، اور پیش رفت</string>
+    <string name="movie_activity_cleared">فلم کی سرگرمی صاف کر دی گئی</string>
+    <string name="clear_series_activity">سیریز کی سرگرمی صاف کریں</string>
+    <string name="clear_series_activity_desc">پسندیدہ، حالیہ سیریز، اور قسط کی پیش رفت</string>
+    <string name="series_activity_cleared">سیریز کی سرگرمی صاف کر دی گئی</string>
+    <string name="clear_live_activity">لائیو ٹی وی کی سرگرمی صاف کریں</string>
+    <string name="clear_live_activity_desc">پسندیدہ اور حال ہی میں دیکھے گئے چینلز</string>
+    <string name="live_activity_cleared">لائیو ٹی وی کی سرگرمی صاف کر دی گئی</string>
+
+    <string name="category_visibility_desc">منتخب کریں کہ مرکزی اسکرینز پر کون سی قسمیں ظاہر ہوں۔ آپ یہاں سے کسی بھی چھپی ہوئی قسم کو بحال کر سکتے ہیں۔</string>
+    <string name="show_hidden_only">صرف چھپی ہوئی دکھائیں</string>
+    <string name="no_hidden_categories">کوئی چھپی ہوئی قسم نہیں۔</string>
+    <string name="hidden_label">چھپی ہوئی</string>
+    <string name="visible_label">نظر آنے والی</string>
+    <string name="all_categories_visible">تمام قسمیں دوبارہ نظر آ رہی ہیں</string>
+    <string name="show_all_hidden">تمام چھپی ہوئی قسمیں دکھائیں</string>
+
+    <string name="create_parental_pin">والدین کا پن بنائیں</string>
+    <string name="create_parental_pin_desc">محدود مواد کی ترتیبات کی حفاظت کریں</string>
+    <string name="unlock_parental_controls">والدین کا کنٹرول ان لاک کریں</string>
+    <string name="unlock_parental_controls_desc">والدین کا کنٹرول منظم کرنے کے لیے اپنا پن درج کریں</string>
+    <string name="parental_pin_created">والدین کا پن بن گیا</string>
+    <string name="parental_controls_unlocked">والدین کا کنٹرول ان لاک ہے۔</string>
+    <string name="lock_controls">کنٹرولز لاک کریں</string>
+    <string name="remove_pin">پن ہٹائیں</string>
+    <string name="parental_pin_removed">والدین کا پن ہٹا دیا گیا</string>
+    <string name="enter_parental_pin">والدین کا پن درج کریں</string>
+    <string name="confirm_pin">پن کی تصدیق کریں</string>
+    <string name="pins_do_not_match">پن مماثل نہیں ہیں۔</string>
+    <string name="incorrect_pin">غلط پن۔</string>
+    <string name="create_action">بنائیں</string>
+    <string name="unlock_action">ان لاک کریں</string>
+    <string name="unknown_label">نامعلوم</string>
+    <string name="active_playlist_label">فعال پلے لسٹ</string>
+    <string name="pin_digit_hint">4 سے 6 ہندسوں کا پن</string>
+    <string name="pin_length_error">4 سے 6 ہندسوں کا پن استعمال کریں۔</string>
+
+    <string name="enable_parental_control">والدین کا کنٹرول فعال کریں</string>
+    <string name="enable_parental_control_desc">مقفل قسموں اور چینلز تک رسائی کے لیے پن درکار ہو</string>
+    <string name="ask_pin_on_startup">شروع ہونے پر پن مانگیں</string>
+    <string name="ask_pin_on_startup_desc">ایپ کھلنے پر ہر بار پن درکار ہو</string>
+    <string name="change_pin">پن تبدیل کریں</string>
+    <string name="change_pin_desc">والدین کے کنٹرول کے لیے نیا پن مقرر کریں</string>
+    <string name="lock_categories">قسمیں مقفل کریں</string>
+    <string name="lock_categories_desc">منتخب قسمیں کھولنے کے لیے پن درکار ہو</string>
+    <string name="lock_channels">چینلز مقفل کریں</string>
+    <string name="lock_channels_desc">منتخب چینلز چلانے کے لیے پن درکار ہو</string>
+    <string name="locked_label">مقفل</string>
+    <string name="unlocked_label">غیر مقفل</string>
+    <string name="show_locked_only">صرف مقفل دکھائیں</string>
+    <string name="no_locked_categories">کوئی مقفل قسم نہیں۔</string>
+    <string name="unlock_all_categories">تمام قسمیں غیر مقفل کریں</string>
+    <string name="all_categories_unlocked">تمام قسمیں غیر مقفل کر دی گئیں</string>
+    <string name="no_locked_channels">کوئی مقفل چینل نہیں۔</string>
+    <string name="unlock_all_channels">تمام چینلز غیر مقفل کریں</string>
+    <string name="all_channels_unlocked">تمام چینلز غیر مقفل کر دیے گئے</string>
+</resources>

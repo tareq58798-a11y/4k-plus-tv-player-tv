@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- D-pad focus ring for media3's native (View-based) playback controller buttons - these
+     aren't Compose, so they can't use the app's usual cyan drawFocusRing modifier. Blue instead
+     of that cyan deliberately marks "focus is on the player's own controls" as visually distinct
+     from every other cyan-ringed focusable element in the app. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="oval">
+            <solid android:color="#4D2979FF" />
+            <stroke android:width="2dp" android:color="#2979FF" />
+        </shape>
+    </item>
+    <item>
+        <color android:color="@android:color/transparent" />
+    </item>
+</selector>

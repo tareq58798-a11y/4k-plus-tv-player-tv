@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android TV has no touchscreen and is driven entirely by a D-pad remote; declaring the
+         touchscreen optional (rather than leaving the implicit default of "required") is what
+         lets the app appear on TV devices in the Play Store at all. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- Marks this as a proper TV app (shows in the Leanback launcher's app row, gets listed
+         under "Android TV" on the Play Store) rather than a phone app side-loaded onto a TV. -->
+    <uses-feature android:name="android.software.leanback" android:required="true" />
+
+    <queries>
+        <package android:name="org.videolan.vlc" />
+        <package android:name="com.mxtech.videoplayer.ad" />
+        <package android:name="com.mxtech.videoplayer.pro" />
+    </queries>
+
+    <application
+        android:name=".FourKPlusApplication"
+        android:allowBackup="true"
+        android:banner="@drawable/tv_banner"
+        android:icon="@mipmap/ic_launcher"
+        android:label="4K Plus TV Player"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.FourKPlus">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Additional to the LAUNCHER filter above, so the Leanback launcher on TV finds
+                 this activity as the app's entry point too. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

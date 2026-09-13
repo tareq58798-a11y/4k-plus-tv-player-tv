@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">4K Plus TV Player</string>
+
+    <!-- Shared across screens. Never used for channel/movie/series names — those come from the
+         user's playlist and are never passed through string resources. -->
+    <string name="cd_back">Geri</string>
+    <string name="cd_search">Ara</string>
+    <string name="cd_settings">Ayarlar</string>
+    <string name="cd_clear">Temizle</string>
+    <string name="cd_clear_search">Aramayı temizle</string>
+    <string name="cd_favorite_add">Favorilere ekle</string>
+    <string name="cd_favorite_remove">Favorilerden çıkar</string>
+    <string name="cd_play">Oynat</string>
+    <string name="action_see_all">Tümünü gör</string>
+    <string name="action_hide">Gizle</string>
+    <string name="action_cancel">İptal</string>
+    <string name="action_remove">Kaldır</string>
+    <string name="action_switch">Değiştir</string>
+    <string name="exit_app_title">Uygulamadan çıkılsın mı?</string>
+    <string name="exit_app_message">4K Plus TV Player’dan çıkmak istediğinizden emin misiniz?</string>
+    <string name="exit_app_confirm">Çık</string>
+    <string name="section_continue_watching">İzlemeye devam et</string>
+    <string name="section_recently_watched">Son izlenenler</string>
+    <string name="section_favorites">Favoriler</string>
+    <string name="nav_live_tv">Canlı TV</string>
+    <string name="nav_movies">Filmler</string>
+    <string name="nav_series">Diziler</string>
+
+    <!-- Home -->
+    <string name="home_greeting_morning">Günaydın</string>
+    <string name="home_greeting_afternoon">İyi günler</string>
+    <string name="home_greeting_evening">İyi akşamlar</string>
+    <string name="home_tagline">Harika hikayeler her zaman burada.</string>
+    <string name="home_switch_to_light">Açık temaya geç</string>
+    <string name="home_switch_to_dark">Koyu temaya geç</string>
+    <string name="home_quick_access">Hızlı erişim</string>
+    <string name="home_favorites_chip">Favoriler</string>
+    <string name="home_recently_watched_chip">Son izlenenler</string>
+    <string name="home_playlists_chip">Oynatma listeleri</string>
+    <string name="home_no_favorites">Henüz favori yok</string>
+    <string name="home_no_history">Henüz izleme geçmişi yok</string>
+    <string name="home_recently_watched_live">Son İzlenen Canlı Kanallar</string>
+    <string name="home_nothing_to_continue">Devam edilecek bir şey yok</string>
+    <string name="home_live_tv_default">1000’den fazla kanal</string>
+    <string name="home_live_tv_count">%1$d kanal</string>
+    <string name="home_movies_default">Yeni çıkanlar</string>
+    <string name="home_movies_count">%1$d film</string>
+    <string name="home_series_default">Favori dizilerinizin keyfini çıkarın</string>
+    <string name="home_series_count">%1$d dizi</string>
+    <string name="continue_watching_title">İzlemeye Devam Et</string>
+    <string name="continue_watching_placeholder_title">Son içerikleriniz burada görünecek</string>
+    <string name="continue_watching_placeholder_subtitle">Kaldığınız yerden devam edin</string>
+    <string name="home_live_badge">CANLI</string>
+
+    <!-- Activation / manual entry -->
+    <string name="welcome">Hoş geldiniz</string>
+    <string name="activation_hero">Eğlenceniz burada başlıyor</string>
+    <string name="activation_subtitle">Oynatma listenizi eklemenin en kolay yolunu seçin.</string>
+    <string name="cd_appearance">Görünüm</string>
+    <string name="cd_language">Dil</string>
+    <string name="language_selection_coming_soon">Dil seçimi yakında eklenecek</string>
+    <string name="language_system_default">Sistem varsayılanı</string>
+    <string name="activate_via_app">4K Plus TV üzerinden etkinleştir</string>
+    <string name="recommended">Önerilen</string>
+    <string name="device_id">Cihaz Kimliği</string>
+    <string name="device_key">Cihaz Anahtarı</string>
+    <string name="waiting_for_activation">Etkinleştirme bekleniyor</string>
+    <string name="cd_refresh_activation">Etkinleştirmeyi yenile</string>
+    <string name="activation_instructions">Bu kodları 4K Plus TV panelinizde kullanın. Bir oynatma listesi atandıktan sonra buradan yenileyin.</string>
+    <string name="activated_playlist_default_name">Etkinleştirilmiş oynatma listesi</string>
+    <string name="no_playlist_assigned_yet">Henüz atanmış bir oynatma listesi yok</string>
+    <string name="add_playlist_manually">Oynatma Listesini Manuel Ekle</string>
+    <string name="add_playlist_manually_desc">Sağlayıcınızın sunucu adresi, kullanıcı adı ve parolasıyla bağlanın.</string>
+    <string name="add_playlist">Oynatma Listesi Ekle</string>
+    <string name="add_playlist_title">Oynatma Listesi Ekle</string>
+    <string name="playlist_name_label">Oynatma listesi adı</string>
+    <string name="choose_your_server">Sunucunuzu seçin</string>
+    <string name="server_index_label">Sunucu %1$d</string>
+    <string name="username_label">Kullanıcı adı</string>
+    <string name="password_label">Parola</string>
+    <string name="credentials_stored_securely">Bilgileriniz bu cihazda güvenli bir şekilde saklanır.</string>
+    <string name="connecting_playlist">Oynatma listeniz bağlanıyor ve düzenleniyor…</string>
+    <string name="test_and_add_playlist">Oynatma Listesini Test Et ve Ekle</string>
+    <string name="playlist_could_not_be_loaded">Oynatma listesi yüklenemedi.</string>
+    <string name="not_a_media_provider">4K Plus TV Player bir medya oynatıcıdır ve herhangi bir içerik sağlamaz.</string>
+    <string name="loading_your_playlist">Oynatma listeniz yükleniyor…</string>
+
+    <!-- Playlist manager -->
+    <string name="playlists_title">Oynatma Listeleri</string>
+    <string name="playlists_manager_desc">Diğerlerini değiştirmeden veya silmeden kayıtlı oynatma listeleri arasında geçiş yapın.</string>
+    <string name="active_playlist_status">Etkin oynatma listesi</string>
+    <string name="provider_login_status">Sağlayıcı girişi • %1$s</string>
+    <string name="m3u_playlist_label">M3U oynatma listesi</string>
+    <string name="add_another_playlist">Başka bir oynatma listesi ekle</string>
+    <string name="remove_playlist_confirm_title">%1$s kaldırılsın mı?</string>
+    <string name="remove_playlist_confirm_body">Bu oynatma listesi için kayıtlı giriş bu cihazdan kaldırılacaktır.</string>
+
+    <!-- Search -->
+    <string name="search_title">Ara</string>
+    <string name="search_placeholder">Kanal, film ve dizi ara</string>
+    <string name="search_hint">Tüm oynatma listenizde arama yapmak için yazmaya başlayın.</string>
+    <string name="search_no_results">“%1$s” için sonuç bulunamadı.</string>
+
+    <!-- Live TV -->
+    <string name="live_tv_channels_count">%1$d kanal</string>
+    <string name="epg_now_format">Şimdi: %1$s</string>
+    <string name="epg_next_format">Sıradaki: %1$s</string>
+    <string name="search_categories">Kategorilerde ara</string>
+    <string name="search_channels">Kanallarda ara</string>
+    <string name="cd_hide_category">%1$s kategorisini gizle</string>
+    <string name="no_channels_yet">Henüz kanal yok</string>
+    <string name="hide_category_action">Kategoriyi gizle</string>
+    <string name="no_live_categories">Canlı kategori bulunamadı.</string>
+    <string name="no_categories_match">Aramanızla eşleşen kategori yok.</string>
+    <string name="no_channels_match">Aramanızla eşleşen kanal yok.</string>
+
+    <!-- Movies -->
+    <string name="movies_count">%1$d film</string>
+    <string name="search_all_movies">Tüm filmlerde ara</string>
+    <string name="search_movies">Filmlerde ara</string>
+    <string name="no_movies_found">Film bulunamadı.</string>
+    <string name="no_movies_match">Aramanızla eşleşen film yok.</string>
+    <string name="movies_star_empty">Favorilere eklediğiniz filmler burada görünecek.</string>
+    <string name="movies_watch_empty">İzlediğiniz filmler burada görünecek.</string>
+    <string name="resume_time">%1$s konumundan devam et</string>
+    <string name="play_action">Oynat</string>
+    <string name="watch_trailer">Fragmanı izle</string>
+    <string name="loading_movie_info">Film bilgileri yükleniyor…</string>
+    <string name="no_movie_details">Bu film için ayrıntılı bilgi sağlanmadı.</string>
+    <string name="cast_label">Oyuncular</string>
+    <string name="director_label">Yönetmen</string>
+    <string name="no_additional_info">Bu oynatma listesinde ek bilgi bulunmuyor.</string>
+
+    <!-- Series -->
+    <string name="series_count">%1$d dizi</string>
+    <string name="search_all_series">Tüm dizilerde ara</string>
+    <string name="no_series_found">Dizi bulunamadı.</string>
+    <string name="no_series_match">Aramanızla eşleşen dizi yok.</string>
+    <string name="series_star_empty">Favorilere eklediğiniz diziler burada görünecek.</string>
+    <string name="series_watch_empty">İzlediğiniz diziler burada görünecek.</string>
+    <string name="trailer_label">Fragman</string>
+    <string name="loading_seasons_episodes">Sezonlar ve bölümler yükleniyor…</string>
+    <string name="no_series_details">Bu dizi için ayrıntılı bilgi sağlanmadı.</string>
+    <string name="seasons_label">Sezonlar</string>
+    <string name="episodes_label">Bölümler</string>
+    <string name="episodes_unavailable">Bu oynatma listesinde bölümler mevcut değil.</string>
+    <string name="no_episodes_supplied">Bu dizi için bölüm sağlanmadı.</string>
+    <string name="season_number">Sezon %1$d</string>
+    <string name="episode_title_format">B%1$d • %2$s</string>
+    <string name="trailer_search_term">resmi fragman</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Ayarlar</string>
+    <string name="settings_playlists">Oynatma Listeleri</string>
+    <string name="settings_app_info">Uygulama ve oynatma listesi bilgisi</string>
+    <string name="settings_playback">Oynatma</string>
+    <string name="settings_appearance">Görünüm</string>
+    <string name="settings_privacy_history">Gizlilik ve geçmiş</string>
+    <string name="settings_category_visibility">Kategori görünürlüğü</string>
+    <string name="settings_parental_controls">Ebeveyn denetimleri</string>
+    <string name="footer_version">4K Plus TV Player • s%1$s</string>
+
+    <string name="manage_saved_playlists">Kayıtlı oynatma listelerini yönet</string>
+    <string name="manage_saved_playlists_desc">Oynatma listesi hesapları arasında geçiş yapın, ekleyin veya kaldırın</string>
+    <string name="current_playlist">Geçerli oynatma listesi</string>
+    <string name="rename_action">Yeniden adlandır</string>
+    <string name="refresh_playlist">Oynatma listesini yenile</string>
+    <string name="refresh_playlist_desc">En yeni kanalları ve kataloğu indirin</string>
+    <string name="add_another_playlist_desc">Mevcut oynatma listesini koruyun ve başka bir tane bağlayın</string>
+    <string name="remove_playlist_action">Oynatma listesini kaldır</string>
+    <string name="remove_playlist_desc">Kayıtlı girişi ve yerel önbelleği silin</string>
+    <string name="provider_account_label">Sağlayıcı hesabı: %1$s</string>
+    <string name="remove_playlist_dialog_title">Oynatma listesi kaldırılsın mı?</string>
+    <string name="remove_playlist_dialog_body">Kayıtlı sağlayıcı girişi ve önbelleğe alınmış oynatma listesi bu cihazdan kaldırılacaktır.</string>
+
+    <string name="application_label">Uygulama</string>
+    <string name="app_name_label">Uygulama adı</string>
+    <string name="version_label">Sürüm</string>
+    <string name="android_label">Android</string>
+    <string name="name_label">Ad</string>
+    <string name="no_active_playlist">Etkin oynatma listesi yok</string>
+    <string name="type_label">Tür</string>
+    <string name="provider_login_type">Sağlayıcı girişi</string>
+    <string name="m3u_url_type">M3U URL</string>
+    <string name="not_available">Kullanılamıyor</string>
+    <string name="username_row_label">Kullanıcı adı</string>
+    <string name="not_applicable">Geçerli değil</string>
+    <string name="status_label">Durum</string>
+    <string name="not_provided">Sağlanmadı</string>
+    <string name="expiry_date_label">Son kullanma tarihi</string>
+    <string name="items_label">Öğeler</string>
+
+    <string name="skip_interval">Atlama aralığı</string>
+    <string name="seconds_format">%1$dsn</string>
+    <string name="start_muted">Sessiz başlat</string>
+    <string name="start_muted_desc">Herhangi bir oynatıcı açıldığında sesi kapat</string>
+    <string name="embedded_subtitles">Gömülü altyazılar</string>
+    <string name="embedded_subtitles_desc">Mevcut altyazı parçalarını otomatik olarak seç</string>
+    <string name="preferred_subtitle_language">Tercih edilen altyazı dili</string>
+    <string name="subtitle_lang_arabic">Arapça</string>
+    <string name="subtitle_lang_english">İngilizce</string>
+    <string name="video_scaling">Video ölçekleme</string>
+    <string name="video_fit">Sığdır</string>
+    <string name="video_fill">Doldur</string>
+    <string name="video_stretch">Uzat</string>
+    <string name="video_fill_desc">Ekranı doldurur ve kenarları kırpabilir.</string>
+    <string name="video_stretch_desc">Görüntüyü oynatıcının tamamını dolduracak şekilde uzatır.</string>
+    <string name="video_fit_desc">Videonun tamamını gösterir ve siyah çubuklar ekleyebilir.</string>
+    <string name="player_engine">Oynatıcı motoru</string>
+    <string name="player_default_name">4K Plus oynatıcı</string>
+    <string name="player_default_desc">Tam kontroller, devam etme, altyazı ve ilerleme</string>
+    <string name="player_vlc_desc">VLC’nin yüklü olmasını gerektirir</string>
+    <string name="player_mx_desc">MX Player’ın yüklü olmasını gerektirir</string>
+
+    <string name="theme_label">Tema</string>
+    <string name="theme_system">Sistem</string>
+    <string name="theme_light">Açık</string>
+    <string name="theme_dark">Koyu</string>
+
+    <string name="clear_movie_activity">Film etkinliğini temizle</string>
+    <string name="clear_movie_activity_desc">Favoriler, son filmler ve ilerleme</string>
+    <string name="movie_activity_cleared">Film etkinliği temizlendi</string>
+    <string name="clear_series_activity">Dizi etkinliğini temizle</string>
+    <string name="clear_series_activity_desc">Favoriler, son diziler ve bölüm ilerlemesi</string>
+    <string name="series_activity_cleared">Dizi etkinliği temizlendi</string>
+    <string name="clear_live_activity">Canlı TV etkinliğini temizle</string>
+    <string name="clear_live_activity_desc">Favori ve son izlenen kanallar</string>
+    <string name="live_activity_cleared">Canlı TV etkinliği temizlendi</string>
+
+    <string name="category_visibility_desc">Ana ekranlarda hangi kategorilerin görüneceğini seçin. Gizlenen her şeyi buradan geri yükleyebilirsiniz.</string>
+    <string name="show_hidden_only">Yalnızca gizlileri göster</string>
+    <string name="no_hidden_categories">Gizli kategori yok.</string>
+    <string name="hidden_label">Gizli</string>
+    <string name="visible_label">Görünür</string>
+    <string name="all_categories_visible">Tüm kategoriler yeniden görünür durumda</string>
+    <string name="show_all_hidden">Gizli tüm kategorileri göster</string>
+
+    <string name="create_parental_pin">Ebeveyn PIN’i oluştur</string>
+    <string name="create_parental_pin_desc">Kısıtlı içerik ayarlarını koruyun</string>
+    <string name="unlock_parental_controls">Ebeveyn denetimlerinin kilidini aç</string>
+    <string name="unlock_parental_controls_desc">Ebeveyn denetimlerini yönetmek için PIN’inizi girin</string>
+    <string name="parental_pin_created">Ebeveyn PIN’i oluşturuldu</string>
+    <string name="parental_controls_unlocked">Ebeveyn denetimlerinin kilidi açık.</string>
+    <string name="lock_controls">Denetimleri kilitle</string>
+    <string name="remove_pin">PIN’i kaldır</string>
+    <string name="parental_pin_removed">Ebeveyn PIN’i kaldırıldı</string>
+    <string name="enter_parental_pin">Ebeveyn PIN’ini girin</string>
+    <string name="confirm_pin">PIN’i onayla</string>
+    <string name="pins_do_not_match">PIN’ler eşleşmiyor.</string>
+    <string name="incorrect_pin">Yanlış PIN.</string>
+    <string name="create_action">Oluştur</string>
+    <string name="unlock_action">Kilidi aç</string>
+    <string name="unknown_label">Bilinmiyor</string>
+    <string name="active_playlist_label">Etkin oynatma listesi</string>
+    <string name="pin_digit_hint">4-6 haneli PIN</string>
+    <string name="pin_length_error">4-6 haneli bir PIN kullanın.</string>
+
+    <string name="enable_parental_control">Ebeveyn Denetimini Etkinleştir</string>
+    <string name="enable_parental_control_desc">Kilitli kategorilere ve kanallara erişim için PIN iste</string>
+    <string name="ask_pin_on_startup">Başlangıçta PIN İste</string>
+    <string name="ask_pin_on_startup_desc">Uygulama her açıldığında PIN iste</string>
+    <string name="change_pin">PIN’i Değiştir</string>
+    <string name="change_pin_desc">Yeni bir ebeveyn denetimi PIN’i belirleyin</string>
+    <string name="lock_categories">Kategorileri Kilitle</string>
+    <string name="lock_categories_desc">Seçilen kategorileri açmak için PIN iste</string>
+    <string name="lock_channels">Kanalları Kilitle</string>
+    <string name="lock_channels_desc">Seçilen kanalları oynatmak için PIN iste</string>
+    <string name="locked_label">Kilitli</string>
+    <string name="unlocked_label">Kilitli değil</string>
+    <string name="show_locked_only">Yalnızca kilitlileri göster</string>
+    <string name="no_locked_categories">Kilitli kategori yok.</string>
+    <string name="unlock_all_categories">Tüm kategorilerin kilidini aç</string>
+    <string name="all_categories_unlocked">Tüm kategorilerin kilidi açıldı</string>
+    <string name="no_locked_channels">Kilitli kanal yok.</string>
+    <string name="unlock_all_channels">Tüm kanalların kilidini aç</string>
+    <string name="all_channels_unlocked">Tüm kanalların kilidi açıldı</string>
+</resources>

@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">4K Plus TV Player</string>
+
+    <!-- Shared across screens. Never used for channel/movie/series names — those come from the
+         user's playlist and are never passed through string resources. -->
+    <string name="cd_back">Back</string>
+    <string name="cd_search">Search</string>
+    <string name="cd_settings">Settings</string>
+    <string name="cd_clear">Clear</string>
+    <string name="cd_clear_search">Clear search</string>
+    <string name="cd_favorite_add">Add favorite</string>
+    <string name="cd_favorite_remove">Remove favorite</string>
+    <string name="cd_play">Play</string>
+    <string name="action_see_all">See all</string>
+    <string name="action_hide">Hide</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_switch">Switch</string>
+    <string name="exit_app_title">Exit app?</string>
+    <string name="exit_app_message">Are you sure you want to exit 4K Plus TV Player?</string>
+    <string name="exit_app_confirm">Exit</string>
+    <string name="section_continue_watching">Continue watching</string>
+    <string name="section_recently_watched">Recently watched</string>
+    <string name="section_favorites">Favorites</string>
+    <string name="nav_live_tv">Live TV</string>
+    <string name="nav_movies">Movies</string>
+    <string name="nav_series">Series</string>
+
+    <!-- Home -->
+    <string name="home_greeting_morning">Good morning</string>
+    <string name="home_greeting_afternoon">Good afternoon</string>
+    <string name="home_greeting_evening">Good evening</string>
+    <string name="home_tagline">Great stories are always on.</string>
+    <string name="home_switch_to_light">Switch to light theme</string>
+    <string name="home_switch_to_dark">Switch to dark theme</string>
+    <string name="home_quick_access">Quick access</string>
+    <string name="home_favorites_chip">Favorites</string>
+    <string name="home_recently_watched_chip">Recently watched</string>
+    <string name="home_playlists_chip">Playlists</string>
+    <string name="home_no_favorites">No favorites yet</string>
+    <string name="home_no_history">No viewing history yet</string>
+    <string name="home_recently_watched_live">Recently Watched Live TV</string>
+    <string name="home_nothing_to_continue">Nothing to continue yet</string>
+    <string name="home_live_tv_default">1000+ channels</string>
+    <string name="home_live_tv_count">%1$d channels</string>
+    <string name="home_movies_default">New releases</string>
+    <string name="home_movies_count">%1$d movies</string>
+    <string name="home_series_default">Binge your favorites</string>
+    <string name="home_series_count">%1$d series</string>
+    <string name="continue_watching_title">Continue Watching</string>
+    <string name="continue_watching_placeholder_title">Your recent content will appear here</string>
+    <string name="continue_watching_placeholder_subtitle">Pick up right where you left off</string>
+    <string name="home_live_badge">LIVE</string>
+
+    <!-- Activation / manual entry -->
+    <string name="welcome">Welcome</string>
+    <string name="activation_hero">Your entertainment starts here</string>
+    <string name="activation_subtitle">Choose the easiest way to add your playlist.</string>
+    <string name="cd_appearance">Appearance</string>
+    <string name="cd_language">Language</string>
+    <string name="language_selection_coming_soon">Language selection will be added next</string>
+    <string name="language_system_default">System default</string>
+    <string name="activate_via_app">Activate through 4K Plus TV</string>
+    <string name="recommended">Recommended</string>
+    <string name="device_id">Device ID</string>
+    <string name="device_key">Device Key</string>
+    <string name="waiting_for_activation">Waiting for activation</string>
+    <string name="cd_refresh_activation">Refresh activation</string>
+    <string name="activation_instructions">Use these codes in your 4K Plus TV dashboard. Refresh here after a playlist is assigned.</string>
+    <string name="activated_playlist_default_name">Activated playlist</string>
+    <string name="no_playlist_assigned_yet">No playlist assigned yet</string>
+    <string name="add_playlist_manually">Add Playlist Manually</string>
+    <string name="add_playlist_manually_desc">Connect using your provider’s server address, username, and password.</string>
+    <string name="add_playlist">Add Playlist</string>
+    <string name="add_playlist_title">Add Playlist</string>
+    <string name="playlist_name_label">Playlist name</string>
+    <string name="choose_your_server">Choose your server</string>
+    <string name="server_index_label">Server %1$d</string>
+    <string name="username_label">Username</string>
+    <string name="password_label">Password</string>
+    <string name="credentials_stored_securely">Your details are stored securely on this device.</string>
+    <string name="connecting_playlist">Connecting and organizing your playlist…</string>
+    <string name="test_and_add_playlist">Test and Add Playlist</string>
+    <string name="playlist_could_not_be_loaded">The playlist could not be loaded.</string>
+    <string name="not_a_media_provider">4K Plus TV Player is a media player and does not include or provide content.</string>
+    <string name="loading_your_playlist">Loading your playlist…</string>
+    <string name="loading_playlist_from_network">Connecting to your provider…</string>
+
+    <!-- Playlist manager -->
+    <string name="playlists_title">Playlists</string>
+    <string name="playlists_manager_desc">Switch between saved playlists without replacing or deleting the others.</string>
+    <string name="active_playlist_status">Active playlist</string>
+    <string name="provider_login_status">Provider login • %1$s</string>
+    <string name="m3u_playlist_label">M3U playlist</string>
+    <string name="add_another_playlist">Add another playlist</string>
+    <string name="remove_playlist_confirm_title">Remove %1$s?</string>
+    <string name="remove_playlist_confirm_body">The saved login for this playlist will be removed from this device.</string>
+
+    <!-- Search -->
+    <string name="search_title">Search</string>
+    <string name="search_placeholder">Search channels, movies, and series</string>
+    <string name="search_hint">Start typing to search across your whole playlist.</string>
+    <string name="search_no_results">No matches for “%1$s”.</string>
+
+    <!-- Live TV -->
+    <string name="live_tv_channels_count">%1$d channels</string>
+    <string name="epg_now_format">Now: %1$s</string>
+    <string name="epg_next_format">Next: %1$s</string>
+    <string name="search_categories">Search categories</string>
+    <string name="search_channels">Search channels</string>
+    <string name="cd_hide_category">Hide %1$s</string>
+    <string name="no_channels_yet">No channels yet</string>
+    <string name="hide_category_action">Hide category</string>
+    <string name="no_live_categories">No live categories were found.</string>
+    <string name="no_categories_match">No categories match your search.</string>
+    <string name="no_channels_match">No channels match your search.</string>
+
+    <!-- Movies -->
+    <string name="movies_count">%1$d movies</string>
+    <string name="search_all_movies">Search all movies</string>
+    <string name="search_movies">Search movies</string>
+    <string name="no_movies_found">No movies were found.</string>
+    <string name="no_movies_match">No movies match your search.</string>
+    <string name="movies_star_empty">Movies you star will appear here.</string>
+    <string name="movies_watch_empty">Movies you play will appear here.</string>
+    <string name="resume_time">Resume %1$s</string>
+    <string name="watched_label">Watched</string>
+    <string name="play_action">Play</string>
+    <string name="watch_trailer">Watch trailer</string>
+    <string name="loading_movie_info">Loading movie information…</string>
+    <string name="no_movie_details">Detailed information was not supplied for this movie.</string>
+    <string name="cast_label">Cast</string>
+    <string name="director_label">Director</string>
+    <string name="no_additional_info">Additional information is unavailable from this playlist.</string>
+
+    <!-- Series -->
+    <string name="series_count">%1$d series</string>
+    <string name="search_all_series">Search all series</string>
+    <string name="no_series_found">No series were found.</string>
+    <string name="no_series_match">No series match your search.</string>
+    <string name="series_star_empty">Series you star will appear here.</string>
+    <string name="series_watch_empty">Series you watch will appear here.</string>
+    <string name="trailer_label">Trailer</string>
+    <string name="loading_seasons_episodes">Loading seasons and episodes…</string>
+    <string name="no_series_details">Detailed information was not supplied for this series.</string>
+    <string name="seasons_label">Seasons</string>
+    <string name="episodes_label">Episodes</string>
+    <string name="episodes_unavailable">Episodes are unavailable from this playlist.</string>
+    <string name="no_episodes_supplied">No episodes were supplied for this series.</string>
+    <string name="season_number">Season %1$d</string>
+    <string name="episode_title_format">E%1$d • %2$s</string>
+    <string name="trailer_search_term">official trailer</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_playlists">Playlists</string>
+    <string name="settings_app_info">App &amp; playlist information</string>
+    <string name="settings_playback">Playback</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_privacy_history">Privacy and history</string>
+    <string name="settings_category_visibility">Category visibility</string>
+    <string name="settings_parental_controls">Parental controls</string>
+    <string name="footer_version">4K Plus TV Player • v%1$s</string>
+
+    <string name="manage_saved_playlists">Manage saved playlists</string>
+    <string name="manage_saved_playlists_desc">Switch, add, or remove playlist accounts</string>
+    <string name="current_playlist">Current playlist</string>
+    <string name="rename_action">Rename</string>
+    <string name="refresh_playlist">Refresh playlist</string>
+    <string name="refresh_playlist_desc">Download the newest channels and catalog</string>
+    <string name="add_another_playlist_desc">Keep the current playlist and connect another one</string>
+    <string name="remove_playlist_action">Remove playlist</string>
+    <string name="remove_playlist_desc">Delete the saved login and local cache</string>
+    <string name="provider_account_label">Provider account: %1$s</string>
+    <string name="remove_playlist_dialog_title">Remove playlist?</string>
+    <string name="remove_playlist_dialog_body">The saved provider login and cached playlist will be removed from this device.</string>
+
+    <string name="application_label">Application</string>
+    <string name="app_name_label">App name</string>
+    <string name="version_label">Version</string>
+    <string name="android_label">Android</string>
+    <string name="name_label">Name</string>
+    <string name="no_active_playlist">No active playlist</string>
+    <string name="type_label">Type</string>
+    <string name="provider_login_type">Provider login</string>
+    <string name="m3u_url_type">M3U URL</string>
+    <string name="not_available">Not available</string>
+    <string name="username_row_label">Username</string>
+    <string name="not_applicable">Not applicable</string>
+    <string name="status_label">Status</string>
+    <string name="not_provided">Not provided</string>
+    <string name="expiry_date_label">Expiry date</string>
+    <string name="items_label">Items</string>
+
+    <string name="skip_interval">Skip interval</string>
+    <string name="seconds_format">%1$ds</string>
+    <string name="start_muted">Start muted</string>
+    <string name="start_muted_desc">Use mute when opening any player</string>
+    <string name="embedded_subtitles">Embedded subtitles</string>
+    <string name="embedded_subtitles_desc">Automatically select available subtitle tracks</string>
+    <string name="preferred_subtitle_language">Preferred subtitle language</string>
+    <string name="subtitle_lang_arabic">Arabic</string>
+    <string name="subtitle_lang_english">English</string>
+    <string name="video_scaling">Video scaling</string>
+    <string name="video_fit">Fit</string>
+    <string name="video_fill">Fill</string>
+    <string name="video_stretch">Stretch</string>
+    <string name="video_fill_desc">Fills the screen and may crop the edges.</string>
+    <string name="video_stretch_desc">Stretches the picture to fill the entire player.</string>
+    <string name="video_fit_desc">Shows the complete video and may add black bars.</string>
+    <string name="player_engine">Player engine</string>
+    <string name="player_default_name">4K Plus player</string>
+    <string name="player_default_desc">Full controls, resume, subtitles, and progress</string>
+    <string name="player_vlc_desc">Requires VLC to be installed</string>
+    <string name="player_mx_desc">Requires MX Player to be installed</string>
+
+    <string name="theme_label">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+
+    <string name="clear_movie_activity">Clear movie activity</string>
+    <string name="clear_movie_activity_desc">Favorites, recent movies, and progress</string>
+    <string name="movie_activity_cleared">Movie activity cleared</string>
+    <string name="clear_series_activity">Clear series activity</string>
+    <string name="clear_series_activity_desc">Favorites, recent series, and episode progress</string>
+    <string name="series_activity_cleared">Series activity cleared</string>
+    <string name="clear_live_activity">Clear Live TV activity</string>
+    <string name="clear_live_activity_desc">Favorite and recently watched channels</string>
+    <string name="live_activity_cleared">Live TV activity cleared</string>
+
+    <string name="category_visibility_desc">Choose which categories appear on the main screens. You can restore anything hidden here.</string>
+    <string name="show_hidden_only">Show hidden only</string>
+    <string name="no_hidden_categories">No hidden categories.</string>
+    <string name="hidden_label">Hidden</string>
+    <string name="visible_label">Visible</string>
+    <string name="all_categories_visible">All categories are visible again</string>
+    <string name="show_all_hidden">Show all hidden categories</string>
+
+    <string name="create_parental_pin">Create parental PIN</string>
+    <string name="create_parental_pin_desc">Protect restricted content settings</string>
+    <string name="unlock_parental_controls">Unlock parental controls</string>
+    <string name="unlock_parental_controls_desc">Enter your PIN to manage parental controls</string>
+    <string name="parental_pin_created">Parental PIN created</string>
+    <string name="parental_controls_unlocked">Parental controls are unlocked.</string>
+    <string name="lock_controls">Lock controls</string>
+    <string name="remove_pin">Remove PIN</string>
+    <string name="parental_pin_removed">Parental PIN removed</string>
+    <string name="enter_parental_pin">Enter parental PIN</string>
+    <string name="confirm_pin">Confirm PIN</string>
+    <string name="pins_do_not_match">PINs do not match.</string>
+    <string name="incorrect_pin">Incorrect PIN.</string>
+    <string name="create_action">Create</string>
+    <string name="unlock_action">Unlock</string>
+    <string name="unknown_label">Unknown</string>
+    <string name="active_playlist_label">Active playlist</string>
+    <string name="pin_digit_hint">4–6 digit PIN</string>
+    <string name="pin_length_error">Use a 4–6 digit PIN.</string>
+
+    <string name="enable_parental_control">Enable Parental Control</string>
+    <string name="enable_parental_control_desc">Require a PIN to access locked categories and channels</string>
+    <string name="ask_pin_on_startup">Ask PIN on Startup</string>
+    <string name="ask_pin_on_startup_desc">Require the PIN every time the app is opened</string>
+    <string name="change_pin">Change PIN</string>
+    <string name="change_pin_desc">Set a new parental control PIN</string>
+    <string name="lock_categories">Lock Categories</string>
+    <string name="lock_categories_desc">Require the PIN to open selected categories</string>
+    <string name="lock_channels">Lock Channels</string>
+    <string name="lock_channels_desc">Require the PIN to play selected channels</string>
+    <string name="locked_label">Locked</string>
+    <string name="unlocked_label">Unlocked</string>
+    <string name="show_locked_only">Show locked only</string>
+    <string name="no_locked_categories">No locked categories.</string>
+    <string name="unlock_all_categories">Unlock all categories</string>
+    <string name="all_categories_unlocked">All categories are unlocked</string>
+    <string name="no_locked_channels">No locked channels.</string>
+    <string name="unlock_all_channels">Unlock all channels</string>
+    <string name="all_channels_unlocked">All channels are unlocked</string>
+</resources>
