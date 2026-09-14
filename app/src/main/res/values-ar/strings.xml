@@ -284,4 +284,6 @@
     <string name="no_locked_channels">لا توجد قنوات مقفلة.</string>
     <string name="unlock_all_channels">فتح جميع القنوات</string>
     <string name="all_channels_unlocked">تم فتح جميع القنوات</string>
+    <string name="catalogues_loading">جارٍ تحميل بقية الأفلام والمسلسلات…</string>
+    <string name="catalogues_load_failed">تعذر تحميل بعض المحتوى. حدّث قائمة التشغيل من الإعدادات للمحاولة مجددًا.</string>
 </resources>

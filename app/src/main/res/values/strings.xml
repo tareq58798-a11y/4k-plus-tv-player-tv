@@ -286,4 +286,6 @@
     <string name="no_locked_channels">No locked channels.</string>
     <string name="unlock_all_channels">Unlock all channels</string>
     <string name="all_channels_unlocked">All channels are unlocked</string>
+    <string name="catalogues_loading">Loading the remaining Movies and Series…</string>
+    <string name="catalogues_load_failed">Some content could not load. Refresh the playlist in Settings to retry.</string>
 </resources>

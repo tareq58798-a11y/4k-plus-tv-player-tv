@@ -113,6 +113,8 @@ import com.fourkplus.tvplayer.data.EpgStore
 import com.fourkplus.tvplayer.data.PlaylistKind
 import com.fourkplus.tvplayer.viewmodel.PlaylistViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -545,6 +547,15 @@ private fun App() {
                     }
                 )
             }
+            if (screen in listOf(Screen.HOME, Screen.MOVIES, Screen.SERIES) &&
+                (playlistUiState.loadingCatalogues || playlistUiState.catalogueLoadFailed)) {
+                Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(12.dp)) {
+                    Text(
+                        stringResource(if (playlistUiState.loadingCatalogues) R.string.catalogues_loading else R.string.catalogues_load_failed),
+                        modifier = Modifier.padding(12.dp), fontSize = 13.sp
+                    )
+                }
+            }
             if (startupGateActive && screen != Screen.LOADING) {
                 PinDialog(
                     mode = "unlock",
@@ -840,12 +851,41 @@ private fun RemoteActivationCard(
     onConnected: (LoadedPlaylist) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
     val mac = remember { com.fourkplus.tvplayer.data.DeviceIdentity.mac(context) }
     val deviceKey = remember { com.fourkplus.tvplayer.data.DeviceIdentity.deviceKey(context) }
     val activatedPlaylistName = stringResource(R.string.activated_playlist_default_name)
     val noPlaylistAssignedYet = stringResource(R.string.no_playlist_assigned_yet)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var refreshSignal by remember { mutableIntStateOf(0) }
+    var assigned by remember { mutableStateOf(false) }
+    val currentLoad by rememberUpdatedState(loadPlaylist)
+    val currentConnected by rememberUpdatedState(onConnected)
+    val currentMessage by rememberUpdatedState(onMessage)
+    LaunchedEffect(mac, deviceKey, lifecycleOwner, refreshSignal) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            var failures = 0
+            while (!assigned) {
+                refreshing = true
+                val result = try {
+                    currentLoad(PlaylistInput(activatedPlaylistName, PlaylistKind.DEVICE_ACTIVATION, "", mac, deviceKey))
+                } finally { refreshing = false }
+                if (result.isSuccess) {
+                    assigned = true
+                    currentConnected(result.getOrThrow())
+                    break
+                }
+                val error = result.exceptionOrNull()
+                if (error is com.fourkplus.tvplayer.data.ActivationPendingException) {
+                    failures = 0
+                } else {
+                    failures++
+                    if (failures == 1) currentMessage(error?.message ?: noPlaylistAssignedYet)
+                }
+                delay(if (failures == 0) 5_000L else (5_000L * failures).coerceAtMost(30_000L))
+            }
+        }
+    }
     ElevatedCard(
         modifier,
         shape = RoundedCornerShape(24.dp),
@@ -879,22 +919,7 @@ private fun RemoteActivationCard(
                 Spacer(Modifier.weight(1f))
                 AnimatedFilledIconButton(
                     enabled = !refreshing,
-                    onClick = {
-                        refreshing = true
-                        scope.launch {
-                            loadPlaylist(
-                                PlaylistInput(
-                                    name = activatedPlaylistName,
-                                    kind = PlaylistKind.DEVICE_ACTIVATION,
-                                    address = "",
-                                    username = mac,
-                                    password = deviceKey
-                                )
-                            ).onSuccess(onConnected)
-                                .onFailure { onMessage(it.message ?: noPlaylistAssignedYet) }
-                            refreshing = false
-                        }
-                    }
+                    onClick = { refreshSignal++ }
                 ) {
                     val rotation by animateFloatAsState(if (refreshing) 360f else 0f, tween(650), label = "refresh")
                     Icon(Icons.Default.Refresh, stringResource(R.string.cd_refresh_activation), Modifier.graphicsLayer(rotationZ = rotation))
@@ -2667,11 +2692,11 @@ private fun LiveTvScreen(
     val recentlyWatched = "Recently watched"
     val favorites = "Favorites"
     var view by remember { mutableStateOf(LiveView.BROWSE) }
-    var selectedCategory by remember(playlist) { mutableStateOf(recentlyWatched) }
+    var selectedCategory by remember(channels) { mutableStateOf(recentlyWatched) }
     var categoryQuery by remember { mutableStateOf("") }
     var channelQuery by remember { mutableStateOf("") }
     var showRecentInPlayer by remember { mutableStateOf(false) }
-    var previewChannel by remember(playlist) { mutableStateOf(channels.firstOrNull()) }
+    var previewChannel by remember(channels) { mutableStateOf(channels.firstOrNull()) }
     val store = remember { context.getSharedPreferences("favorite_channels", android.content.Context.MODE_PRIVATE) }
     var favoriteIds by remember { mutableStateOf(store.getStringSet("ids", emptySet()).orEmpty().toSet()) }
     var recentIds by remember {

@@ -2,6 +2,7 @@ package com.fourkplus.tvplayer.data
 
 import android.content.Context
 import java.net.SocketException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -27,6 +28,7 @@ class PlaylistRepository(context: Context) {
             if (input.kind == PlaylistKind.DEVICE_ACTIVATION) {
                 val resolved = DeviceActivationClient.resolve(input)
                 val playlist = client.load(resolved)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 sourceStore.saveSource(resolved)
                 cacheStore.save(resolved, playlist)
                 return@runCatching playlist
@@ -38,10 +40,39 @@ class PlaylistRepository(context: Context) {
             val alreadySaved = sourceStore.savedSources().any { it.sourceId() == input.sourceId() }
             require(alreadySaved || ApprovedServers.allows(input)) { "Please add an account using Server 1 or Server 2." }
             val playlist = client.load(input)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
             sourceStore.saveSource(input)
             cacheStore.save(input, playlist)
             playlist
         }.recoverCatching { throw friendlyError(it) }
+    }
+
+    suspend fun loadProgressively(
+        input: PlaylistInput,
+        onPartial: suspend (PlaylistInput, LoadedPlaylist) -> Unit
+    ): Result<LoadedPlaylist> = withContext(Dispatchers.IO) {
+        try {
+            val resolved = if (input.kind == PlaylistKind.DEVICE_ACTIVATION) {
+                PlaylistTiming.measure("activation") { DeviceActivationClient.resolve(input) }
+            } else {
+                require(sourceStore.savedSources().any { it.sourceId() == input.sourceId() } || ApprovedServers.allows(input)) {
+                    "Please add an account using Server 1 or Server 2."
+                }
+                input
+            }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val playlist = client.loadProgressively(resolved) { partial ->
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                sourceStore.saveSource(resolved)
+                onPartial(resolved, partial)
+            }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            sourceStore.saveSource(resolved)
+            // A partial catalogue must never replace the complete cache or mark it fresh.
+            PlaylistTiming.measure("cache_save") { cacheStore.save(resolved, playlist) }
+            Result.success(playlist)
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { Result.failure(friendlyError(e)) }
     }
 
     fun savedSources(): List<PlaylistInput> = sourceStore.savedSources()
@@ -61,7 +92,7 @@ class PlaylistRepository(context: Context) {
 
     suspend fun loadCached(source: PlaylistInput? = sourceStore.savedSource()): LoadedPlaylist? = withContext(Dispatchers.IO) {
         val selected = source ?: return@withContext null
-        cacheStore.load(selected)
+        PlaylistTiming.measure("cache_read") { cacheStore.load(selected) }
     }
 
     fun lastRefreshedAt(source: PlaylistInput): Long? = cacheStore.lastSavedAt(source)

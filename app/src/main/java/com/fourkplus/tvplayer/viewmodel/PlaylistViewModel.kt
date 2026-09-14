@@ -35,7 +35,9 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
         // Surfaced on the loading screen so it's visible (not just inferred) whether a slow
         // startup is reading the on-disk cache or genuinely re-fetching from the provider -
         // the two look identical to a user watching the same spinner either way.
-        val bootstrappingFromNetwork: Boolean = false
+        val bootstrappingFromNetwork: Boolean = false,
+        val loadingCatalogues: Boolean = false,
+        val catalogueLoadFailed: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(PlaylistUiState())
@@ -46,12 +48,14 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
     private val memoryCache = mutableMapOf<String, LoadedPlaylist>()
     private fun memoryKey(source: PlaylistInput) = "${source.kind.name}|${source.address.trim()}|${source.username.trim()}"
 
+    private var bootstrapJob: kotlinx.coroutines.Job? = null
+
     init {
         bootstrap()
     }
 
     private fun bootstrap() {
-        viewModelScope.launch {
+        bootstrapJob = viewModelScope.launch {
             val activeSource = repository.savedSource()
             if (activeSource == null) {
                 _uiState.update { it.copy(bootstrapping = false) }
@@ -103,21 +107,58 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
         return System.currentTimeMillis() - lastRefreshed >= thresholdMs
     }
 
-    suspend fun addPlaylist(input: PlaylistInput): Result<LoadedPlaylist> =
-        repository.load(input).onSuccess { playlist ->
-            memoryCache[memoryKey(input)] = playlist
-            _uiState.update {
-                it.copy(
-                    loadedPlaylist = playlist,
-                    activeSource = repository.savedSource(),
-                    savedPlaylists = repository.savedSources(),
-                    bootstrapping = false,
-                    bootstrapFailed = false
-                )
+    private var catalogueJob: kotlinx.coroutines.Job? = null
+
+    private fun stopCatalogueLoad() {
+        bootstrapJob?.cancel()
+        catalogueJob?.cancel()
+        catalogueJob = null
+        _uiState.update { it.copy(loadingCatalogues = false, catalogueLoadFailed = false) }
+    }
+
+    suspend fun addPlaylist(input: PlaylistInput): Result<LoadedPlaylist> {
+        stopCatalogueLoad()
+        val ready = kotlinx.coroutines.CompletableDeferred<Result<LoadedPlaylist>>()
+        val job = viewModelScope.launch {
+            try {
+                val result = repository.loadProgressively(input) { source, partial ->
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                        _uiState.update { it.copy(
+                            loadedPlaylist = partial, activeSource = source,
+                            savedPlaylists = repository.savedSources(), bootstrapping = false,
+                            bootstrapFailed = false, loadingCatalogues = true, catalogueLoadFailed = false
+                        ) }
+                        ready.complete(Result.success(partial))
+                    }
+                }
+                result.onSuccess { playlist ->
+                    val source = repository.savedSource() ?: input
+                    memoryCache[memoryKey(source)] = playlist
+                    _uiState.update { it.copy(
+                        loadedPlaylist = playlist, activeSource = source,
+                        savedPlaylists = repository.savedSources(), bootstrapping = false,
+                        bootstrapFailed = false, loadingCatalogues = false, catalogueLoadFailed = false
+                    ) }
+                }.onFailure {
+                    _uiState.update { it.copy(loadingCatalogues = false, catalogueLoadFailed = ready.isCompleted) }
+                }
+                ready.complete(result)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                ready.cancel(e)
+                throw e
             }
         }
+        catalogueJob = job
+        return try { ready.await() }
+        catch (e: kotlinx.coroutines.CancellationException) {
+            // Leaving activation before any usable result must not activate later.
+            if (!ready.isCompleted || ready.isCancelled) job.cancel()
+            throw e
+        }
+    }
 
     suspend fun switchTo(source: PlaylistInput): Result<Unit> {
+        stopCatalogueLoad()
         val previous = repository.savedSource()
         return runCatching {
             repository.selectSavedSource(source)
@@ -132,6 +173,7 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
     }
 
     suspend fun removeSource(source: PlaylistInput): Result<Unit> = runCatching {
+        stopCatalogueLoad()
         repository.selectSavedSource(source)
         repository.clearSavedSource()
         memoryCache.remove(memoryKey(source))
@@ -144,6 +186,7 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
     }
 
     suspend fun refreshActive(): Result<LoadedPlaylist> {
+        stopCatalogueLoad()
         val source = repository.savedSource() ?: return Result.failure(IllegalStateException("No saved playlist."))
         return repository.load(source).onSuccess { playlist ->
             memoryCache[memoryKey(source)] = playlist

@@ -6,6 +6,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -30,6 +31,92 @@ internal class XtreamProviderClient {
             PlaylistKind.DEVICE_ACTIVATION -> throw IllegalStateException("DEVICE_ACTIVATION must be resolved before loading.")
         }
     }
+
+    /** Publishes usable Live TV before requesting the on-demand catalogues.
+     * A failure after publishing must not retry a different host or discard live playback. */
+    suspend fun loadProgressively(
+        input: PlaylistInput,
+        onPartial: suspend (LoadedPlaylist) -> Unit
+    ): LoadedPlaylist = withContext(Dispatchers.IO) {
+        if (input.kind == PlaylistKind.M3U_URL) {
+            return@withContext PlaylistTiming.measure("m3u_download_parse") { loadM3u(input) }
+        }
+        var lastError: Exception? = null
+        var published = false
+        for (server in addressCandidates(input.address).map(::normalizeServerBase)) {
+            try {
+                return@withContext coroutineScope {
+                    val auth = PlaylistTiming.measure("provider_auth") {
+                        JSONObject(download(apiUrl(server, input, null)).trimStart(Char(0xFEFF)))
+                    }
+                    val user = auth.optJSONObject("user_info")
+                        ?: throw IllegalArgumentException("Invalid provider response.")
+                    val status = user.optString("status")
+                    require(user.optInt("auth") == 1 && !status.equals("Disabled", true) && !status.equals("Expired", true)) {
+                        "The provider rejected this account."
+                    }
+                    val expiry = user.optString("exp_date").toLongOrNull()?.takeIf { it > 0 }
+                    fun snapshot(items: List<PlaylistItem>) = LoadedPlaylist(
+                        input.name.trim(), items, items.map { it.group }.distinct(),
+                        status.takeIf(String::isNotBlank), expiry
+                    )
+                    val liveGroups = async { progressiveCategories(apiUrl(server, input, "get_live_categories")) }
+                    val liveData = PlaylistTiming.measure("live_download") { download(apiUrl(server, input, "get_live_streams")) }
+                    val groups = liveGroups.await()
+                    val live = PlaylistTiming.measure("live_parse") { liveItems(JSONArray(liveData), groups, server, input) }
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    if (live.isNotEmpty()) {
+                        published = true
+                        onPartial(snapshot(live))
+                    }
+                    // Capture each catalogue failure so one failed response cannot cancel
+                    // the sibling request or the already usable live list.
+                    val movies = async {
+                        try {
+                            val movieGroups = progressiveCategories(apiUrl(server, input, "get_vod_categories"))
+                            val data = PlaylistTiming.measure("movies_download") { download(apiUrl(server, input, "get_vod_streams")) }
+                            Result.success(PlaylistTiming.measure("movies_parse") { movieItems(JSONArray(data), movieGroups, server, input) })
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { Result.failure<List<PlaylistItem>>(e) }
+                    }
+                    val series = async {
+                        try {
+                            val seriesGroups = progressiveCategories(apiUrl(server, input, "get_series_categories"))
+                            val data = PlaylistTiming.measure("series_download") { download(apiUrl(server, input, "get_series")) }
+                            Result.success(PlaylistTiming.measure("series_parse") { seriesItems(JSONArray(data), seriesGroups) })
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { Result.failure<List<PlaylistItem>>(e) }
+                    }
+                    val movieResult = movies.await()
+                    val withMovies = live + movieResult.getOrDefault(emptyList())
+                    if (movieResult.isSuccess && withMovies.isNotEmpty()) {
+                        published = true
+                        onPartial(snapshot(withMovies))
+                    }
+                    val seriesResult = series.await()
+                    val all = withMovies + seriesResult.getOrDefault(emptyList())
+                    if (all.isNotEmpty() && (movieResult.isFailure || seriesResult.isFailure)) {
+                        published = true
+                        onPartial(snapshot(all))
+                    }
+                    movieResult.getOrThrow()
+                    seriesResult.getOrThrow()
+                    require(all.isNotEmpty()) { "This account contains no available content." }
+                    snapshot(all)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                if (published) throw e
+                lastError = e
+            }
+        }
+        throw lastError ?: IllegalArgumentException("The provider could not be reached.")
+    }
+
+    private fun progressiveCategories(url: String): Map<String, String> = try {
+        categories(url)
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+    catch (_: Exception) { emptyMap() }
 
     suspend fun movieDetails(source: PlaylistInput, movie: PlaylistItem): MovieDetailsInfo = withContext(Dispatchers.IO) {
         val movieId = requireNotNull(movie.channelId)

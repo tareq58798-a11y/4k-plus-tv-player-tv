@@ -9,11 +9,14 @@ kotlin {
 }
 
 android {
+    useLibrary("android.test.runner", false)
+    useLibrary("android.test.base", false)
     namespace = "com.fourkplus.tvplayer"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.fourkplus.tvplayer.tv"
+        testInstrumentationRunner = "android.test.InstrumentationTestRunner"
         minSdk = 26
         targetSdk = 35
         versionCode = 57
