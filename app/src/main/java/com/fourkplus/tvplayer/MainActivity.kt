@@ -27,6 +27,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -37,6 +42,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -1626,7 +1632,10 @@ private fun MoviesScreen(
     val movies = remember(playlist, hiddenCategories) {
         playlist?.items?.filter { it.kind == MediaKind.MOVIE && it.group !in hiddenCategories }.orEmpty()
     }
-    val categories = remember(movies) { movies.map { it.group }.distinct() }
+    // Bumped after a long-press reorder so `categories` recomputes even though `movies` itself
+    // (the applyCategoryOrder input) hasn't changed.
+    var categoryOrderVersion by remember { mutableIntStateOf(0) }
+    val categories = remember(movies, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.MOVIE, movies.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("movie_library", android.content.Context.MODE_PRIVATE) }
     var view by remember { mutableStateOf(MovieView.BROWSE) }
     var selectedCategory by remember { mutableStateOf("Continue watching") }
@@ -1774,12 +1783,7 @@ private fun MoviesScreen(
                     onSearch = { search = it },
                     onFavorite = ::toggleFavorite,
                     onMovie = ::openDetails,
-                    onHide = { category ->
-                        val updated = hiddenCategories + category
-                        hiddenCategories = updated
-                        parental.edit().putStringSet("hidden_movie_categories", updated).apply()
-                        selectedCategory = categories.firstOrNull { it != category }.orEmpty()
-                    },
+                    onCategoriesReordered = { categoryOrderVersion++ },
                     onBack = {
                         if (view == MovieView.CATEGORY) view = MovieView.BROWSE else onBack()
                     }
@@ -1917,7 +1921,7 @@ private fun LandscapeMovieBrowser(
     onSearch: (String) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
     onMovie: (PlaylistItem) -> Unit,
-    onHide: (String) -> Unit,
+    onCategoriesReordered: () -> Unit,
     onBack: () -> Unit,
     progress: Map<String, Long> = emptyMap()
 ) {
@@ -1932,6 +1936,15 @@ private fun LandscapeMovieBrowser(
     val displayed = if (search.isBlank()) base else movies.filter { it.name.contains(search.trim(), true) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
+    // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
+    var reorderingCategory by remember { mutableStateOf<String?>(null) }
+    val categoryListState = rememberLazyListState()
+    // Keeps the moving category in view as it's nudged past the edge of the visible list -
+    // otherwise it scrolls out from under the user with no sign of where it went.
+    LaunchedEffect(reorderingCategory, allCategories) {
+        val index = reorderingCategory?.let(allCategories::indexOf) ?: return@LaunchedEffect
+        if (index >= 0) categoryListState.animateScrollToItem(index)
+    }
     val continueWatchingFocusRequester = remember { FocusRequester() }
     LaunchedEffect(isTv) { if (isTv) runCatching { continueWatchingFocusRequester.requestFocus() } }
     // Pressing OK on a category should move the remote's focus straight into that category's
@@ -1957,25 +1970,31 @@ private fun LandscapeMovieBrowser(
                     Text(stringResource(R.string.nav_movies), fontSize = 19.sp, fontWeight = FontWeight.Black)
                 }
                 SearchField(search, onSearch, stringResource(R.string.search_movies))
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    items(allCategories) { category ->
+                LazyColumn(Modifier.weight(1f), state = categoryListState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    items(allCategories, key = { it }) { category ->
+                        val isReordering = category == reorderingCategory
                         Surface(
                             modifier = Modifier.fillMaxWidth()
                                 .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
-                                .focusableClickable(cornerRadius = 11.dp) {
+                                .categoryReorderKeys(
+                                    active = isReordering,
+                                    onMove = { up -> moveCategory(context, MediaKind.MOVIE, categories, category, up); onCategoriesReordered() },
+                                    onExit = { reorderingCategory = null }
+                                )
+                                .focusableClickable(
+                                    cornerRadius = 11.dp,
+                                    onLongClick = if (category in special) null else { { reorderingCategory = category } }
+                                ) {
                                     categorySelectionTick++
                                     onCategory(category)
                                 },
                             shape = RoundedCornerShape(11.dp),
-                            color = if (category == selectedCategory) Cyan.copy(alpha = .24f) else Color.Transparent
+                            color = if (isReordering) Orange.copy(alpha = .3f) else if (category == selectedCategory) Cyan.copy(alpha = .24f) else Color.Transparent,
+                            border = if (isReordering) BorderStroke(2.dp, Orange) else null
                         ) {
-                            Row(Modifier.padding(start = 12.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.padding(start = 12.dp, top = 7.dp, bottom = 7.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(localizedSectionTitle(category), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, fontWeight = if (category == selectedCategory) FontWeight.Bold else FontWeight.Normal)
-                                if (category !in special) {
-                                    AnimatedIconButton(onClick = { onHide(category) }, modifier = Modifier.size(32.dp)) {
-                                        Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, category), modifier = Modifier.size(18.dp))
-                                    }
-                                }
+                                if (isReordering) Icon(Icons.Default.SwapVert, null, tint = Orange, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -1995,6 +2014,9 @@ private fun LandscapeLiveBrowser(
     categories: List<String>,
     selectedCategory: String,
     channels: List<PlaylistItem>,
+    // Only used once the user actually types a channel search - lets the search reach every
+    // channel in the playlist instead of just the ones in the currently selected category.
+    allChannels: List<PlaylistItem>,
     selectedChannel: PlaylistItem?,
     favoriteIds: Set<String>,
     returningFromFullscreen: Boolean,
@@ -2002,20 +2024,32 @@ private fun LandscapeLiveBrowser(
     onChannel: (PlaylistItem) -> Unit,
     onChannelFullscreen: (PlaylistItem) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
-    onHide: (String) -> Unit,
+    onCategoriesReordered: () -> Unit,
     onBack: () -> Unit,
     loadEpg: suspend (PlaylistItem) -> Result<EpgNowNext>
 ) {
     var channelSearch by remember { mutableStateOf("") }
     var categorySearch by remember { mutableStateOf("") }
-    val searchedChannels = remember(channels, channelSearch) {
-        if (channelSearch.isBlank()) channels else channels.filter { it.name.contains(channelSearch.trim(), true) }
+    val searchedChannels = remember(channels, allChannels, channelSearch) {
+        if (channelSearch.isBlank()) channels else allChannels.filter { it.name.contains(channelSearch.trim(), true) }
     }
     val searchedCategories = remember(categories, categorySearch) {
         if (categorySearch.isBlank()) categories else categories.filter { it.contains(categorySearch.trim(), true) }
     }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
+    // `categories` has "Recently watched"/"Favorites" prepended by the caller - those aren't
+    // real playlist categories, so they're excluded from the reorderable list and its bounds.
+    val reorderableCategories = remember(categories) { categories.filterNot { it in setOf("Recently watched", "Favorites") } }
+    // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
+    var reorderingCategory by remember { mutableStateOf<String?>(null) }
+    val categoryListState = rememberLazyListState()
+    // Keeps the moving category in view as it's nudged past the edge of the visible list -
+    // otherwise it scrolls out from under the user with no sign of where it went.
+    LaunchedEffect(reorderingCategory, searchedCategories) {
+        val index = reorderingCategory?.let(searchedCategories::indexOf) ?: return@LaunchedEffect
+        if (index >= 0) categoryListState.animateScrollToItem(index)
+    }
     val recentCategoryFocusRequester = remember { FocusRequester() }
     val selectedChannelFocusRequester = remember { FocusRequester() }
     // On first ever open, land the remote's focus on the Recently watched category; after
@@ -2042,7 +2076,7 @@ private fun LandscapeLiveBrowser(
             Surface(
                 Modifier.width(240.dp).fillMaxHeight(),
                 shape = RoundedCornerShape(16.dp),
-                color = Color.Black.copy(alpha = .62f)
+                color = Color.Transparent
             ) {
                 Column(Modifier.padding(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2055,25 +2089,31 @@ private fun LandscapeLiveBrowser(
                         placeholder = stringResource(R.string.search_categories),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
                     )
-                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        items(searchedCategories) { category ->
+                    LazyColumn(Modifier.weight(1f), state = categoryListState, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        items(searchedCategories, key = { it }) { category ->
+                            val isReordering = category == reorderingCategory
                             Surface(
                                 modifier = Modifier.fillMaxWidth()
                                     .then(if (category == "Recently watched") Modifier.focusRequester(recentCategoryFocusRequester) else Modifier)
-                                    .focusableClickable(cornerRadius = 9.dp) {
+                                    .categoryReorderKeys(
+                                        active = isReordering,
+                                        onMove = { up -> moveCategory(context, MediaKind.LIVE, reorderableCategories, category, up); onCategoriesReordered() },
+                                        onExit = { reorderingCategory = null }
+                                    )
+                                    .focusableClickable(
+                                        cornerRadius = 9.dp,
+                                        onLongClick = if (category in reorderableCategories) { { reorderingCategory = category } } else null
+                                    ) {
                                         categorySelectionTick++
                                         onCategory(category)
                                     },
                                 shape = RoundedCornerShape(9.dp),
-                                color = if (category == selectedCategory) Orange.copy(alpha = .88f) else Color.Transparent
+                                color = if (isReordering) Cyan.copy(alpha = .55f) else if (category == selectedCategory) Orange.copy(alpha = .88f) else Color.Transparent,
+                                border = if (isReordering) BorderStroke(2.dp, Cyan) else null
                             ) {
-                                Row(Modifier.padding(start = 11.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.padding(start = 11.dp, top = 5.dp, bottom = 5.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(localizedSectionTitle(category), Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-                                    if (category !in setOf("Recently watched", "Favorites")) {
-                                        AnimatedIconButton(onClick = { onHide(category) }, modifier = Modifier.size(30.dp)) {
-                                            Icon(Icons.Default.VisibilityOff, stringResource(R.string.action_hide), tint = Color.White, modifier = Modifier.size(17.dp))
-                                        }
-                                    }
+                                    if (isReordering) Icon(Icons.Default.SwapVert, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
@@ -2083,7 +2123,7 @@ private fun LandscapeLiveBrowser(
             Surface(
                 Modifier.width(310.dp).fillMaxHeight(),
                 shape = RoundedCornerShape(16.dp),
-                color = Color.Black.copy(alpha = .54f)
+                color = Color.Transparent
             ) {
                 Column {
                     DarkTvSearchField(
@@ -2311,7 +2351,7 @@ private fun MovieDetails(
     val duration = readableMovieDuration(details?.duration ?: movie.duration)
     val displayTitle = details?.originalTitle ?: movie.name
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val trailerQuery = listOfNotNull(details?.originalTitle ?: movie.name, year, "official trailer").joinToString(" ")
+    val trailerScope = rememberCoroutineScope()
     val isTv = remember { context.isTvDevice() }
     val playFocusRequester = remember { FocusRequester() }
     LaunchedEffect(movie, isTv) {
@@ -2339,8 +2379,10 @@ private fun MovieDetails(
                     Text(if (resumePosition > 0L) stringResource(R.string.resume_time, formatPlaybackTime(resumePosition)) else stringResource(R.string.play_action))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { openTrailer(context, details?.trailerUrl, trailerQuery) }, modifier = Modifier.weight(1f).height(44.dp)) {
+                    OutlinedButton(onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, year) } }, modifier = Modifier.weight(1f).height(44.dp)) {
                         Icon(Icons.Default.SmartDisplay, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
                     }
                     AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(44.dp)) {
                         Icon(
@@ -2451,7 +2493,7 @@ private fun MovieDetails(
             }
         }
         OutlinedButton(
-            onClick = { openTrailer(context, details?.trailerUrl, trailerQuery) },
+            onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, year) } },
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.SmartDisplay, null)
@@ -2540,22 +2582,38 @@ private val youtubeVideoIdPattern = Regex("(?:v=|youtu\\.be/|/embed/)([\\w-]{11}
  *  video's fullscreen player — in the YouTube app if installed, its web player otherwise — with
  *  no search results list to pick from first. Falls back to a plain YouTube search only when no
  *  direct video id is available (e.g. M3U playlists with no provider-supplied trailer). */
-internal fun openTrailer(context: android.content.Context, trailerUrl: String?, fallbackQuery: String) {
-    val videoId = trailerUrl?.let(youtubeVideoIdPattern::find)?.groupValues?.get(1)
+/** Opens the trailer for [title] (optionally with [year] to disambiguate remakes/shows with
+ *  reused titles). Prefers a video ID already supplied by the provider ([trailerUrl]); otherwise
+ *  asks the activation backend's /api/trailer endpoint (a thin YouTube Data API proxy) for the
+ *  real official trailer's video ID so playback starts directly instead of on a search-results
+ *  page. Falls back to that search page only if no direct video ID could be resolved at all (no
+ *  provider URL, no network, or the backend has no API key configured). Every launched activity
+ *  is opened with FLAG_ACTIVITY_NO_HISTORY so a single Back press returns straight to this app
+ *  instead of stepping back through YouTube's own internal navigation first. */
+internal suspend fun openTrailer(context: android.content.Context, trailerUrl: String?, title: String, year: String?) {
+    val directId = trailerUrl?.let(youtubeVideoIdPattern::find)?.groupValues?.get(1)
+    val videoId = directId ?: com.fourkplus.tvplayer.data.TrailerSearchClient.findTrailerVideoId(title, year)
     if (videoId != null) {
         val opened = runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")))
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+            )
             true
         }.getOrDefault(false)
         if (opened) return
         runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId")))
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId")).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+            )
         }
         return
     }
     val searchUri = Uri.parse("https://www.youtube.com/results").buildUpon()
-        .appendQueryParameter("search_query", fallbackQuery).build()
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, searchUri)) }
+        .appendQueryParameter("search_query", listOfNotNull(title, year, "official trailer").joinToString(" "))
+        .build()
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, searchUri).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY))
+    }
 }
 
 
@@ -2592,10 +2650,20 @@ private fun LiveTvScreen(
     }
     val lockedCategories = remember { parental.getStringSet("locked_live_categories", emptySet()).orEmpty().toSet() }
     val lockedChannelKeys = remember { parental.getStringSet("locked_channels", emptySet()).orEmpty().toSet() }
-    val channels = remember(playlist, hiddenCategories) {
-        playlist?.items?.filter { it.kind == MediaKind.LIVE && it.group !in hiddenCategories }.orEmpty()
+    val playback = remember { context.getSharedPreferences("playback_settings", android.content.Context.MODE_PRIVATE) }
+    val channelSort = remember { playback.getString("live_channel_sort", "default") ?: "default" }
+    val channels = remember(playlist, hiddenCategories, channelSort) {
+        val filtered = playlist?.items?.filter { it.kind == MediaKind.LIVE && it.group !in hiddenCategories }.orEmpty()
+        when (channelSort) {
+            "az" -> filtered.sortedBy { it.name.lowercase() }
+            "za" -> filtered.sortedByDescending { it.name.lowercase() }
+            else -> filtered
+        }
     }
-    val categories = remember(channels) { channels.map { it.group }.distinct() }
+    // Bumped after a long-press reorder so `categories` recomputes even though `channels` itself
+    // (the applyCategoryOrder input) hasn't changed.
+    var categoryOrderVersion by remember { mutableIntStateOf(0) }
+    val categories = remember(channels, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.LIVE, channels.map { it.group }.distinct()) }
     val recentlyWatched = "Recently watched"
     val favorites = "Favorites"
     var view by remember { mutableStateOf(LiveView.BROWSE) }
@@ -2666,9 +2734,9 @@ private fun LiveTvScreen(
             else -> channels.filter { it.group == selectedCategory }
         }
     }
-    val searchedChannels = remember(selectedChannels, channelQuery) {
+    val searchedChannels = remember(selectedChannels, channels, channelQuery) {
         if (channelQuery.isBlank()) selectedChannels
-        else selectedChannels.filter { it.name.contains(channelQuery.trim(), ignoreCase = true) }
+        else channels.filter { it.name.contains(channelQuery.trim(), ignoreCase = true) }
     }
 
     fun rememberChannelUnchecked(channel: PlaylistItem) {
@@ -2723,20 +2791,37 @@ private fun LiveTvScreen(
                 // LiveChannelPreview), so Back always exits it directly — no "hide controls first"
                 // stage needed the way movies/series playback has.
                 if (immersiveFullscreen) BackHandler { exitFullscreen() }
-                val fullscreenChannelList = remember(channels, previewChannel, selectedCategory) {
-                    channels.filter { it.group == (previewChannel?.group ?: selectedCategory) }
+                // Mirrors selectedChannels below: when browsing Recently watched/Favorites,
+                // Up/Down in fullscreen must cycle through that same list, not the channel's own
+                // (real) category - which is what filtering by previewChannel.group would do.
+                val fullscreenChannelList = remember(channels, previewChannel, selectedCategory, recentChannels, favoriteChannels) {
+                    when (selectedCategory) {
+                        recentlyWatched -> recentChannels
+                        favorites -> favoriteChannels
+                        else -> channels.filter { it.group == (previewChannel?.group ?: selectedCategory) }
+                    }
+                }
+                // Recently watched reorders itself (the just-watched channel jumps to the front)
+                // every time switchChannel() records a channel via rememberChannel() - left live,
+                // Up/Down would renavigate against a list that just reshuffled under it, looping
+                // between the same two channels. Snapshotting it once on entry and holding that
+                // snapshot for the whole fullscreen session avoids that.
+                var lockedFullscreenChannelList by remember { mutableStateOf<List<PlaylistItem>?>(null) }
+                LaunchedEffect(immersiveFullscreen) {
+                    lockedFullscreenChannelList = if (immersiveFullscreen) fullscreenChannelList else null
                 }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     LiveChannelPreview(
                         channel = previewChannel,
                         modifier = Modifier.fillMaxSize(),
-                        channelList = if (immersiveFullscreen) fullscreenChannelList else selectedChannels,
+                        channelList = if (immersiveFullscreen) (lockedFullscreenChannelList ?: fullscreenChannelList) else selectedChannels,
                         onChannelChange = { rememberChannel(it) },
                         autoAdvanceOnFailure = true,
                         hostedFullscreen = immersiveFullscreen,
                         onFullscreenDoubleTap = if (immersiveFullscreen) (::exitFullscreen) else null,
                         onRequestFullscreen = if (!immersiveFullscreen) (::enterFullscreen) else null,
-                        onExitFullscreen = if (immersiveFullscreen) (::exitFullscreen) else null
+                        onExitFullscreen = if (immersiveFullscreen) (::exitFullscreen) else null,
+                        loadEpg = loadEpg
                     )
                     if (!immersiveFullscreen) {
                         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .36f)))
@@ -2748,6 +2833,7 @@ private fun LiveTvScreen(
                             },
                             selectedCategory = selectedCategory,
                             channels = selectedChannels,
+                            allChannels = channels,
                             selectedChannel = previewChannel,
                             favoriteIds = favoriteIds,
                             returningFromFullscreen = hasOpenedFullscreenOnce,
@@ -2766,13 +2852,7 @@ private fun LiveTvScreen(
                             onChannel = { rememberChannel(it) },
                             onChannelFullscreen = { channel -> rememberChannel(channel); enterFullscreen() },
                             onFavorite = ::toggleFavorite,
-                            onHide = { category ->
-                                val updated = hiddenCategories + category
-                                hiddenCategories = updated
-                                parental.edit().putStringSet("hidden_live_categories", updated).apply()
-                                selectedCategory = categories.firstOrNull { it != category }.orEmpty()
-                                previewChannel = channels.firstOrNull { it.group == selectedCategory }
-                            },
+                            onCategoriesReordered = { categoryOrderVersion++ },
                             onBack = onBack,
                             loadEpg = loadEpg
                         )
@@ -3280,6 +3360,43 @@ private fun CompactChannelRow(
 
 internal fun channelKey(channel: PlaylistItem): String = channel.channelId ?: "${channel.group}:${channel.name}"
 
+private const val CATEGORY_ORDER_PREFS = "category_order_settings"
+
+private fun categoryOrderPrefsKey(kind: MediaKind): String = when (kind) {
+    MediaKind.LIVE -> "order_live"
+    MediaKind.MOVIE -> "order_movie"
+    MediaKind.SERIES -> "order_series"
+}
+
+/** Applies a user-customized category order (persisted as a delimited list of names, moved via
+ *  long-press on a category row) on top of whatever categories are actually present - saved
+ *  names come first in their saved order, anything new or not yet ordered keeps its original
+ *  position at the end. */
+internal fun applyCategoryOrder(context: Context, kind: MediaKind, categories: List<String>): List<String> {
+    val saved = context.getSharedPreferences(CATEGORY_ORDER_PREFS, Context.MODE_PRIVATE)
+        .getString(categoryOrderPrefsKey(kind), "").orEmpty()
+        .split('').filter(String::isNotBlank)
+    if (saved.isEmpty()) return categories
+    val remaining = categories.toMutableList()
+    val ordered = saved.mapNotNull { name -> if (remaining.remove(name)) name else null }
+    return ordered + remaining
+}
+
+/** Swaps [category] with its neighbor in the current order and persists the result. */
+internal fun moveCategory(context: Context, kind: MediaKind, categories: List<String>, category: String, up: Boolean) {
+    val current = applyCategoryOrder(context, kind, categories).toMutableList()
+    val index = current.indexOf(category)
+    if (index < 0) return
+    val swapWith = if (up) index - 1 else index + 1
+    if (swapWith !in current.indices) return
+    val moved = current[swapWith]
+    current[swapWith] = current[index]
+    current[index] = moved
+    context.getSharedPreferences(CATEGORY_ORDER_PREFS, Context.MODE_PRIVATE).edit()
+        .putString(categoryOrderPrefsKey(kind), current.joinToString(""))
+        .apply()
+}
+
 /** True on an actual Android TV / Fire TV / set-top box, false on phones and tablets — including
  *  a phone in landscape, which reuses the exact same UI but must never auto-focus anything (a
  *  cyan ring appearing on launch with no D-pad to explain it would just look like a UI bug). Used
@@ -3295,7 +3412,7 @@ internal fun Context.isTvDevice(): Boolean {
  *  null silently for M3U playlists, channels without an id, or providers with no EPG data —
  *  callers simply render nothing in that case rather than an error. */
 @Composable
-private fun rememberEpgNowNext(channel: PlaylistItem?, loadEpg: suspend (PlaylistItem) -> Result<EpgNowNext>): EpgNowNext? {
+internal fun rememberEpgNowNext(channel: PlaylistItem?, loadEpg: suspend (PlaylistItem) -> Result<EpgNowNext>): EpgNowNext? {
     val key = channel?.channelId?.takeIf(String::isNotBlank)
     var state by remember(key) { mutableStateOf(key?.let(EpgStore::get)) }
     if (channel != null && key != null) {
@@ -3692,12 +3809,40 @@ internal fun Modifier.focusableClickable(
     val focused by interaction.collectIsFocusedAsState()
     val focusAlpha by animateFloatAsState(if (focused) 1f else 0f, tween(150), label = "focusRing")
     val scale by animateFloatAsState(if (focused) 1.03f else 1f, tween(150), label = "focusScale")
+    // combinedClickable's own onLongClick is driven by detectTapGestures, which only recognizes a
+    // held *touch* pointer - a remote's OK/DPad-center button held down never triggers it. This
+    // times the key hold itself (via onPreviewKeyEvent, so it sees the key before the clickable
+    // node's own Enter-key click handling does) and calls onLongClick when it's held past the
+    // threshold, consuming the key-up so a plain onClick doesn't also fire right after.
+    var keyDownAt by remember { mutableLongStateOf(0L) }
     return this
         .graphicsLayer(scaleX = scale, scaleY = scale)
         .drawWithContent {
             drawContent()
             drawContrastRoundRect(focusAlpha, cornerRadius)
         }
+        .then(
+            if (onLongClick != null) Modifier.onPreviewKeyEvent { event ->
+                if (event.key != Key.DirectionCenter && event.key != Key.Enter && event.key != Key.NumPadEnter) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.type) {
+                    KeyEventType.KeyDown -> {
+                        if (keyDownAt == 0L) keyDownAt = System.currentTimeMillis()
+                        false
+                    }
+                    KeyEventType.KeyUp -> {
+                        val downAt = keyDownAt
+                        keyDownAt = 0L
+                        if (downAt != 0L && System.currentTimeMillis() - downAt >= 500L) {
+                            onLongClick()
+                            true
+                        } else false
+                    }
+                    else -> false
+                }
+            } else Modifier
+        )
         .combinedClickable(
             interactionSource = interaction,
             indication = LocalIndication.current,
@@ -3705,6 +3850,25 @@ internal fun Modifier.focusableClickable(
             onDoubleClick = onDoubleClick,
             onClick = onClick
         )
+}
+
+/** While [active] (this row is the one currently being hand-moved after a long-press), Up/Down
+ *  move it one place at a time via [onMove] and OK/Enter ends reorder mode via [onExit] - both
+ *  consumed here so they don't also shift d-pad focus to a sibling row or fire the row's own
+ *  onClick right after confirming. Must sit before [focusableClickable] in the modifier chain so
+ *  onPreviewKeyEvent (capture phase, top-down) sees these keys before the clickable node's own
+ *  Enter-key handling does. */
+internal fun Modifier.categoryReorderKeys(active: Boolean, onMove: (up: Boolean) -> Unit, onExit: () -> Unit): Modifier {
+    if (!active) return this
+    return this.onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        when (event.key) {
+            Key.DirectionUp -> { onMove(true); true }
+            Key.DirectionDown -> { onMove(false); true }
+            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { onExit(); true }
+            else -> false
+        }
+    }
 }
 
 @Composable

@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
  * deliberately stays outside this class — it has a different lifecycle and covers screens (Settings,
  * Activation) that have nothing to do with playlist data.
  */
-class PlaylistViewModel(private val repository: PlaylistRepository) : ViewModel() {
+class PlaylistViewModel(private val repository: PlaylistRepository, private val appContext: Context) : ViewModel() {
 
     data class PlaylistUiState(
         val loadedPlaylist: LoadedPlaylist? = null,
@@ -63,6 +63,15 @@ class PlaylistViewModel(private val repository: PlaylistRepository) : ViewModel(
                 _uiState.update {
                     it.copy(loadedPlaylist = cached, activeSource = activeSource, savedPlaylists = repository.savedSources(), bootstrapping = false)
                 }
+                // The cached copy is shown immediately for speed; if the user's auto-update
+                // interval has elapsed, silently refresh from the provider in the background
+                // instead of waiting for a manual refresh.
+                if (shouldAutoRefresh(activeSource)) {
+                    repository.load(activeSource).onSuccess { playlist ->
+                        memoryCache[memoryKey(activeSource)] = playlist
+                        _uiState.update { it.copy(loadedPlaylist = playlist) }
+                    }
+                }
             } else {
                 _uiState.update { it.copy(bootstrappingFromNetwork = true) }
                 repository.load(activeSource)
@@ -83,6 +92,15 @@ class PlaylistViewModel(private val repository: PlaylistRepository) : ViewModel(
                 repository.loadCached(source)?.let { memoryCache[memoryKey(source)] = it }
             }
         }
+    }
+
+    private fun shouldAutoRefresh(source: PlaylistInput): Boolean {
+        val interval = appContext.getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
+            .getString("auto_update_interval", "daily") ?: "daily"
+        if (interval == "everytime") return true
+        val lastRefreshed = repository.lastRefreshedAt(source) ?: return true
+        val thresholdMs = if (interval == "every_2_days") 2 * DAY_MS else DAY_MS
+        return System.currentTimeMillis() - lastRefreshed >= thresholdMs
     }
 
     suspend fun addPlaylist(input: PlaylistInput): Result<LoadedPlaylist> =
@@ -147,6 +165,10 @@ class PlaylistViewModel(private val repository: PlaylistRepository) : ViewModel(
     class Factory(private val appContext: Context) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            PlaylistViewModel(PlaylistRepository(appContext)) as T
+            PlaylistViewModel(PlaylistRepository(appContext), appContext) as T
+    }
+
+    private companion object {
+        const val DAY_MS = 24 * 60 * 60 * 1000L
     }
 }

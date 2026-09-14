@@ -45,7 +45,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,6 +68,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.fourkplus.tvplayer.data.EpgNowNext
 import com.fourkplus.tvplayer.data.LiveSnapshotCache
 import com.fourkplus.tvplayer.data.PlaylistItem
 import com.fourkplus.tvplayer.ui.theme.*
@@ -87,6 +92,31 @@ internal fun buildFourKPlusExoPlayer(context: android.content.Context, skipSecon
         .setSeekForwardIncrementMs(skipSeconds * 1_000L)
         .build()
         .apply { volume = if (muted) 0f else 1f }
+}
+
+/**
+ * Prevents the device from sleeping/dimming while [player] is actively playing. A TV's system
+ * idle-sleep and screensaver timers only reset on remote input, which a viewer watching a channel
+ * or a movie without touching the remote never generates - without this, the screen goes dark
+ * mid-playback. Turns itself off the moment playback pauses/stops or this leaves composition, so
+ * it never keeps the screen awake outside of actual video playback.
+ */
+@Composable
+private fun KeepScreenOnWhilePlaying(player: Player) {
+    val view = LocalView.current
+    DisposableEffect(player, view) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                view.keepScreenOn = isPlaying
+            }
+        }
+        player.addListener(listener)
+        view.keepScreenOn = player.isPlaying
+        onDispose {
+            player.removeListener(listener)
+            view.keepScreenOn = false
+        }
+    }
 }
 
 /**
@@ -339,6 +369,7 @@ internal fun MoviePlayer(
     val player = remember(movie.streamUrl, skipSeconds) {
         buildFourKPlusExoPlayer(context, skipSeconds, muted = settings.getBoolean("muted", false))
     }
+    KeepScreenOnWhilePlaying(player)
     LaunchedEffect(player, movie.streamUrl, externalSubtitle) {
         error = null
         val resumeAt = player.currentPosition.takeIf { it > 0L } ?: startPosition
@@ -483,10 +514,12 @@ internal fun MoviePlayer(
                     settings.edit().putInt("skip_seconds", it).apply()
                 },
                 videoMode = videoMode,
-                onVideoModeChange = {
-                    videoMode = it
-                    settings.edit().putString("video_mode", it).apply()
-                }
+                // Deliberately not persisted (unlike mute/subtitles/skip above): aspect ratio is
+                // usually specific to whatever's currently playing (an old 4:3 show, say) - it
+                // should reset to the real default (set in Settings) for the next thing watched,
+                // not silently carry a stretch/zoom choice over into a different movie or into
+                // Live TV/Series.
+                onVideoModeChange = { videoMode = it }
             )
             error?.let {
                 Surface(Modifier.align(Alignment.Center).padding(20.dp), RoundedCornerShape(12.dp), color = Color.Black.copy(alpha = .84f)) {
@@ -783,14 +816,25 @@ private fun PlaybackOptionsOverlay(
     onExternalSubtitleChange: (Uri?) -> Unit,
     skipSeconds: Int,
     onSkipSecondsChange: (Int) -> Unit,
+    // Live TV has nothing to skip forward/back through - hidden there, shown for Movies/Series.
+    showSkipInterval: Boolean = true,
     videoMode: String,
-    onVideoModeChange: (String) -> Unit
+    onVideoModeChange: (String) -> Unit,
+    // TV fullscreen only: focus lands on the mute button (the first control) as soon as this
+    // overlay appears, and pressing Left from there collapses it back - there's no touch
+    // target to tap away from it the way the embedded/mobile overlay has.
+    autoFocusFirstOnDpad: Boolean = false,
+    onCollapseOnDpad: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var subtitleMenu by remember { mutableStateOf(false) }
     var skipMenu by remember { mutableStateOf(false) }
     var sizeMenu by remember { mutableStateOf(false) }
     var muted by remember(player) { mutableStateOf(player.volume == 0f) }
+    val muteFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(autoFocusFirstOnDpad) {
+        if (autoFocusFirstOnDpad) runCatching { muteFocusRequester.requestFocus() }
+    }
     val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -812,6 +856,13 @@ private fun PlaybackOptionsOverlay(
                         .edit().putBoolean("muted", muted).apply()
                 },
                 modifier = Modifier.size(38.dp)
+                    .focusRequester(muteFocusRequester)
+                    .onKeyEvent { event ->
+                        if (autoFocusFirstOnDpad && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                            onCollapseOnDpad?.invoke()
+                            true
+                        } else false
+                    }
             ) {
                 Icon(
                     if (muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
@@ -846,7 +897,7 @@ private fun PlaybackOptionsOverlay(
                     }
                 }
             }
-            Box {
+            if (showSkipInterval) Box {
                 AnimatedIconButton(onClick = { skipMenu = true }, modifier = Modifier.size(38.dp)) {
                     Icon(Icons.Default.MoreTime, "Skip interval", tint = Color.White)
                 }
@@ -965,7 +1016,9 @@ internal fun LiveChannelPreview(
     // "hide controls" vs "exit fullscreen" as a single decision in one place — two separate
     // BackHandlers at the same Activity-level dispatcher don't reliably prioritize the inner one,
     // so that split can't be made locally here the way [MoviePlayer]'s Dialog-scoped one can.
-    controllerVisibleState: MutableState<Boolean>? = null
+    controllerVisibleState: MutableState<Boolean>? = null,
+    // Only used for the TV fullscreen channel banner's now/next lines - null elsewhere skips them.
+    loadEpg: (suspend (PlaylistItem) -> Result<EpgNowNext>)? = null
 ) {
     val context = LocalContext.current
     val settings = remember { context.getSharedPreferences("playback_settings", android.content.Context.MODE_PRIVATE) }
@@ -1042,18 +1095,20 @@ internal fun LiveChannelPreview(
     // above), it's very likely already false from sitting idle in the background before the user
     // opened fullscreen. Force it back on at the moment fullscreen actually starts, the same as a
     // fresh player would, so there's a controls-visible window (and Back has something to hide).
-    // Live TV's own TV fullscreen (hostedFullscreen) has no on-screen controls at all — see
-    // PlaybackOptionsOverlay below — so this only matters for the touch/mobile Dialog fullscreen.
+    // Live TV's own TV fullscreen (hostedFullscreen) starts with the top bar hidden on purpose —
+    // the Right d-pad key toggles it on demand (see the onKeyEvent handler below) instead of it
+    // appearing automatically the way the touch/mobile Dialog fullscreen's controls do.
     LaunchedEffect(suggestionsEnabled, hostedFullscreen) {
-        if (suggestionsEnabled && !hostedFullscreen) showControllerBriefly()
+        if (hostedFullscreen) controllerVisible = false
+        else if (suggestionsEnabled) showControllerBriefly()
     }
-    // D-pad focus target for the whole fullscreen surface: on TV Live TV there's no controls
-    // overlay to gate on, so this is always the target; elsewhere it's only needed once the
-    // (touch-oriented) controls are hidden. Re-requested whenever the strip closes too, since
-    // focus moves into it while it's open (see RelatedItemsStrip).
+    // D-pad focus target for the whole fullscreen surface, used once no overlay is claiming
+    // input (top bar hidden, strip closed). Re-requested whenever the strip closes or the top
+    // bar hides too, since focus moves into those while they're open (see RelatedItemsStrip /
+    // PlaybackOptionsOverlay).
     val rootFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(suggestionsEnabled, controllerVisible, stripExpanded, hostedFullscreen) {
-        if (suggestionsEnabled && !stripExpanded && (hostedFullscreen || !controllerVisible)) {
+    LaunchedEffect(suggestionsEnabled, controllerVisible, stripExpanded) {
+        if (suggestionsEnabled && !stripExpanded && !controllerVisible) {
             runCatching { rootFocusRequester.requestFocus() }
         }
     }
@@ -1061,7 +1116,8 @@ internal fun LiveChannelPreview(
     var externalSubtitle by remember(channel?.streamUrl) { mutableStateOf<Uri?>(null) }
     var skipSeconds by remember { mutableIntStateOf(settings.getInt("skip_seconds", 10).takeIf { it in listOf(5, 10, 15, 30, 60) } ?: 10) }
     var seekFeedback by remember { mutableStateOf<Pair<Boolean, Long>?>(null) }
-    var channelSwitchFeedback by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    // name, logo URL, timestamp - the timestamp is only there to key the auto-clear effect below.
+    var channelSwitchFeedback by remember { mutableStateOf<Triple<String, String?, Long>?>(null) }
     // Persists for this composable's lifetime (not reset per channel) so a chain of consecutive
     // auto-advances is bounded overall, not just per hop.
     var autoAdvanceAttempts by remember { mutableIntStateOf(0) }
@@ -1071,22 +1127,31 @@ internal fun LiveChannelPreview(
             seekFeedback = null
         }
     }
-    LaunchedEffect(channelSwitchFeedback?.second) {
+    LaunchedEffect(channelSwitchFeedback?.third) {
         if (channelSwitchFeedback != null) {
-            delay(1_200)
+            delay(if (hostedFullscreen) 3_000 else 1_200)
             channelSwitchFeedback = null
         }
     }
+    // TV fullscreen shows the channel banner as soon as it opens (not just on a subsequent
+    // channel change) so the viewer always sees what they're watching, matching a normal remote.
+    LaunchedEffect(hostedFullscreen, channel?.let(::channelKey)) {
+        if (hostedFullscreen) channel?.let { channelSwitchFeedback = Triple(it.name, it.logoUrl, System.nanoTime()) }
+    }
+    val nowNext = if (hostedFullscreen && loadEpg != null) rememberEpgNowNext(channel, loadEpg) else null
     fun switchChannel(forward: Boolean) {
         val current = channel ?: return
         val index = channelList.indexOfFirst { channelKey(it) == channelKey(current) }
         if (index < 0) return
         val next = channelList.getOrNull(if (forward) index + 1 else index - 1) ?: return
         onChannelChange(next)
-        channelSwitchFeedback = next.name to System.nanoTime()
+        channelSwitchFeedback = Triple(next.name, next.logoUrl, System.nanoTime())
     }
-    LaunchedEffect(controllerShownAt, controllerVisible) {
-        if (controllerVisible) {
+    // TV fullscreen's top bar stays up until the user explicitly presses Left from the mute
+    // button (see onCollapseOnDpad) - no auto-hide timer there. Elsewhere (the embedded/touch
+    // preview) it still hides itself after a few seconds since there's no equivalent dismiss key.
+    LaunchedEffect(controllerShownAt, controllerVisible, hostedFullscreen) {
+        if (controllerVisible && !hostedFullscreen) {
             delay(4_000)
             controllerVisible = false
         }
@@ -1094,6 +1159,7 @@ internal fun LiveChannelPreview(
     val player = remember(skipSeconds) {
         buildFourKPlusExoPlayer(context, skipSeconds, muted = settings.getBoolean("muted", false)).apply { playWhenReady = true }
     }
+    KeepScreenOnWhilePlaying(player)
 
     LaunchedEffect(channel?.streamUrl, externalSubtitle) {
         playbackError = null
@@ -1144,9 +1210,10 @@ internal fun LiveChannelPreview(
     } else null
     // On TV, the first Back press while fullscreen should just dismiss the overlay controls
     // (matching how the on-screen "hide" gesture works for touch) — only a second Back press,
-    // once they're already hidden, should fall through to whatever exits fullscreen. Live TV's
-    // hostedFullscreen has no controls at all (see PlaybackOptionsOverlay below) so Back there
-    // always exits directly instead — LiveTvScreen owns that single-press BackHandler itself.
+    // once they're already hidden, should fall through to whatever exits fullscreen. In Live TV's
+    // hostedFullscreen the top bar is toggled by Right instead (see the onKeyEvent handler below),
+    // and Back always exits directly regardless of the bar — LiveTvScreen owns that single-press
+    // BackHandler itself.
     if (suggestionsEnabled && !hostedFullscreen && controllerVisibleState == null) {
         BackHandler(enabled = controllerVisible) { controllerVisible = false }
     }
@@ -1168,22 +1235,45 @@ internal fun LiveChannelPreview(
                                 if (!hostedFullscreen && controllerVisible) return@onKeyEvent false
                                 when (keyEvent.key) {
                                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                                        // Live TV's TV fullscreen has no controls to bring up with
-                                        // OK, so here OK instead exits back to the categories and
+                                        // OK always exits TV fullscreen back to the categories and
                                         // channel list - Back already does this, this just gives
                                         // OK the same result since it's the more natural button.
                                         if (hostedFullscreen) {
                                             if (onExitFullscreen != null) { onExitFullscreen(); true } else false
                                         } else { showControllerBriefly(); true }
                                     }
-                                    Key.DirectionDown -> {
-                                        if (channelList.size > 1) { stripExpanded = true; true } else false
+                                    // TV fullscreen has no channel strip (see suppressions around
+                                    // stripExpanded below) - Up/Down change channel there instead
+                                    // of Left/Right, freeing Right to toggle the top bar. Elsewhere
+                                    // (the embedded preview) the strip still opens on Down and
+                                    // channels still change with Left/Right, unchanged. While the
+                                    // top bar is open, Up/Down are left unconsumed here (false) -
+                                    // otherwise the channel would silently change underneath an
+                                    // still-open bar meant for the channel you were just watching.
+                                    Key.DirectionDown -> when {
+                                        hostedFullscreen && controllerVisible -> false
+                                        hostedFullscreen -> { if (channelList.size > 1) { switchChannel(forward = false); true } else false }
+                                        channelList.size > 1 -> { stripExpanded = true; true }
+                                        else -> false
+                                    }
+                                    Key.DirectionUp -> {
+                                        if (hostedFullscreen && !controllerVisible && channelList.size > 1) { switchChannel(forward = true); true } else false
                                     }
                                     Key.DirectionLeft -> {
-                                        if (channelList.size > 1) { switchChannel(forward = false); true } else false
+                                        if (!hostedFullscreen && channelList.size > 1) { switchChannel(forward = false); true } else false
                                     }
-                                    Key.DirectionRight -> {
-                                        if (channelList.size > 1) { switchChannel(forward = true); true } else false
+                                    // Right only opens the top bar in TV fullscreen (focus lands on
+                                    // mute); once it's open, Right must NOT keep being swallowed
+                                    // here or the event never reaches Compose's default d-pad focus
+                                    // search, which is what moves focus from mute to the next
+                                    // control. The only way to hide the bar again is pressing Left
+                                    // while mute has focus, handled in PlaybackOptionsOverlay via
+                                    // onCollapseOnDpad.
+                                    Key.DirectionRight -> when {
+                                        hostedFullscreen && !controllerVisible -> { showControllerBriefly(); true }
+                                        hostedFullscreen -> false
+                                        channelList.size > 1 -> { switchChannel(forward = true); true }
+                                        else -> false
                                     }
                                     else -> false
                                 }
@@ -1238,8 +1328,9 @@ internal fun LiveChannelPreview(
                                 }
                             )
                         }
-                        .pointerInput(suggestionsEnabled) {
-                            if (!suggestionsEnabled) return@pointerInput
+                        .pointerInput(suggestionsEnabled, hostedFullscreen) {
+                            // TV fullscreen has no channel strip - see the onKeyEvent handler above.
+                            if (!suggestionsEnabled || hostedFullscreen) return@pointerInput
                             var accumulated = 0f
                             detectVerticalDragGestures(
                                 onDragStart = { accumulated = 0f },
@@ -1279,19 +1370,47 @@ internal fun LiveChannelPreview(
                         )
                 )
                 if (!PictureInPictureCoordinator.active) channelSwitchFeedback?.let { feedback ->
+                    val noInfo = stringResource(R.string.epg_no_info)
                     Surface(
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp),
-                        color = Color.Black.copy(alpha = .68f),
-                        shape = RoundedCornerShape(20.dp)
+                        modifier = Modifier
+                            .align(if (hostedFullscreen) Alignment.BottomStart else Alignment.TopCenter)
+                            .padding(if (hostedFullscreen) PaddingValues(start = 22.dp, bottom = 22.dp) else PaddingValues(top = 18.dp)),
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(if (hostedFullscreen) 14.dp else 20.dp)
                     ) {
-                        Text(
-                            feedback.first,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = if (hostedFullscreen) 10.dp else 8.dp)
+                        ) {
+                            if (!feedback.second.isNullOrBlank()) {
+                                Surface(
+                                    modifier = Modifier.size(if (hostedFullscreen) 56.dp else 28.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color.White.copy(alpha = .1f)
+                                ) {
+                                    AsyncImage(feedback.second, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                                }
+                                Spacer(Modifier.width(11.dp))
+                            }
+                            // The banner has no background box (transparent), so every line gets a
+                            // drop shadow instead - otherwise white text disappears against bright
+                            // video playing directly behind it.
+                            val legibleShadow = Shadow(color = Color.Black.copy(alpha = .95f), offset = Offset(0f, 1f), blurRadius = 6f)
+                            Column {
+                                Text(
+                                    feedback.first,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = if (hostedFullscreen) 16.sp else 13.sp,
+                                    maxLines = 1,
+                                    style = TextStyle(shadow = legibleShadow)
+                                )
+                                if (hostedFullscreen && loadEpg != null) {
+                                    Text(nowNext?.now?.title ?: noInfo, color = Orange, fontSize = 12.sp, maxLines = 1, style = TextStyle(shadow = legibleShadow))
+                                    Text(nowNext?.next?.title ?: noInfo, color = Color.White.copy(alpha = .75f), fontSize = 12.sp, maxLines = 1, style = TextStyle(shadow = legibleShadow))
+                                }
+                            }
+                        }
                     }
                 }
                 seekFeedback?.let { feedback ->
@@ -1304,10 +1423,9 @@ internal fun LiveChannelPreview(
                             .padding(horizontal = 34.dp)
                     )
                 }
-                // Live TV's TV fullscreen has no on-screen controls at all — remote users get
-                // there entirely via D-pad (left/right to change channel, down for the channel
-                // strip), so there's nothing here to show or dismiss.
-                if (!hostedFullscreen && controllerVisible && seekFeedback == null && !PictureInPictureCoordinator.active) PlaybackOptionsOverlay(
+                // In TV fullscreen this is the top bar toggled by the Right d-pad key (see the
+                // onKeyEvent handler above); elsewhere it's the tap-to-reveal touch controls.
+                if (controllerVisible && seekFeedback == null && !PictureInPictureCoordinator.active) PlaybackOptionsOverlay(
                     modifier = Modifier.align(Alignment.TopEnd)
                         .then(
                             if (fullscreen) Modifier
@@ -1334,11 +1452,15 @@ internal fun LiveChannelPreview(
                         skipSeconds = it
                         settings.edit().putInt("skip_seconds", it).apply()
                     },
+                    showSkipInterval = false,
                     videoMode = videoMode,
-                    onVideoModeChange = {
-                        videoMode = it
-                        settings.edit().putString("video_mode", it).apply()
-                    }
+                    // Deliberately not persisted - see the matching comment in MoviePlayer. A
+                    // stretch/zoom choice made while watching one channel shouldn't carry into a
+                    // different channel or into Movies/Series; each starts from the real default
+                    // (set in Settings) again.
+                    onVideoModeChange = { videoMode = it },
+                    autoFocusFirstOnDpad = hostedFullscreen,
+                    onCollapseOnDpad = { controllerVisible = false }
                 )
                 if (playbackError != null) {
                     Surface(
@@ -1353,18 +1475,20 @@ internal fun LiveChannelPreview(
                         }
                     }
                 }
-                if (suggestionsEnabled && controllerVisible && !stripExpanded && channelList.size > 1 && !PictureInPictureCoordinator.active) {
+                if (suggestionsEnabled && !hostedFullscreen && controllerVisible && !stripExpanded && channelList.size > 1 && !PictureInPictureCoordinator.active) {
                     Icon(
                         Icons.Default.KeyboardArrowUp,
                         "Swipe up for other channels",
                         tint = Color.White.copy(alpha = .6f),
                         modifier = Modifier.align(Alignment.BottomCenter)
-                            .then(if (fullscreen || hostedFullscreen) Modifier.navigationBarsPadding() else Modifier)
+                            .then(if (fullscreen) Modifier.navigationBarsPadding() else Modifier)
                             .padding(bottom = 8.dp)
                             .size(22.dp)
                     )
                 }
-                if (suggestionsEnabled && stripExpanded && channelList.size > 1 && !PictureInPictureCoordinator.active) {
+                // TV fullscreen has no channel strip - stripExpanded can no longer become true
+                // there (see the onKeyEvent handler above), but this guard is kept explicit anyway.
+                if (suggestionsEnabled && !hostedFullscreen && stripExpanded && channelList.size > 1 && !PictureInPictureCoordinator.active) {
                     Column(
                         Modifier.align(Alignment.BottomCenter)
                             .then(if (fullscreen || hostedFullscreen) Modifier.navigationBarsPadding() else Modifier)
@@ -1429,7 +1553,9 @@ internal fun LiveChannelPreview(
             }
         }
     } else {
-        playerContent(modifier, RoundedCornerShape(18.dp))
+        // TV fullscreen (hostedFullscreen) must be edge-to-edge with square corners - the rounded
+        // shape is only for the embedded preview card sitting inside the browse screens.
+        playerContent(modifier, if (hostedFullscreen) RectangleShape else RoundedCornerShape(18.dp))
     }
 }
 

@@ -23,7 +23,12 @@ internal class PlaylistCacheStore(context: Context) {
                 legacyCacheFile.exists() -> legacyCacheFile
                 else -> return@runCatching null
             }
-            val loaded = DataInputStream(GZIPInputStream(selectedFile.inputStream().buffered(IO_BUFFER_BYTES))).use { input ->
+            val loaded = DataInputStream(
+                // Buffer decompressed bytes too: readInt/readBoolean otherwise call through
+                // the inflater for each byte across hundreds of thousands of cached fields.
+                GZIPInputStream(selectedFile.inputStream().buffered(IO_BUFFER_BYTES), IO_BUFFER_BYTES)
+                    .buffered(IO_BUFFER_BYTES)
+            ).use { input ->
                 require(input.readInt() == CACHE_VERSION) { "Unsupported playlist cache." }
                 val name = input.readSizedString()
                 val accountStatus = input.readNullableString()
@@ -111,6 +116,13 @@ internal class PlaylistCacheStore(context: Context) {
 
     fun deleteFor(source: PlaylistInput) {
         cacheFileFor(source).delete()
+    }
+
+    /** Epoch millis this source's cache was last written, or null if it was never saved -
+     *  used to decide whether an auto-update interval has elapsed. */
+    fun lastSavedAt(source: PlaylistInput): Long? {
+        val file = cacheFileFor(source)
+        return if (file.exists()) file.lastModified() else null
     }
 
     fun deleteLegacy() {

@@ -92,6 +92,8 @@ internal fun SettingsScreen(
     var preferredSubtitle by remember { mutableStateOf(playback.getString("subtitle_language", "ar,en") ?: "ar,en") }
     var videoMode by remember { mutableStateOf(playback.getString("video_mode", "fit") ?: "fit") }
     var playerEngine by remember { mutableStateOf(playback.getString("player_engine", "default") ?: "default") }
+    var liveChannelSort by remember { mutableStateOf(playback.getString("live_channel_sort", "default") ?: "default") }
+    var autoUpdateInterval by remember { mutableStateOf(playback.getString("auto_update_interval", "daily") ?: "daily") }
     var hiddenLive by remember {
         mutableStateOf(parental.getStringSet("hidden_live_categories", emptySet()).orEmpty().toSet())
     }
@@ -235,6 +237,23 @@ internal fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) { Icon(Icons.Default.DriveFileRenameOutline, null); Spacer(Modifier.width(7.dp)); Text(stringResource(R.string.rename_action)) }
                     SettingsAction(Icons.Default.Refresh, stringResource(R.string.refresh_playlist), stringResource(R.string.refresh_playlist_desc), onRefresh)
+                    HorizontalDivider()
+                    Text(stringResource(R.string.auto_update_title), fontWeight = FontWeight.Bold)
+                    listOf(
+                        "everytime" to stringResource(R.string.auto_update_everytime),
+                        "daily" to stringResource(R.string.auto_update_daily),
+                        "every_2_days" to stringResource(R.string.auto_update_every_2_days)
+                    ).forEach { option ->
+                        RadioSetting(
+                            title = option.second,
+                            selected = autoUpdateInterval == option.first,
+                            onClick = {
+                                autoUpdateInterval = option.first
+                                playback.edit().putString("auto_update_interval", option.first).apply()
+                            }
+                        )
+                    }
+                    HorizontalDivider()
                     SettingsAction(Icons.Default.AddCircleOutline, stringResource(R.string.add_another_playlist), stringResource(R.string.add_another_playlist_desc), onReplace)
                     SettingsAction(
                         Icons.Default.DeleteForever,
@@ -356,6 +375,22 @@ internal fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
+                    HorizontalDivider()
+                    Text(stringResource(R.string.live_channel_sort), fontWeight = FontWeight.Bold)
+                    listOf(
+                        "default" to stringResource(R.string.sort_default),
+                        "az" to stringResource(R.string.sort_az),
+                        "za" to stringResource(R.string.sort_za)
+                    ).forEach { option ->
+                        RadioSetting(
+                            title = option.second,
+                            selected = liveChannelSort == option.first,
+                            onClick = {
+                                liveChannelSort = option.first
+                                playback.edit().putString("live_channel_sort", option.first).apply()
+                            }
+                        )
+                    }
                     HorizontalDivider()
                     Text(stringResource(R.string.player_engine), fontWeight = FontWeight.Bold)
                     listOf(

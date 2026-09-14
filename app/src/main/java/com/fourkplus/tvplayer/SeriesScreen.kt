@@ -12,8 +12,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -76,7 +79,10 @@ internal fun SeriesScreen(
     val seriesItems = remember(playlist, hiddenCategories) {
         playlist?.items?.filter { it.kind == MediaKind.SERIES && it.group !in hiddenCategories }.orEmpty()
     }
-    val categories = remember(seriesItems) { seriesItems.map { it.group }.distinct() }
+    // Bumped after a long-press reorder so `categories` recomputes even though `seriesItems`
+    // itself (the applyCategoryOrder input) hasn't changed.
+    var categoryOrderVersion by remember { mutableIntStateOf(0) }
+    val categories = remember(seriesItems, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.SERIES, seriesItems.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("series_library", Context.MODE_PRIVATE) }
     var view by remember { mutableStateOf(SeriesView.BROWSE) }
     var selectedCategory by remember { mutableStateOf("Continue watching") }
@@ -339,12 +345,7 @@ internal fun SeriesScreen(
                 onSearch = { search = it },
                 onFavorite = ::toggleFavorite,
                 onSeries = ::openDetails,
-                onHide = { category ->
-                    val updated = hiddenCategories + category
-                    hiddenCategories = updated
-                    parental.edit().putStringSet("hidden_series_categories", updated).apply()
-                    selectedCategory = categories.firstOrNull { it != category }.orEmpty()
-                },
+                onCategoriesReordered = { categoryOrderVersion++ },
                 onBack = {
                     if (view == SeriesView.CATEGORY) view = SeriesView.BROWSE else onBack()
                 }
@@ -496,7 +497,7 @@ private fun LandscapeSeriesBrowser(
     onSearch: (String) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
     onSeries: (PlaylistItem) -> Unit,
-    onHide: (String) -> Unit,
+    onCategoriesReordered: () -> Unit,
     onBack: () -> Unit
 ) {
     val special = listOf("Continue watching", "Recently watched", "Favorites")
@@ -510,6 +511,15 @@ private fun LandscapeSeriesBrowser(
     val displayed = if (search.isBlank()) base else seriesItems.filter { it.name.contains(search.trim(), true) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
+    // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
+    var reorderingCategory by remember { mutableStateOf<String?>(null) }
+    val categoryListState = rememberLazyListState()
+    // Keeps the moving category in view as it's nudged past the edge of the visible list -
+    // otherwise it scrolls out from under the user with no sign of where it went.
+    LaunchedEffect(reorderingCategory, allCategories) {
+        val index = reorderingCategory?.let(allCategories::indexOf) ?: return@LaunchedEffect
+        if (index >= 0) categoryListState.animateScrollToItem(index)
+    }
     val continueWatchingFocusRequester = remember { FocusRequester() }
     LaunchedEffect(isTv) { if (isTv) runCatching { continueWatchingFocusRequester.requestFocus() } }
     // Pressing OK on a category should move the remote's focus straight into that category's
@@ -535,25 +545,31 @@ private fun LandscapeSeriesBrowser(
                     Text(stringResource(R.string.nav_series), fontSize = 19.sp, fontWeight = FontWeight.Black)
                 }
                 SeriesSearch(search, onSearch)
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    items(allCategories) { category ->
+                LazyColumn(Modifier.weight(1f), state = categoryListState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    items(allCategories, key = { it }) { category ->
+                        val isReordering = category == reorderingCategory
                         Surface(
                             modifier = Modifier.fillMaxWidth()
                                 .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
-                                .focusableClickable(cornerRadius = 11.dp) {
+                                .categoryReorderKeys(
+                                    active = isReordering,
+                                    onMove = { up -> moveCategory(context, MediaKind.SERIES, categories, category, up); onCategoriesReordered() },
+                                    onExit = { reorderingCategory = null }
+                                )
+                                .focusableClickable(
+                                    cornerRadius = 11.dp,
+                                    onLongClick = if (category in special) null else { { reorderingCategory = category } }
+                                ) {
                                     categorySelectionTick++
                                     onCategory(category)
                                 },
                             shape = RoundedCornerShape(11.dp),
-                            color = if (category == selectedCategory) Cyan.copy(alpha = .24f) else Color.Transparent
+                            color = if (isReordering) Orange.copy(alpha = .3f) else if (category == selectedCategory) Cyan.copy(alpha = .24f) else Color.Transparent,
+                            border = if (isReordering) BorderStroke(2.dp, Orange) else null
                         ) {
-                            Row(Modifier.padding(start = 12.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.padding(start = 12.dp, top = 7.dp, bottom = 7.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(localizedSectionTitle(category), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, fontWeight = if (category == selectedCategory) FontWeight.Bold else FontWeight.Normal)
-                                if (category !in special) {
-                                    AnimatedIconButton(onClick = { onHide(category) }, modifier = Modifier.size(32.dp)) {
-                                        Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, category), modifier = Modifier.size(18.dp))
-                                    }
-                                }
+                                if (isReordering) Icon(Icons.Default.SwapVert, null, tint = Orange, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -781,8 +797,7 @@ private fun SeriesDetails(
     val seasons = details?.seasons.orEmpty()
     val displayTitle = details?.originalTitle ?: series.name
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val trailerSearchTerm = stringResource(R.string.trailer_search_term)
-    val trailerQuery = listOfNotNull(details?.originalTitle ?: series.name, details?.year, trailerSearchTerm).joinToString(" ")
+    val trailerScope = rememberCoroutineScope()
     // Series details has no single Play/Resume button the way movies do - playback always starts
     // from a specific episode - so the nearest equivalent is landing D-pad focus on the first
     // episode row once the page (and its episode list) has actually loaded.
@@ -841,18 +856,25 @@ private fun SeriesDetails(
                     if (!poster.isNullOrBlank()) AsyncImage(poster, series.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { openTrailer(context, details?.trailerUrl, trailerQuery) }, modifier = Modifier.weight(1f).height(44.dp)) {
+                    OutlinedButton(onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, details?.year) } }, modifier = Modifier.weight(1f).height(44.dp)) {
                         Icon(Icons.Default.SmartDisplay, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
                     }
                     AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(44.dp)) {
                         Icon(if (favorite) Icons.Default.Star else Icons.Default.StarBorder, if (favorite) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add), tint = if (favorite) Orange else Cyan)
                     }
                 }
             }
-            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(displayTitle, fontSize = 24.sp, fontWeight = FontWeight.Black, lineHeight = 28.sp)
+            // Title/pills/description/cast/director are fixed (no scroll) so they stay on screen;
+            // only the episode list below scrolls, in its own LazyColumn, as the user D-pads
+            // through episodes - it used to all live in one shared scrolling column. Kept
+            // deliberately compact (small fonts, capped description/credit lines) so this header
+            // eats as little vertical space as possible and the episode list gets the rest.
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(displayTitle, fontSize = 18.sp, fontWeight = FontWeight.Black, lineHeight = 21.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (!details?.originalTitle.isNullOrBlank() && details?.originalTitle != series.name) {
-                    Text(series.name, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                    Text(series.name, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 FlowRowPills {
                     details?.rating?.takeIf { it != "0" && it != "0.0" }?.let { SeriesPill("★ $it/10", Orange) }
@@ -867,14 +889,43 @@ private fun SeriesDetails(
                     Text(
                         details?.description?.takeIf(String::isNotBlank) ?: stringResource(R.string.no_series_details),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp
+                        fontSize = 12.sp,
+                        lineHeight = 15.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                     details?.cast?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.Groups, stringResource(R.string.cast_label), it) }
                     details?.director?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.MovieCreation, stringResource(R.string.director_label), it) }
-                    SeasonsAndEpisodes()
+                    if (seasons.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            seasons.forEach { season ->
+                                FilterChip(
+                                    selected = selectedSeason == season,
+                                    onClick = { onSeason(season) },
+                                    label = { Text(stringResource(R.string.season_number, season), fontSize = 12.sp) }
+                                )
+                            }
+                        }
+                        LazyColumn(Modifier.weight(1f).padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            itemsIndexed(episodes, key = { _, episode -> episode.id }) { index, episode ->
+                                EpisodeRow(
+                                    episode = episode,
+                                    progress = progress[episode.id] ?: 0L,
+                                    watched = episode.id in watchedEpisodeIds,
+                                    focusRequester = if (index == 0) firstEpisodeFocusRequester else null,
+                                    onClick = { onEpisode(episode) }
+                                )
+                            }
+                        }
+                    } else if (error != null) {
+                        Text(stringResource(R.string.episodes_unavailable), color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Text(stringResource(R.string.no_episodes_supplied), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                Spacer(Modifier.height(24.dp))
             }
         }
         return
@@ -933,7 +984,7 @@ private fun SeriesDetails(
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(
-                onClick = { openTrailer(context, details?.trailerUrl, trailerQuery) },
+                onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, details?.year) } },
                 modifier = Modifier.weight(1f).height(52.dp)
             ) {
                 Icon(Icons.Default.SmartDisplay, null)
@@ -973,17 +1024,17 @@ private fun EpisodeRow(episode: SeriesEpisode, progress: Long, watched: Boolean,
     ElevatedCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
-        shape = RoundedCornerShape(15.dp),
+        shape = RoundedCornerShape(11.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f))
     ) {
-        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(
-                Modifier.width(112.dp).aspectRatio(16f / 9f),
-                shape = RoundedCornerShape(10.dp),
+                Modifier.width(78.dp).aspectRatio(16f / 9f),
+                shape = RoundedCornerShape(8.dp),
                 color = Color.Black
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.PlayCircle, null, tint = Cyan, modifier = Modifier.size(30.dp))
+                    Icon(Icons.Default.PlayCircle, null, tint = Cyan, modifier = Modifier.size(20.dp))
                     if (!episode.thumbnailUrl.isNullOrBlank()) {
                         AsyncImage(
                             episode.thumbnailUrl,
@@ -995,29 +1046,32 @@ private fun EpisodeRow(episode: SeriesEpisode, progress: Long, watched: Boolean,
                     // YouTube-style watched indicator: a red strip along the bottom edge of the
                     // thumbnail sized to how far into the episode the user got.
                     if (watchedFraction != null) {
-                        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = .35f))) {
+                        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp).background(Color.White.copy(alpha = .35f))) {
                             Box(Modifier.fillMaxHeight().fillMaxWidth(watchedFraction).background(Color(0xFFE50914)))
                         }
                     }
                     if (watched) {
                         Surface(
-                            modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).size(20.dp),
+                            modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(15.dp),
                             shape = androidx.compose.foundation.shape.CircleShape,
                             color = Color(0xFF2ECC71)
                         ) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(13.dp))
+                                Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(10.dp))
                             }
                         }
                     }
                 }
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     stringResource(R.string.episode_title_format, episode.episodeNumber, episode.title),
                     fontWeight = FontWeight.Bold,
-                    maxLines = 3
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 val resumeLabel = stringResource(R.string.resume_time, seriesProgressTime(progress))
                 val watchedLabel = stringResource(R.string.watched_label)
@@ -1027,10 +1081,10 @@ private fun EpisodeRow(episode: SeriesEpisode, progress: Long, watched: Boolean,
                     if (watched) add(watchedLabel)
                 }.joinToString(" • ")
                 if (detail.isNotBlank()) {
-                    Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1)
                 }
             }
-            Icon(Icons.Default.PlayArrow, stringResource(R.string.play_action), tint = Cyan)
+            Icon(Icons.Default.PlayArrow, stringResource(R.string.play_action), tint = Cyan, modifier = Modifier.size(20.dp))
         }
     }
 }

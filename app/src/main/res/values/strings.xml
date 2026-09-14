@@ -94,6 +94,10 @@
     <string name="provider_login_status">Provider login • %1$s</string>
     <string name="m3u_playlist_label">M3U playlist</string>
     <string name="add_another_playlist">Add another playlist</string>
+    <string name="auto_update_title">Automatic</string>
+    <string name="auto_update_everytime">Auto-Update Live, Movie &amp; Series every time</string>
+    <string name="auto_update_daily">Auto-Update Live, Movie &amp; Series every day</string>
+    <string name="auto_update_every_2_days">Auto-Update Live, Movie &amp; Series after 2 days</string>
     <string name="remove_playlist_confirm_title">Remove %1$s?</string>
     <string name="remove_playlist_confirm_body">The saved login for this playlist will be removed from this device.</string>
 
@@ -107,6 +111,7 @@
     <string name="live_tv_channels_count">%1$d channels</string>
     <string name="epg_now_format">Now: %1$s</string>
     <string name="epg_next_format">Next: %1$s</string>
+    <string name="epg_no_info">No Info</string>
     <string name="search_categories">Search categories</string>
     <string name="search_channels">Search channels</string>
     <string name="cd_hide_category">Hide %1$s</string>
@@ -209,6 +214,10 @@
     <string name="video_fill_desc">Fills the screen and may crop the edges.</string>
     <string name="video_stretch_desc">Stretches the picture to fill the entire player.</string>
     <string name="video_fit_desc">Shows the complete video and may add black bars.</string>
+    <string name="live_channel_sort">Live Channel Sort</string>
+    <string name="sort_default">Default</string>
+    <string name="sort_az">Order by A-Z</string>
+    <string name="sort_za">Order by Z-A</string>
     <string name="player_engine">Player engine</string>
     <string name="player_default_name">4K Plus player</string>
     <string name="player_default_desc">Full controls, resume, subtitles, and progress</string>

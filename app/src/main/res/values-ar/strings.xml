@@ -93,6 +93,10 @@
     <string name="provider_login_status">تسجيل دخول المزوّد • %1$s</string>
     <string name="m3u_playlist_label">قائمة تشغيل M3U</string>
     <string name="add_another_playlist">إضافة قائمة تشغيل أخرى</string>
+    <string name="auto_update_title">التحديث التلقائي</string>
+    <string name="auto_update_everytime">تحديث البث والأفلام والمسلسلات في كل مرة</string>
+    <string name="auto_update_daily">تحديث البث والأفلام والمسلسلات يوميًا</string>
+    <string name="auto_update_every_2_days">تحديث البث والأفلام والمسلسلات بعد يومين</string>
     <string name="remove_playlist_confirm_title">إزالة %1$s؟</string>
     <string name="remove_playlist_confirm_body">سيتم إزالة بيانات تسجيل الدخول المحفوظة لهذه القائمة من هذا الجهاز.</string>
 
@@ -106,6 +110,7 @@
     <string name="live_tv_channels_count">%1$d قناة</string>
     <string name="epg_now_format">الآن: %1$s</string>
     <string name="epg_next_format">التالي: %1$s</string>
+    <string name="epg_no_info">لا توجد معلومات</string>
     <string name="search_categories">بحث في الفئات</string>
     <string name="search_channels">بحث في القنوات</string>
     <string name="cd_hide_category">إخفاء %1$s</string>
@@ -207,6 +212,10 @@
     <string name="video_fill_desc">يملأ الشاشة وقد يقتصّ الحواف.</string>
     <string name="video_stretch_desc">يمدّد الصورة لملء المشغل بالكامل.</string>
     <string name="video_fit_desc">يعرض الفيديو كاملًا وقد يضيف أشرطة سوداء.</string>
+    <string name="live_channel_sort">ترتيب قنوات البث المباشر</string>
+    <string name="sort_default">الافتراضي</string>
+    <string name="sort_az">ترتيب أبجدي تصاعدي</string>
+    <string name="sort_za">ترتيب أبجدي تنازلي</string>
     <string name="player_engine">محرّك التشغيل</string>
     <string name="player_default_name">مشغّل 4K Plus</string>
     <string name="player_default_desc">تحكم كامل، واستئناف، وترجمة، وتقدّم المشاهدة</string>

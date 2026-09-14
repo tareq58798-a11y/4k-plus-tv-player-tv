@@ -64,6 +64,8 @@ class PlaylistRepository(context: Context) {
         cacheStore.load(selected)
     }
 
+    fun lastRefreshedAt(source: PlaylistInput): Long? = cacheStore.lastSavedAt(source)
+
     suspend fun movieDetails(movie: PlaylistItem): Result<MovieDetailsInfo> = withContext(Dispatchers.IO) {
         runCatching {
             val cacheKey = movie.channelId
