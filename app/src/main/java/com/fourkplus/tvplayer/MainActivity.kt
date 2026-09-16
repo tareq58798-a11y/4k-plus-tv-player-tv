@@ -1225,17 +1225,6 @@ private fun HomeScreen(
         val seen = mutableSetOf<String>()
         featured.map { channel -> channel to channel.logoUrl?.takeIf { it.isNotBlank() && seen.add(it) } }
     }
-    var homeClock by remember { mutableStateOf(java.time.LocalDateTime.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            homeClock = java.time.LocalDateTime.now()
-            delay(30_000)
-        }
-    }
-    val homeDateText = remember(homeClock, currentLanguage) {
-        val locale = if (currentLanguage == AppLanguage.ARABIC) java.util.Locale("ar") else java.util.Locale.ENGLISH
-        homeClock.format(java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM  •  h:mm a", locale))
-    }
     PremiumBackground {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
@@ -1253,13 +1242,6 @@ private fun HomeScreen(
         }
         val header: @Composable RowScope.() -> Unit = {
             BrandMark(Modifier.weight(1f))
-            Text(
-                homeDateText,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 10.dp)
-            )
             AnimatedIconButton(onClick = onSearch) { Icon(Icons.Default.Search, stringResource(R.string.cd_search)) }
             AnimatedIconButton(onClick = { showLanguageDialog = true }) { Icon(Icons.Default.Language, stringResource(R.string.cd_language)) }
             AnimatedIconButton(onClick = onToggleTheme) {
@@ -1681,7 +1663,6 @@ private fun MoviesScreen(
     val categories = remember(movies, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.MOVIE, movies.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("movie_library", android.content.Context.MODE_PRIVATE) }
     var view by remember { mutableStateOf(MovieView.BROWSE) }
-    var detailsReturnView by remember { mutableStateOf(MovieView.BROWSE) }
     var selectedCategory by remember { mutableStateOf("Continue watching") }
     var selectedMovie by remember { mutableStateOf<PlaylistItem?>(null) }
     var details by remember { mutableStateOf<MovieDetailsInfo?>(null) }
@@ -1725,7 +1706,6 @@ private fun MoviesScreen(
         store.edit().putStringSet("favorites", updated).apply()
     }
     fun openDetails(movie: PlaylistItem) {
-        detailsReturnView = view.takeIf { it == MovieView.CATEGORY } ?: MovieView.BROWSE
         selectedMovie = movie
         details = null
         detailsError = null
@@ -1752,7 +1732,7 @@ private fun MoviesScreen(
         when (view) {
             MovieView.BROWSE -> onBack()
             MovieView.CATEGORY -> { search = ""; view = MovieView.BROWSE }
-            MovieView.DETAILS -> view = detailsReturnView
+            MovieView.DETAILS -> view = MovieView.BROWSE
             MovieView.PLAYER -> view = MovieView.DETAILS
         }
     }
@@ -1820,7 +1800,6 @@ private fun MoviesScreen(
                     recent = recent,
                     favorites = favorites,
                     continueWatching = continueWatching,
-                    restoreMovieKey = selectedMovie?.let(::channelKey),
                     progress = progress,
                     onCategory = { category ->
                         fun enter() { selectedCategory = category; search = ""; view = MovieView.CATEGORY }
@@ -1963,7 +1942,6 @@ private fun LandscapeMovieBrowser(
     recent: List<PlaylistItem>,
     favorites: List<PlaylistItem>,
     continueWatching: List<PlaylistItem>,
-    restoreMovieKey: String?,
     onCategory: (String) -> Unit,
     onSearch: (String) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
@@ -1998,11 +1976,6 @@ private fun LandscapeMovieBrowser(
     // grid rather than leaving it on the category button — 0 means "not from a press yet".
     var categorySelectionTick by remember { mutableIntStateOf(0) }
     val firstItemFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(isTv, restoreMovieKey, displayed) {
-        if (isTv && restoreMovieKey != null && displayed.any { channelKey(it) == restoreMovieKey }) {
-            runCatching { firstItemFocusRequester.requestFocus() }
-        }
-    }
     LaunchedEffect(categorySelectionTick) {
         if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
     }
@@ -2056,11 +2029,7 @@ private fun LandscapeMovieBrowser(
         Column(Modifier.weight(1f).fillMaxHeight()) {
             Text(localizedSectionTitle(selectedCategory).ifBlank { stringResource(R.string.nav_movies) }, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
             Spacer(Modifier.height(6.dp))
-            MovieGrid(
-                displayed, favoriteIds, onFavorite, onMovie, Modifier.weight(1f), true, progress,
-                firstItemFocusRequester,
-                restoreMovieKey?.takeIf { key -> displayed.any { channelKey(it) == key } }
-            )
+            MovieGrid(displayed, favoriteIds, onFavorite, onMovie, Modifier.weight(1f), true, progress, firstItemFocusRequester)
         }
     }
 }
@@ -2256,26 +2225,14 @@ private fun LandscapeLiveBrowser(
                     val nowNext = rememberEpgNowNext(it, loadEpg)
                     Surface(
                         Modifier.align(Alignment.BottomEnd).padding(8.dp).widthIn(max = 260.dp),
-                        color = Color.Transparent,
+                        color = Color.Black.copy(alpha = .64f),
                         shape = RoundedCornerShape(11.dp)
                     ) {
                         Column(
                             Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                             verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Text(
-                                it.name,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                style = androidx.compose.ui.text.TextStyle(
-                                    shadow = androidx.compose.ui.graphics.Shadow(
-                                        color = Color.Black.copy(alpha = .95f),
-                                        offset = androidx.compose.ui.geometry.Offset(0f, 1f),
-                                        blurRadius = 6f
-                                    )
-                                )
-                            )
+                            Text(it.name, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
                             NowNextLine(nowNext, titleColor = Color.White, nextColor = Color.White.copy(alpha = .75f))
                         }
                     }
@@ -2334,8 +2291,7 @@ private fun MovieGrid(
     modifier: Modifier,
     landscape: Boolean,
     progress: Map<String, Long> = emptyMap(),
-    firstItemFocusRequester: FocusRequester? = null,
-    preferredFocusKey: String? = null
+    firstItemFocusRequester: FocusRequester? = null
 ) {
     if (movies.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_movies_match), color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -2348,10 +2304,7 @@ private fun MovieGrid(
             gridItemsIndexed(movies) { index, movie ->
                 MoviePoster(
                     movie, channelKey(movie) in favoriteIds, { onFavorite(movie) }, { onMovie(movie) },
-                    modifier = if (firstItemFocusRequester != null &&
-                        (channelKey(movie) == preferredFocusKey || (preferredFocusKey == null && index == 0))) {
-                        Modifier.focusRequester(firstItemFocusRequester)
-                    } else Modifier,
+                    modifier = if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
                     watchedFraction = watchedFraction(movie, progress)
                 )
             }

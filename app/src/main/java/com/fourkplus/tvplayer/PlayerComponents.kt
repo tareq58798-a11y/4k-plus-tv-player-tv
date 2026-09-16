@@ -62,15 +62,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.fourkplus.tvplayer.data.EpgNowNext
 import com.fourkplus.tvplayer.data.LiveSnapshotCache
@@ -120,28 +116,6 @@ private fun KeepScreenOnWhilePlaying(player: Player) {
             player.removeListener(listener)
             view.keepScreenOn = false
         }
-    }
-}
-
-/** Keeps a live stream warm while the TV app is in the background, but never lets its audio
- * continue over the launcher or another app. */
-@Composable
-private fun MutePlayerWhenAppBackgrounded(player: Player) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(player, lifecycleOwner) {
-        var foregroundVolume = player.volume
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    foregroundVolume = player.volume
-                    player.volume = 0f
-                }
-                Lifecycle.Event.ON_START -> player.volume = foregroundVolume
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 }
 
@@ -342,7 +316,6 @@ internal fun MoviePlayer(
         return
     }
     var error by remember(movie) { mutableStateOf<String?>(null) }
-    var resolutionLabel by remember(movie) { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         PictureInPictureCoordinator.eligible = true
         PictureInPictureCoordinator.aspectRatio = 16f / 9f
@@ -419,9 +392,6 @@ internal fun MoviePlayer(
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlayerError(playbackException: PlaybackException) { error = playbackFailureMessage(playbackException) }
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) resolutionLabel = "${videoSize.width} × ${videoSize.height}"
-            }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
                     nextRelatedItem?.let(onRelatedItemChange)
@@ -465,17 +435,16 @@ internal fun MoviePlayer(
                     // child or the system's default back handling ever sees it.
                     object : PlayerView(it) {
                         override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-                            if (isTv && event.keyCode == android.view.KeyEvent.KEYCODE_BACK && controllerVisible) {
-                                if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) hideController()
-                                // Consume both halves of the same press. Letting ACTION_UP escape
-                                // can trigger the Activity BackHandler after the controls disappear.
+                            if (isTv && event.keyCode == android.view.KeyEvent.KEYCODE_BACK &&
+                                event.action == android.view.KeyEvent.ACTION_UP && controllerVisible
+                            ) {
+                                hideController()
                                 return true
                             }
                             return super.dispatchKeyEvent(event)
                         }
                     }.apply {
                         useController = true
-                        setKeepContentOnPlayerReset(true)
                         setShowPreviousButton(false)
                         setShowNextButton(false)
                         setControllerVisibilityListener(
@@ -545,8 +514,6 @@ internal fun MoviePlayer(
                     settings.edit().putInt("skip_seconds", it).apply()
                 },
                 videoMode = videoMode,
-                resolutionLabel = resolutionLabel,
-                showResolution = true,
                 // Deliberately not persisted (unlike mute/subtitles/skip above): aspect ratio is
                 // usually specific to whatever's currently playing (an old 4:3 show, say) - it
                 // should reset to the real default (set in Settings) for the next thing watched,
@@ -853,8 +820,6 @@ private fun PlaybackOptionsOverlay(
     showSkipInterval: Boolean = true,
     videoMode: String,
     onVideoModeChange: (String) -> Unit,
-    resolutionLabel: String? = null,
-    showResolution: Boolean = false,
     // TV fullscreen only: focus lands on the mute button (the first control) as soon as this
     // overlay appears, and pressing Left from there collapses it back - there's no touch
     // target to tap away from it the way the embedded/mobile overlay has.
@@ -865,7 +830,6 @@ private fun PlaybackOptionsOverlay(
     var subtitleMenu by remember { mutableStateOf(false) }
     var skipMenu by remember { mutableStateOf(false) }
     var sizeMenu by remember { mutableStateOf(false) }
-    var resolutionMenu by remember { mutableStateOf(false) }
     var muted by remember(player) { mutableStateOf(player.volume == 0f) }
     val muteFocusRequester = remember { FocusRequester() }
     LaunchedEffect(autoFocusFirstOnDpad) {
@@ -945,18 +909,6 @@ private fun PlaybackOptionsOverlay(
                             onClick = { onSkipSecondsChange(seconds); skipMenu = false }
                         )
                     }
-                }
-            }
-            if (showResolution) Box {
-                AnimatedIconButton(onClick = { resolutionMenu = true }, modifier = Modifier.size(38.dp)) {
-                    Icon(Icons.Default.HighQuality, "Current resolution", tint = Cyan)
-                }
-                DropdownMenu(resolutionMenu, onDismissRequest = { resolutionMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(resolutionLabel ?: "Resolution not available yet") },
-                        leadingIcon = { Icon(Icons.Default.HighQuality, null) },
-                        onClick = { resolutionMenu = false }
-                    )
                 }
             }
             Box {
@@ -1122,12 +1074,10 @@ internal fun LiveChannelPreview(
         return
     }
     var playbackError by remember { mutableStateOf<String?>(null) }
-    var resolutionLabel by remember { mutableStateOf<String?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
     val controllerVisibleHolder = controllerVisibleState ?: remember { mutableStateOf(true) }
     var controllerVisible by controllerVisibleHolder
     var controllerShownAt by remember { mutableLongStateOf(System.nanoTime()) }
-    var lastRemoteActionAt by remember { mutableLongStateOf(0L) }
     var stripExpanded by remember { mutableStateOf(false) }
     // Embedded previews must stay clean — suggestions are a fullscreen-only control. Unlike
     // MoviePlayer's portrait boxing, Live TV's hostedFullscreen (the single immersive block that
@@ -1210,11 +1160,9 @@ internal fun LiveChannelPreview(
         buildFourKPlusExoPlayer(context, skipSeconds, muted = settings.getBoolean("muted", false)).apply { playWhenReady = true }
     }
     KeepScreenOnWhilePlaying(player)
-    MutePlayerWhenAppBackgrounded(player)
 
     LaunchedEffect(channel?.streamUrl, externalSubtitle) {
         playbackError = null
-        resolutionLabel = null
         if (channel == null) {
             player.clearMediaItems()
         } else {
@@ -1222,9 +1170,6 @@ internal fun LiveChannelPreview(
                 player.setMediaItem(mediaItemWithSubtitle(context, channel.streamUrl, externalSubtitle))
                 player.prepare()
                 player.play()
-                player.videoSize.takeIf { it.width > 0 && it.height > 0 }?.let {
-                    resolutionLabel = "${it.width} × ${it.height}"
-                }
             }.onFailure {
                 playbackError = "This channel could not be previewed."
                 player.clearMediaItems()
@@ -1240,12 +1185,6 @@ internal fun LiveChannelPreview(
     }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) {
-                    resolutionLabel = "${videoSize.width} × ${videoSize.height}"
-                    channel?.let { channelSwitchFeedback = Triple(it.name, it.logoUrl, System.nanoTime()) }
-                }
-            }
             override fun onPlayerError(error: PlaybackException) {
                 val advanceTo = if (autoAdvanceOnFailure && channel != null && autoAdvanceAttempts < 3) {
                     val currentIndex = channelList.indexOfFirst { channelKey(it) == channelKey(channel) }
@@ -1290,15 +1229,12 @@ internal fun LiveChannelPreview(
                                 // RelatedItemsStrip), so this must get out of the way instead of
                                 // switching the channel the instant the user nudges the highlight.
                                 if (keyEvent.type != KeyEventType.KeyDown || channel == null || stripExpanded) return@onKeyEvent false
-                                val now = android.os.SystemClock.uptimeMillis()
-                                if (now - lastRemoteActionAt < 220L) return@onKeyEvent true
                                 // Live TV's TV fullscreen has no controls overlay to gate on (see
                                 // PlaybackOptionsOverlay below); elsewhere (touch/mobile) these keys
                                 // only fire once the on-screen controls are hidden.
                                 if (!hostedFullscreen && controllerVisible) return@onKeyEvent false
                                 when (keyEvent.key) {
                                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                                        lastRemoteActionAt = now
                                         // OK always exits TV fullscreen back to the categories and
                                         // channel list - Back already does this, this just gives
                                         // OK the same result since it's the more natural button.
@@ -1316,12 +1252,12 @@ internal fun LiveChannelPreview(
                                     // still-open bar meant for the channel you were just watching.
                                     Key.DirectionDown -> when {
                                         hostedFullscreen && controllerVisible -> false
-                                        hostedFullscreen -> { if (channelList.size > 1) { lastRemoteActionAt = now; switchChannel(forward = false); true } else false }
+                                        hostedFullscreen -> { if (channelList.size > 1) { switchChannel(forward = false); true } else false }
                                         channelList.size > 1 -> { stripExpanded = true; true }
                                         else -> false
                                     }
                                     Key.DirectionUp -> {
-                                        if (hostedFullscreen && !controllerVisible && channelList.size > 1) { lastRemoteActionAt = now; switchChannel(forward = true); true } else false
+                                        if (hostedFullscreen && !controllerVisible && channelList.size > 1) { switchChannel(forward = true); true } else false
                                     }
                                     Key.DirectionLeft -> {
                                         if (!hostedFullscreen && channelList.size > 1) { switchChannel(forward = false); true } else false
@@ -1334,7 +1270,7 @@ internal fun LiveChannelPreview(
                                     // while mute has focus, handled in PlaybackOptionsOverlay via
                                     // onCollapseOnDpad.
                                     Key.DirectionRight -> when {
-                                        hostedFullscreen && !controllerVisible -> { lastRemoteActionAt = now; showControllerBriefly(); true }
+                                        hostedFullscreen && !controllerVisible -> { showControllerBriefly(); true }
                                         hostedFullscreen -> false
                                         channelList.size > 1 -> { switchChannel(forward = true); true }
                                         else -> false
@@ -1356,7 +1292,6 @@ internal fun LiveChannelPreview(
                     factory = {
                         PlayerView(it).apply {
                             useController = false
-                            setKeepContentOnPlayerReset(true)
                             resizeMode = videoResizeMode
                             this.player = player
                         }
@@ -1470,9 +1405,6 @@ internal fun LiveChannelPreview(
                                     maxLines = 1,
                                     style = TextStyle(shadow = legibleShadow)
                                 )
-                                resolutionLabel?.let {
-                                    Text(it, color = Cyan, fontSize = 12.sp, maxLines = 1, style = TextStyle(shadow = legibleShadow))
-                                }
                                 if (hostedFullscreen && loadEpg != null) {
                                     Text(nowNext?.now?.title ?: noInfo, color = Orange, fontSize = 12.sp, maxLines = 1, style = TextStyle(shadow = legibleShadow))
                                     Text(nowNext?.next?.title ?: noInfo, color = Color.White.copy(alpha = .75f), fontSize = 12.sp, maxLines = 1, style = TextStyle(shadow = legibleShadow))
@@ -1522,8 +1454,6 @@ internal fun LiveChannelPreview(
                     },
                     showSkipInterval = false,
                     videoMode = videoMode,
-                    resolutionLabel = resolutionLabel,
-                    showResolution = false,
                     // Deliberately not persisted - see the matching comment in MoviePlayer. A
                     // stretch/zoom choice made while watching one channel shouldn't carry into a
                     // different channel or into Movies/Series; each starts from the real default

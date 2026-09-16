@@ -85,7 +85,6 @@ internal fun SeriesScreen(
     val categories = remember(seriesItems, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.SERIES, seriesItems.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("series_library", Context.MODE_PRIVATE) }
     var view by remember { mutableStateOf(SeriesView.BROWSE) }
-    var detailsReturnView by remember { mutableStateOf(SeriesView.BROWSE) }
     var selectedCategory by remember { mutableStateOf("Continue watching") }
     var selectedSeries by remember { mutableStateOf<PlaylistItem?>(null) }
     var selectedEpisode by remember { mutableStateOf<SeriesEpisode?>(null) }
@@ -168,7 +167,6 @@ internal fun SeriesScreen(
     )
 
     fun openDetails(series: PlaylistItem) {
-        detailsReturnView = view.takeIf { it == SeriesView.CATEGORY } ?: SeriesView.BROWSE
         selectedSeries = series
         selectedEpisode = null
         details = null
@@ -213,7 +211,7 @@ internal fun SeriesScreen(
         when (view) {
             SeriesView.BROWSE -> onBack()
             SeriesView.CATEGORY -> { search = ""; view = SeriesView.BROWSE }
-            SeriesView.DETAILS -> view = detailsReturnView
+            SeriesView.DETAILS -> view = SeriesView.BROWSE
             SeriesView.PLAYER -> view = SeriesView.DETAILS
         }
     }
@@ -340,7 +338,6 @@ internal fun SeriesScreen(
                 recent = recent,
                 favorites = favorites,
                 continueWatching = continueWatching,
-                restoreSeriesKey = selectedSeries?.let(::channelKey),
                 onCategory = { category ->
                     fun enter() { selectedCategory = category; search = ""; view = SeriesView.CATEGORY }
                     if (category in lockedCategories) requirePin(::enter) else enter()
@@ -496,7 +493,6 @@ private fun LandscapeSeriesBrowser(
     recent: List<PlaylistItem>,
     favorites: List<PlaylistItem>,
     continueWatching: List<PlaylistItem>,
-    restoreSeriesKey: String?,
     onCategory: (String) -> Unit,
     onSearch: (String) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
@@ -530,11 +526,6 @@ private fun LandscapeSeriesBrowser(
     // grid rather than leaving it on the category button — 0 means "not from a press yet".
     var categorySelectionTick by remember { mutableIntStateOf(0) }
     val firstItemFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(isTv, restoreSeriesKey, displayed) {
-        if (isTv && restoreSeriesKey != null && displayed.any { channelKey(it) == restoreSeriesKey }) {
-            runCatching { firstItemFocusRequester.requestFocus() }
-        }
-    }
     LaunchedEffect(categorySelectionTick) {
         if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
     }
@@ -588,11 +579,7 @@ private fun LandscapeSeriesBrowser(
         Column(Modifier.weight(1f).fillMaxHeight()) {
             Text(localizedSectionTitle(selectedCategory).ifBlank { stringResource(R.string.nav_series) }, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
             Spacer(Modifier.height(6.dp))
-            SeriesGrid(
-                displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true,
-                firstItemFocusRequester,
-                restoreSeriesKey?.takeIf { key -> displayed.any { channelKey(it) == key } }
-            )
+            SeriesGrid(displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true, firstItemFocusRequester)
         }
     }
 }
@@ -722,8 +709,7 @@ private fun SeriesGrid(
     onSeries: (PlaylistItem) -> Unit,
     modifier: Modifier,
     landscape: Boolean,
-    firstItemFocusRequester: FocusRequester? = null,
-    preferredFocusKey: String? = null
+    firstItemFocusRequester: FocusRequester? = null
 ) {
     if (seriesItems.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -743,10 +729,7 @@ private fun SeriesGrid(
                     channelKey(series) in favoriteIds,
                     { onFavorite(series) },
                     { onSeries(series) },
-                    modifier = if (firstItemFocusRequester != null &&
-                        (channelKey(series) == preferredFocusKey || (preferredFocusKey == null && index == 0))) {
-                        Modifier.focusRequester(firstItemFocusRequester)
-                    } else Modifier
+                    modifier = if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier
                 )
             }
         }
