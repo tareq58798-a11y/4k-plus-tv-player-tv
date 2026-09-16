@@ -19,8 +19,8 @@ android {
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
         minSdk = 26
         targetSdk = 35
-        versionCode = 57
-        versionName = "1.0-tv"
+        versionCode = 60
+        versionName = "1.3 Beta"
     }
 
     buildFeatures { compose = true }
