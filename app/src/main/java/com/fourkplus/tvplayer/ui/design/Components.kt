@@ -200,7 +200,7 @@ fun ArtCard(
     progress: Float? = null,
     cornerBadge: String? = null,
     overlayBadge: (@Composable BoxScope.() -> Unit)? = null,
-    /** Channels and other non-artwork tiles keep a visible outline; posters never do. */
+    /** Retained for callers that once distinguished channel tiles; every card is outlined now. */
     useFocusBorder: Boolean = false,
     /**
      * A still lifted from a live channel a moment ago. When present it is shown instead of the
@@ -241,10 +241,15 @@ fun ArtCard(
                 }
                 .clip(RoundedCornerShape(Dims.RadiusCard))
                 .background(Color(0xFF0B1524))
+                // Every focused card is ringed. Scale alone was the brief's instruction and it is
+                // right in principle - artwork should not be boxed in - but at this card size six
+                // per cent is about ten pixels, which is not a signal a viewer sitting across a
+                // room can read. With the brightest thing on the page being a blue Play button,
+                // the honest conclusion from a scale-only highlight was that focus had gone there.
                 .then(
-                    if (useFocusBorder && glow > 0f) {
+                    if (glow > 0f) {
                         Modifier.border(
-                            BorderStroke(2.dp, Tone.Accent.copy(alpha = glow)),
+                            BorderStroke(3.dp, Tone.Accent.copy(alpha = glow)),
                             RoundedCornerShape(Dims.RadiusCard)
                         )
                     } else Modifier
