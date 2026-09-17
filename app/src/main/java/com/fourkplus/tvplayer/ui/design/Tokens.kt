@@ -119,7 +119,7 @@ object Motion {
     val PosterScaleMs = 220
     val InfoFadeMs = 200
     val PageMs = 260
-    val BackdropMs = 300
+    val BackdropMs = 240
 
     /** A page arriving, and each band of content arriving within it. */
     val EnterMs = 240
@@ -134,8 +134,11 @@ object Motion {
     /**
      * How long a poster must hold focus before its artwork is committed to the background. Holding
      * D-pad down through twenty items should cost one image request, not twenty.
+     *
+     * Short, because the neighbours of the focused card are fetched and decoded ahead of time: the
+     * wait this guards against is mostly gone, so the pause before committing can be too.
      */
-    val BackdropDebounceMs = 180L
+    val BackdropDebounceMs = 110L
 
     /** Scale a focused artwork card grows to. Kept inside [Dims.CardBleed]. */
     const val PosterFocusScale = 1.06f

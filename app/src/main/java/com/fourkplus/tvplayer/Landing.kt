@@ -80,7 +80,9 @@ import com.fourkplus.tvplayer.ui.design.RevealOnAppear
 import com.fourkplus.tvplayer.ui.design.SectionHeading
 import com.fourkplus.tvplayer.ui.design.Tone
 import com.fourkplus.tvplayer.ui.design.tvFocusable
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The shared skeleton behind Home, Live TV, Movies and Series.
@@ -172,23 +174,44 @@ internal fun LandingScaffold(
     var focusedRow by remember { mutableIntStateOf(0) }
     // Keyed by item, so moving back onto something already looked up costs nothing.
     val bios = remember { mutableStateMapOf<String, ItemBio>() }
-    // Details for the titles in view are fetched before anyone reaches them, so that by the time a
-    // card takes focus its real backdrop is already known and already decoded. Without this the
-    // page could only show the poster first and swap to the better picture when the details
-    // landed, which read as the background changing its mind a moment after every move.
-    //
-    // Sequential on purpose: eight requests at once is a burst most panels answer slowly or not at
-    // all, and nothing here is urgent enough to be worth that.
-    LaunchedEffect(rows, loadBio) {
-        val fetch = loadBio ?: return@LaunchedEffect
-        rows.asSequence()
-            .flatMap { it.entries.asSequence() }
-            .filter { it.item.kind != MediaKind.LIVE }
-            .take(10)
-            .forEach { entry ->
-                if (bios.containsKey(entry.key)) return@forEach
-                runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
+    /**
+     * The cards the remote can reach in one press from wherever it is: the next along the row, the
+     * one before it, the one after that, and the same position in the rows above and below. Every
+     * direction is covered, so whichever way the viewer moves the picture is already in hand.
+     *
+     * Before anything holds focus this is simply the start of the first row, which is where Down
+     * off the navigation lands.
+     */
+    val neighbours = remember(focused, focusedRow, rows) {
+        val current = rows.getOrNull(focusedRow)
+        val here = current?.entries?.indexOfFirst { it.key == focused?.key } ?: -1
+        buildList {
+            if (current != null && here >= 0) {
+                listOf(here + 1, here - 1, here + 2, here + 3).forEach { at ->
+                    current.entries.getOrNull(at)?.let(::add)
+                }
             }
+            rows.forEachIndexed { index, other ->
+                if (index == focusedRow) return@forEachIndexed
+                other.entries.getOrNull(here.coerceAtLeast(0))?.let(::add)
+                if (here < 0) addAll(other.entries.take(2))
+            }
+            if (here < 0) current?.entries?.take(4)?.let(::addAll)
+        }.filter { it.item.kind != MediaKind.LIVE }.distinctBy { it.key }
+    }
+
+    // Their details are fetched together rather than one after another. There are only ever a
+    // handful, they are the ones about to be needed, and waiting for each in turn is exactly the
+    // delay this is meant to remove.
+    LaunchedEffect(neighbours, loadBio) {
+        val fetch = loadBio ?: return@LaunchedEffect
+        coroutineScope {
+            neighbours.filterNot { bios.containsKey(it.key) }.forEach { entry ->
+                launch {
+                    runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
+                }
+            }
+        }
     }
 
     // Keyed on the focused entry, so moving on cancels the wait before it ever becomes a request:
@@ -232,14 +255,14 @@ internal fun LandingScaffold(
 
     // The first row's artwork is warmed as soon as the page appears, so the first move along it
     // shows its background immediately instead of after a round trip.
-    // Warmed with the picture each card will actually ask for - its real backdrop once the details
-    // have arrived, its poster until then - so reaching a card finds the image already decoded
-    // rather than starting a round trip.
+    // Warmed with the picture each neighbour will actually ask for - its real backdrop once the
+    // details have arrived, its poster until then - so arriving at a card finds the image decoded
+    // rather than starting a round trip. The list follows focus, so the warming moves with it.
     PreloadBackdrops(
-        remember(rows, bios.size) {
-            rows.firstOrNull()?.entries.orEmpty()
-                .filter { it.item.kind != MediaKind.LIVE }
-                .mapNotNull { bios[it.key]?.backdropUrl?.takeIf(String::isNotBlank) ?: it.item.logoUrl }
+        remember(neighbours, bios.size) {
+            neighbours.mapNotNull {
+                bios[it.key]?.backdropUrl?.takeIf(String::isNotBlank) ?: it.item.logoUrl
+            }
         }
     )
 

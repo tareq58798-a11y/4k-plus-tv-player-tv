@@ -194,7 +194,7 @@ private const val BackdropHeightPx = 2160
 fun PreloadBackdrops(urls: List<String>) {
     val context = LocalContext.current
     LaunchedEffect(urls) {
-        urls.filter { it.isNotBlank() }.take(6).forEach { url ->
+        urls.filter { it.isNotBlank() }.take(12).forEach { url ->
             runCatching {
                 context.imageLoader.enqueue(
                     ImageRequest.Builder(context)
