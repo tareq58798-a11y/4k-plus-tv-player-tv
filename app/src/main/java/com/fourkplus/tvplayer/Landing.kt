@@ -1,5 +1,7 @@
 ﻿package com.fourkplus.tvplayer
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,8 +65,10 @@ import com.fourkplus.tvplayer.ui.design.EmptyState
 import com.fourkplus.tvplayer.ui.design.FadingInfo
 import com.fourkplus.tvplayer.ui.design.GlassPanel
 import com.fourkplus.tvplayer.ui.design.LiveFlag
+import com.fourkplus.tvplayer.ui.design.LocalReducedMotion
 import com.fourkplus.tvplayer.ui.design.MetaItem
 import com.fourkplus.tvplayer.ui.design.MetadataRow
+import com.fourkplus.tvplayer.ui.design.Motion
 import com.fourkplus.tvplayer.ui.design.NavDestination
 import com.fourkplus.tvplayer.ui.design.PreloadBackdrops
 import com.fourkplus.tvplayer.ui.design.SectionHeading
@@ -233,17 +237,25 @@ internal fun LandingScaffold(
             if (rowIndex == 0) {
                 // Sits between the first row and everything below it, exactly as in the design:
                 // the row you are working in, then what you have landed on.
+                //
+                // It takes only the height it actually needs. Reserving room for the tallest
+                // possible description left a hole on the page whenever nothing was focused - on
+                // arrival, or while the viewer is up in the navigation bar. Instead the block
+                // grows as the details arrive and the rows beneath slide down with it, which
+                // animateContentSize makes a movement rather than a jump.
                 FadingInfo(
                     key = focused,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .animateContentSize(
+                            if (LocalReducedMotion.current) snap() else Motion.info()
+                        )
                         .padding(horizontal = Dims.SafeHorizontal)
-                        // Fixed floor so a one-line description and a three-line one do not shunt
-                        // the rows below up and down as focus moves.
-                        .heightIn(min = 166.dp)
                 ) { current ->
                     if (current == null) {
-                        Spacer(Modifier.fillMaxWidth())
+                        // Nothing at all, not an empty box: a zero-height branch is what lets the
+                        // next row sit directly under the artwork when no card holds focus.
+                        Spacer(Modifier.fillMaxWidth().height(0.dp))
                     } else {
                         FocusedItemInfo(
                             entry = current,
