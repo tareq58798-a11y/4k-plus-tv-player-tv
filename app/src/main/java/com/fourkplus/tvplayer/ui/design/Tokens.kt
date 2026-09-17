@@ -121,6 +121,16 @@ object Motion {
     val PageMs = 260
     val BackdropMs = 300
 
+    /** A page arriving, and each band of content arriving within it. */
+    val EnterMs = 240
+
+    /** How far apart consecutive rows begin their entrance. Enough to read as a sequence, short
+     *  enough that the last row is not still arriving when the viewer reaches for the remote. */
+    val StaggerMs = 70
+
+    /** Artwork fading up once decoded, instead of appearing between one frame and the next. */
+    val ImageFadeMs = 240
+
     /**
      * How long a poster must hold focus before its artwork is committed to the background. Holding
      * D-pad down through twenty items should cost one image request, not twenty.

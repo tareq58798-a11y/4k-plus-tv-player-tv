@@ -108,6 +108,7 @@ import com.fourkplus.tvplayer.ui.design.CinematicBackdrop
 import com.fourkplus.tvplayer.ui.design.LocalIsTv
 import com.fourkplus.tvplayer.ui.design.LocalReducedMotion
 import com.fourkplus.tvplayer.ui.design.NavDestination
+import com.fourkplus.tvplayer.ui.design.ScreenEnter
 import com.fourkplus.tvplayer.ui.design.rememberBackdropState
 import com.fourkplus.tvplayer.ui.design.rememberReducedMotion
 import com.fourkplus.tvplayer.data.LoadedPlaylist
@@ -440,6 +441,10 @@ private fun App() {
             modifier = Modifier.fillMaxSize()
         ) { scaffoldPadding ->
             Box(Modifier.fillMaxSize().padding(scaffoldPadding)) {
+            // Every screen fades and eases up as it opens, rather than being swapped in between one
+            // frame and the next. Keyed on the destination, so changing section replays it; the
+            // content is live and focusable from the first frame, so it never delays the remote.
+            ScreenEnter(screen) {
             when (screen) {
                 Screen.LOADING -> PremiumBackground {
                     Column(
@@ -656,6 +661,7 @@ private fun App() {
                     },
                     onMessage = message
                 )
+            }
             }
             pendingPinAction?.let { action ->
                 PinDialog(

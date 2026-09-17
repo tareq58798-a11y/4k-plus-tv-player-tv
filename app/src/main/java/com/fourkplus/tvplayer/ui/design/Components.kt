@@ -2,7 +2,9 @@
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +48,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import kotlinx.coroutines.delay
 
 /**
  * Reusable building blocks for the cinematic interface. Pages compose these rather than styling
@@ -79,6 +85,65 @@ fun Modifier.tvFocusable(
             enabled = enabled,
             onClick = { onClick?.invoke() }
         )
+}
+
+/**
+ * Fades and lifts its content into place the first time it appears, optionally after [delayMs].
+ *
+ * Giving consecutive bands of a page increasing delays makes the page assemble itself rather than
+ * arrive all at once, which is the difference between a screen that appears and a screen that
+ * opens. The delays are short on purpose: the content is interactive from the first frame, so a
+ * viewer who is already pressing the remote never waits for the animation to finish.
+ */
+@Composable
+fun RevealOnAppear(
+    modifier: Modifier = Modifier,
+    delayMs: Int = 0,
+    content: @Composable () -> Unit
+) {
+    val reducedMotion = LocalReducedMotion.current
+    val progress = remember { Animatable(if (reducedMotion) 1f else 0f) }
+    LaunchedEffect(reducedMotion) {
+        if (reducedMotion) {
+            progress.snapTo(1f)
+        } else {
+            if (delayMs > 0) delay(delayMs.toLong())
+            progress.animateTo(1f, tween(Motion.EnterMs, easing = Motion.EaseOut))
+        }
+    }
+    Box(
+        modifier.graphicsLayer {
+            alpha = progress.value
+            translationY = (1f - progress.value) * 16.dp.toPx()
+        }
+    ) {
+        content()
+    }
+}
+
+/**
+ * The whole page fading and easing up as it opens. Scale is deliberately tiny - just enough to
+ * read as the page coming forward rather than as a zoom, which at this size would be a distraction
+ * every time the viewer changed section.
+ */
+@Composable
+fun ScreenEnter(key: Any?, content: @Composable () -> Unit) {
+    val reducedMotion = LocalReducedMotion.current
+    val progress = remember(key) { Animatable(if (reducedMotion) 1f else 0f) }
+    LaunchedEffect(key, reducedMotion) {
+        if (reducedMotion) progress.snapTo(1f)
+        else progress.animateTo(1f, tween(Motion.PageMs, easing = Motion.EaseOut))
+    }
+    Box(
+        Modifier.fillMaxSize().graphicsLayer {
+            alpha = progress.value
+            val scale = 0.988f + 0.012f * progress.value
+            scaleX = scale
+            scaleY = scale
+        }
+    ) {
+        content()
+    }
 }
 
 /** A translucent dark panel - the surface every grouped control sits on. */
@@ -193,8 +258,13 @@ fun ArtCard(
                     modifier = Modifier.fillMaxSize()
                 )
             } else if (!imageUrl.isNullOrBlank()) {
+                // Artwork fades up once decoded rather than appearing between one frame and the
+                // next, so a row filling in reads as settling instead of flickering.
                 AsyncImage(
-                    model = imageUrl,
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(imageUrl)
+                        .crossfade(if (LocalReducedMotion.current) 0 else Motion.ImageFadeMs)
+                        .build(),
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

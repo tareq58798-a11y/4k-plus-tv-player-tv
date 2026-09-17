@@ -71,6 +71,7 @@ import com.fourkplus.tvplayer.ui.design.MetadataRow
 import com.fourkplus.tvplayer.ui.design.Motion
 import com.fourkplus.tvplayer.ui.design.NavDestination
 import com.fourkplus.tvplayer.ui.design.PreloadBackdrops
+import com.fourkplus.tvplayer.ui.design.RevealOnAppear
 import com.fourkplus.tvplayer.ui.design.SectionHeading
 import com.fourkplus.tvplayer.ui.design.Tone
 import com.fourkplus.tvplayer.ui.design.tvFocusable
@@ -193,45 +194,58 @@ internal fun LandingScaffold(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Dims.GapM)
     ) {
-        AppTopBar(
-            selected = destination,
-            onSelect = onNavigate,
-            labels = labels,
-            onSearch = onSearch,
-            onLanguage = onLanguage,
-            onSettings = onSettings,
-            keepFocus = arrivedFromNavBar
-        )
+        RevealOnAppear {
+            AppTopBar(
+                selected = destination,
+                onSelect = onNavigate,
+                labels = labels,
+                onSearch = onSearch,
+                onLanguage = onLanguage,
+                onSettings = onSettings,
+                keepFocus = arrivedFromNavBar
+            )
+        }
         if (!hasContent && tile == null) {
-            EmptyState(emptyMessage, Modifier.fillMaxWidth().padding(Dims.SafeHorizontal))
+            RevealOnAppear(delayMs = Motion.StaggerMs) {
+                EmptyState(emptyMessage, Modifier.fillMaxWidth().padding(Dims.SafeHorizontal))
+            }
         }
         rows.forEachIndexed { rowIndex, row ->
             val showTile = tile != null && rowIndex == 0
             val placeholders = if (row.entries.isEmpty()) row.placeholdersWhenEmpty else 0
             if (row.entries.isEmpty() && !showTile && placeholders == 0) return@forEachIndexed
-            SectionHeading(row.title, Modifier.padding(horizontal = Dims.SafeHorizontal))
-            LazyRow(
-                Modifier.fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = Dims.SafeHorizontal - Dims.CardBleed
-                ),
-                horizontalArrangement = Arrangement.spacedBy(Dims.GapXs)
+            // Each band starts a little after the one above it, so the page assembles top to
+            // bottom instead of appearing all at once.
+            RevealOnAppear(
+                modifier = Modifier.fillMaxWidth(),
+                delayMs = Motion.StaggerMs * (rowIndex + 1)
             ) {
-                items(row.entries, key = { "${row.id}_${it.key}" }) { entry ->
-                    val isFirst = rowIndex == 0 && entry == row.entries.firstOrNull()
-                    LandingCard(
-                        entry = entry,
-                        backdrop = backdrop,
-                        modifier = if (isFirst) Modifier.focusRequester(firstCard) else Modifier,
-                        onFocused = { focused = entry },
-                        onClick = { onSelect(entry) }
-                    )
-                }
-                if (placeholders > 0) {
-                    items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
-                }
-                if (showTile && tile != null) {
-                    item(key = "${row.id}_all_categories") { CategoryTile(tile) }
+                Column(verticalArrangement = Arrangement.spacedBy(Dims.GapM)) {
+                    SectionHeading(row.title, Modifier.padding(horizontal = Dims.SafeHorizontal))
+                    LazyRow(
+                        Modifier.fillMaxWidth(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = Dims.SafeHorizontal - Dims.CardBleed
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(Dims.GapXs)
+                    ) {
+                        items(row.entries, key = { "${row.id}_${it.key}" }) { entry ->
+                            val isFirst = rowIndex == 0 && entry == row.entries.firstOrNull()
+                            LandingCard(
+                                entry = entry,
+                                backdrop = backdrop,
+                                modifier = if (isFirst) Modifier.focusRequester(firstCard) else Modifier,
+                                onFocused = { focused = entry },
+                                onClick = { onSelect(entry) }
+                            )
+                        }
+                        if (placeholders > 0) {
+                            items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
+                        }
+                        if (showTile && tile != null) {
+                            item(key = "${row.id}_all_categories") { CategoryTile(tile) }
+                        }
+                    }
                 }
             }
             if (rowIndex == 0) {
@@ -268,7 +282,9 @@ internal fun LandingScaffold(
                 }
             }
         }
-        footer?.invoke()
+        footer?.let {
+            RevealOnAppear(delayMs = Motion.StaggerMs * 3) { it() }
+        }
         Spacer(Modifier.height(Dims.SafeVertical))
     }
 }
