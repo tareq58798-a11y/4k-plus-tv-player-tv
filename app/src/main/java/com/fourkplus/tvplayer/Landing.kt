@@ -46,6 +46,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -169,6 +172,10 @@ internal fun LandingScaffold(
         runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
     }
     val firstCard = remember { FocusRequester() }
+    // The page puts focus on its own tab rather than leaving it to a geometric search. Compose
+    // looks for whatever focusable sits nearest overhead, which for a card on the right of a row
+    // is one of the header icons, not the section's tab - so Up is handled explicitly below.
+    val sectionTab = remember { FocusRequester() }
     val labels = mapOf(
         NavDestination.HOME to stringResource(R.string.nav_home),
         NavDestination.LIVE to stringResource(R.string.nav_live_tv),
@@ -208,7 +215,8 @@ internal fun LandingScaffold(
                 onSearch = onSearch,
                 onLanguage = onLanguage,
                 onSettings = onSettings,
-                keepFocus = arrivedFromNavBar
+                keepFocus = arrivedFromNavBar,
+                selectedTabFocus = sectionTab
             )
         }
         if (!hasContent && tile == null) {
@@ -223,7 +231,22 @@ internal fun LandingScaffold(
             // Each band starts a little after the one above it, so the page assembles top to
             // bottom instead of appearing all at once.
             RevealOnAppear(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Up out of the top row goes to this section's own tab, always. Left to
+                    // Compose, the search picks whatever focusable is nearest overhead, which
+                    // depends on where along the row the card sits - so the indicator appeared to
+                    // wander into the header icons or a neighbouring section. Rows below this one
+                    // are left alone: Up there means the row above, which the search gets right.
+                    .then(
+                        if (rowIndex == 0) {
+                            Modifier.onPreviewKeyEvent { event ->
+                                if (event.isInitialKeyDown && event.key == Key.DirectionUp) {
+                                    runCatching { sectionTab.requestFocus() }.isSuccess
+                                } else false
+                            }
+                        } else Modifier
+                    ),
                 delayMs = Motion.StaggerMs * (rowIndex + 1)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dims.GapS)) {

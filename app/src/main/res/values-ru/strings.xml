@@ -304,5 +304,7 @@
     <string name="search_results_count">Результатов: %1$d</string>
     <string name="landing_recently_added">Недавно добавленное</string>
     <string name="landing_hint_recent">Быстрый доступ к тому, что вы смотрели последним.</string>
-    <string name="landing_hint_favorites">Добавляйте каналы, фильмы и сериалы в избранное, чтобы они были в одном нажатии.</string>
+    <string name="landing_hint_favorites_channels">Добавляйте каналы в избранное, чтобы они были в одном нажатии.</string>
+    <string name="landing_hint_favorites_movies">Добавляйте фильмы в избранное, чтобы они были в одном нажатии.</string>
+    <string name="landing_hint_favorites_series">Добавляйте сериалы в избранное, чтобы они были в одном нажатии.</string>
 </resources>

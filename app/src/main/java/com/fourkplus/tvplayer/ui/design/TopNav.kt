@@ -80,9 +80,15 @@ fun AppTopBar(
      * to be put back on the section they landed on, or a single press would drop them into the new
      * page's content and they could never reach the tab after it.
      */
-    keepFocus: Boolean = false
+    keepFocus: Boolean = false,
+    /**
+     * Points at the tab for the section currently open. Hoisted so the page below can put focus
+     * there itself rather than hoping a geometric focus search picks the right thing.
+     */
+    selectedTabFocus: FocusRequester? = null
 ) {
-    val selectedTab = remember { FocusRequester() }
+    val ownTabFocus = remember { FocusRequester() }
+    val selectedTab = selectedTabFocus ?: ownTabFocus
     LaunchedEffect(selected, keepFocus) {
         if (keepFocus) runCatching { selectedTab.requestFocus() }
     }

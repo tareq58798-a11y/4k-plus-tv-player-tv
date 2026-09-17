@@ -304,5 +304,7 @@
     <string name="search_results_count">%1$d sonuç</string>
     <string name="landing_recently_added">Yeni eklenenler</string>
     <string name="landing_hint_recent">En son izlediklerinize hızlı erişim.</string>
-    <string name="landing_hint_favorites">Kanalları, filmleri ve dizileri favorilerinize ekleyin, tek tuşla ulaşın.</string>
+    <string name="landing_hint_favorites_channels">Kanalları favorilerinize ekleyin, tek tuşla ulaşın.</string>
+    <string name="landing_hint_favorites_movies">Filmleri favorilerinize ekleyin, tek tuşla ulaşın.</string>
+    <string name="landing_hint_favorites_series">Dizileri favorilerinize ekleyin, tek tuşla ulaşın.</string>
 </resources>

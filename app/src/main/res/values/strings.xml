@@ -328,5 +328,7 @@
     <string name="search_results_count">%1$d results</string>
     <string name="landing_recently_added">Recently Added</string>
     <string name="landing_hint_recent">Easy access to whatever you watched last.</string>
-    <string name="landing_hint_favorites">Add channels, movies and series to your favorites to keep them one press away.</string>
+    <string name="landing_hint_favorites_channels">Add channels to your favorites to keep them one press away.</string>
+    <string name="landing_hint_favorites_movies">Add movies to your favorites to keep them one press away.</string>
+    <string name="landing_hint_favorites_series">Add series to your favorites to keep them one press away.</string>
 </resources>

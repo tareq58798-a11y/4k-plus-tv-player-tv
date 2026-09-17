@@ -304,5 +304,7 @@
     <string name="search_results_count">%1$d résultats</string>
     <string name="landing_recently_added">Ajouté récemment</string>
     <string name="landing_hint_recent">Accès rapide à ce que vous avez regardé en dernier.</string>
-    <string name="landing_hint_favorites">Ajoutez chaînes, films et séries à vos favoris pour les garder à portée d\'une touche.</string>
+    <string name="landing_hint_favorites_channels">Ajoutez des chaînes à vos favoris pour les garder à portée d\'une touche.</string>
+    <string name="landing_hint_favorites_movies">Ajoutez des films à vos favoris pour les garder à portée d\'une touche.</string>
+    <string name="landing_hint_favorites_series">Ajoutez des séries à vos favoris pour les garder à portée d\'une touche.</string>
 </resources>

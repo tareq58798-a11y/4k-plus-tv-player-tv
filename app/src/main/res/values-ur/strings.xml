@@ -304,5 +304,7 @@
     <string name="search_results_count">%1$d نتائج</string>
     <string name="landing_recently_added">حال ہی میں شامل کیا گیا</string>
     <string name="landing_hint_recent">آپ نے آخری بار جو دیکھا، اس تک فوری رسائی۔</string>
-    <string name="landing_hint_favorites">چینلز، فلمیں اور سیریز پسندیدہ میں شامل کریں تاکہ وہ ایک بٹن کی دوری پر رہیں۔</string>
+    <string name="landing_hint_favorites_channels">چینلز پسندیدہ میں شامل کریں تاکہ وہ ایک بٹن کی دوری پر رہیں۔</string>
+    <string name="landing_hint_favorites_movies">فلمیں پسندیدہ میں شامل کریں تاکہ وہ ایک بٹن کی دوری پر رہیں۔</string>
+    <string name="landing_hint_favorites_series">سیریز پسندیدہ میں شامل کریں تاکہ وہ ایک بٹن کی دوری پر رہیں۔</string>
 </resources>

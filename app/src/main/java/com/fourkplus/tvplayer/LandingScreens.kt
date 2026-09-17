@@ -200,7 +200,7 @@ internal fun MoviesLandingScreen(
                 stringResource(R.string.section_favorites),
                 favoriteEntries,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_favorites)
+                hint = stringResource(R.string.landing_hint_favorites_movies)
             )
         ),
         tile = LandingTile(
@@ -270,7 +270,7 @@ internal fun SeriesLandingScreen(
                 stringResource(R.string.section_favorites),
                 favoriteEntries,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_favorites)
+                hint = stringResource(R.string.landing_hint_favorites_series)
             )
         ),
         tile = LandingTile(
@@ -333,7 +333,7 @@ internal fun LiveLandingScreen(
                 stringResource(R.string.section_favorites),
                 favoriteEntries,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_favorites)
+                hint = stringResource(R.string.landing_hint_favorites_channels)
             )
         ),
         tile = LandingTile(
