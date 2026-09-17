@@ -553,12 +553,18 @@ private fun LandscapeSeriesBrowser(
     LaunchedEffect(categorySelectionTick) {
         if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
     }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // See COMPACT_TV_WIDTH: matches the Movies browser so both catalogues behave identically.
+    val compact = maxWidth < COMPACT_TV_WIDTH
     Row(
-        Modifier.fillMaxSize().padding(horizontal = if (isTv) 40.dp else 18.dp, vertical = if (isTv) 22.dp else 8.dp),
+        Modifier.fillMaxSize().padding(
+            horizontal = if (compact) 14.dp else if (isTv) 40.dp else 18.dp,
+            vertical = if (isTv) 22.dp else 8.dp
+        ),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Surface(
-            Modifier.width(240.dp).fillMaxHeight(),
+            Modifier.width(if (compact) 180.dp else 240.dp).fillMaxHeight(),
             shape = RoundedCornerShape(15.dp),
             color = Color.Black.copy(alpha = .34f),
             border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
@@ -608,6 +614,7 @@ private fun LandscapeSeriesBrowser(
                 firstItemFocusRequester, restoreFocusKey, onRestoreHandled
             )
         }
+    }
     }
 }
 
@@ -761,10 +768,10 @@ private fun SeriesGrid(
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text(stringResource(R.string.no_series_match), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    } else {
+    } else BoxWithConstraints(modifier) {
         LazyVerticalGrid(
-            columns = GridCells.Fixed(if (landscape) 7 else 3),
-            modifier = modifier,
+            columns = GridCells.Fixed(posterGridColumns(maxWidth, landscape)),
+            modifier = Modifier.fillMaxSize(),
             state = gridState,
             horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp),
             verticalArrangement = Arrangement.spacedBy(if (landscape) 9.dp else 16.dp),

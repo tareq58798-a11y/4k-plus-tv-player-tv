@@ -2085,12 +2085,19 @@ private fun LandscapeMovieBrowser(
     LaunchedEffect(categorySelectionTick) {
         if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
     }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // See COMPACT_TV_WIDTH: a narrow panel gets a slimmer sidebar and tighter margins so the poster
+    // grid beside it keeps enough room to stay readable.
+    val compact = maxWidth < COMPACT_TV_WIDTH
     Row(
-        Modifier.fillMaxSize().padding(horizontal = if (isTv) 40.dp else 18.dp, vertical = if (isTv) 22.dp else 8.dp),
+        Modifier.fillMaxSize().padding(
+            horizontal = if (compact) 14.dp else if (isTv) 40.dp else 18.dp,
+            vertical = if (isTv) 22.dp else 8.dp
+        ),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Surface(
-            Modifier.width(240.dp).fillMaxHeight(),
+            Modifier.width(if (compact) 180.dp else 240.dp).fillMaxHeight(),
             shape = RoundedCornerShape(15.dp),
             color = Color.Black.copy(alpha = .34f),
             border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
@@ -2140,6 +2147,7 @@ private fun LandscapeMovieBrowser(
                 firstItemFocusRequester, restoreFocusKey, onRestoreHandled
             )
         }
+    }
     }
 }
 
@@ -2245,12 +2253,19 @@ private fun LandscapeLiveBrowser(
     LaunchedEffect(categorySelectionTick) {
         if (categorySelectionTick > 0 && isTv) runCatching { firstChannelFocusRequester.requestFocus() }
     }
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+        // These two columns are fixed-width, so on a narrow panel they would between them leave the
+        // video beside them almost nothing. Shrinking them below the standard TV width keeps the
+        // picture watchable; at 960dp and above the sizes are unchanged.
+        val compact = maxWidth < COMPACT_TV_WIDTH
+        val categoryColumnWidth = if (compact) 180.dp else 240.dp
+        val channelColumnWidth = if (compact) 240.dp else 310.dp
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 8.dp),
+            Modifier.fillMaxSize().padding(horizontal = if (compact) 10.dp else 18.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Surface(
-                Modifier.width(240.dp).fillMaxHeight()
+                Modifier.width(categoryColumnWidth).fillMaxHeight()
                     .onFocusChanged { categoryColumnFocused = it.hasFocus },
                 shape = RoundedCornerShape(16.dp),
                 color = Color.Transparent
@@ -2299,7 +2314,7 @@ private fun LandscapeLiveBrowser(
                 }
             }
             Surface(
-                Modifier.width(310.dp).fillMaxHeight(),
+                Modifier.width(channelColumnWidth).fillMaxHeight(),
                 shape = RoundedCornerShape(16.dp),
                 color = Color.Transparent
             ) {
@@ -2421,6 +2436,7 @@ private fun LandscapeLiveBrowser(
                 }
             }
         }
+        }
 }
 
 @Composable
@@ -2496,9 +2512,10 @@ private fun MovieGrid(
     }
     if (movies.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_movies_match), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    } else {
+    } else BoxWithConstraints(modifier) {
         LazyVerticalGrid(
-            columns = GridCells.Fixed(if (landscape) 7 else 3), modifier = modifier, state = gridState,
+            columns = GridCells.Fixed(posterGridColumns(maxWidth, landscape)),
+            modifier = Modifier.fillMaxSize(), state = gridState,
             horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp), verticalArrangement = Arrangement.spacedBy(if (landscape) 9.dp else 16.dp),
             contentPadding = PaddingValues(bottom = 20.dp)
         ) {
@@ -3638,9 +3655,35 @@ internal fun moveCategory(context: Context, kind: MediaKind, categories: List<St
  *  cyan ring appearing on launch with no D-pad to explain it would just look like a UI bug). Used
  *  to gate the one-time initial focus request on Home, since a remote user needs an obvious
  *  starting point but a touch user does not. */
+/** Android TV standardises on roughly 960dp of width whatever the panel is - 1080p at 320dpi, 720p
+ *  at tvdpi and 4K at 640dpi all land there - and the fixed navigation columns in the browsers are
+ *  sized for it. Boxes that misreport their density arrive far narrower, where those same columns
+ *  would leave the content beside them a sliver. Below this width the columns shrink so the content
+ *  keeps a usable share; above it nothing changes. */
+internal val COMPACT_TV_WIDTH = 820.dp
+
+/** Poster width the media grids aim for. Column count is derived from the space actually available
+ *  rather than fixed, so a narrow box gets fewer, readable posters instead of a row of slivers and
+ *  a very wide one does not get twenty. The target is chosen so a standard 960dp TV still lands on
+ *  the seven columns the grids have always shown. */
+private val TARGET_POSTER_WIDTH = 90.dp
+
+/** Columns for a media grid across [availableWidth], clamped so neither extreme degenerates. */
+internal fun posterGridColumns(availableWidth: Dp, landscape: Boolean): Int =
+    if (!landscape) 3 else (availableWidth / TARGET_POSTER_WIDTH).toInt().coerceIn(3, 9)
+
 internal fun Context.isTvDevice(): Boolean {
     val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager
-    return uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    if (uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) return true
+    // Branded TVs and Google-certified boxes set the UI mode above, but plenty of cheap AOSP-based
+    // boxes leave it at "normal" - and every remote-driven behaviour in this app hangs off this one
+    // answer, so getting it wrong there leaves a viewer with no focus indicator and no way to
+    // navigate. Leanback is Google's documented TV signal, and a device with no touchscreen at all
+    // can only be driven by a remote whatever it calls itself.
+    val features = packageManager ?: return false
+    return features.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+        features.hasSystemFeature("android.hardware.type.television") ||
+        !features.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
 }
 
 /** Asks for focus across the next few frames instead of once. A [FocusRequester] only works after
