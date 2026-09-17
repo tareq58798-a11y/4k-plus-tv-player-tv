@@ -275,4 +275,8 @@
     <string name="no_locked_channels">कोई लॉक किया गया चैनल नहीं।</string>
     <string name="unlock_all_channels">सभी चैनल अनलॉक करें</string>
     <string name="all_channels_unlocked">सभी चैनल अनलॉक कर दिए गए हैं</string>
+    <string name="stop_playback_title">देखना बंद करें?</string>
+    <string name="stop_playback_message">प्लेबैक रुक जाएगा और आप विवरण पृष्ठ पर वापस चले जाएंगे।</string>
+    <string name="stop_playback_confirm">देखना बंद करें</string>
+    <string name="stop_playback_stay">देखते रहें</string>
 </resources>

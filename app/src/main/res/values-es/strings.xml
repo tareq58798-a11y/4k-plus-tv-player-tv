@@ -275,4 +275,8 @@
     <string name="no_locked_channels">No hay canales bloqueados.</string>
     <string name="unlock_all_channels">Desbloquear todos los canales</string>
     <string name="all_channels_unlocked">Todos los canales están desbloqueados</string>
+    <string name="stop_playback_title">¿Dejar de ver?</string>
+    <string name="stop_playback_message">La reproducción se detendrá y volverás a la página de detalles.</string>
+    <string name="stop_playback_confirm">Dejar de ver</string>
+    <string name="stop_playback_stay">Seguir viendo</string>
 </resources>

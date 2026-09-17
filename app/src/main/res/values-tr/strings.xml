@@ -275,4 +275,8 @@
     <string name="no_locked_channels">Kilitli kanal yok.</string>
     <string name="unlock_all_channels">Tüm kanalların kilidini aç</string>
     <string name="all_channels_unlocked">Tüm kanalların kilidi açıldı</string>
+    <string name="stop_playback_title">İzlemeyi durdur?</string>
+    <string name="stop_playback_message">Oynatma duracak ve ayrıntılar sayfasına döneceksiniz.</string>
+    <string name="stop_playback_confirm">İzlemeyi durdur</string>
+    <string name="stop_playback_stay">İzlemeye devam et</string>
 </resources>

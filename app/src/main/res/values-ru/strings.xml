@@ -275,4 +275,8 @@
     <string name="no_locked_channels">Нет заблокированных каналов.</string>
     <string name="unlock_all_channels">Разблокировать все каналы</string>
     <string name="all_channels_unlocked">Все каналы разблокированы</string>
+    <string name="stop_playback_title">Прекратить просмотр?</string>
+    <string name="stop_playback_message">Воспроизведение остановится, и вы вернётесь на страницу с описанием.</string>
+    <string name="stop_playback_confirm">Прекратить</string>
+    <string name="stop_playback_stay">Продолжить просмотр</string>
 </resources>

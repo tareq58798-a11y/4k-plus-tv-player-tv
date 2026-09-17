@@ -275,4 +275,8 @@
     <string name="no_locked_channels">Aucune chaîne verrouillée.</string>
     <string name="unlock_all_channels">Déverrouiller toutes les chaînes</string>
     <string name="all_channels_unlocked">Toutes les chaînes sont déverrouillées</string>
+    <string name="stop_playback_title">Arrêter la lecture ?</string>
+    <string name="stop_playback_message">La lecture s\'arrêtera et vous reviendrez à la page de détails.</string>
+    <string name="stop_playback_confirm">Arrêter</string>
+    <string name="stop_playback_stay">Continuer à regarder</string>
 </resources>

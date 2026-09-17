@@ -104,6 +104,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * and slow-start on every change - which is most of the delay between pressing the button and
  * seeing the new picture. Idle sockets cost nothing; re-establishing them costs a visible pause.
  */
+/** How long the Movies/Series transport controls stay up after the last button press. Every press
+ *  restarts it, including presses on the Compose options row, so it can only ever expire when the
+ *  viewer has genuinely stopped navigating. */
+private const val CONTROLS_TIMEOUT_MS = 5_000
+
 /** Longest the fullscreen channel strip waits for a stream to report its resolution before giving
  *  up and dismissing anyway - a stream that never reports a size must not pin the strip up. */
 private const val RESOLUTION_WAIT_MS = 3_500L
@@ -558,6 +563,31 @@ internal fun MoviePlayer(
     }
     KeepScreenOnWhilePlaying(player)
     MutePlayerWhileBackgrounded(player)
+    // Leaving a movie or episode always goes through this confirmation, so a stray Back press
+    // during playback can't throw away what's being watched. Playback pauses while the question is
+    // on screen and resumes on "keep watching" only if it was actually playing beforehand.
+    var confirmExit by remember { mutableStateOf(false) }
+    var resumeAfterConfirm by remember { mutableStateOf(false) }
+    fun requestExit() {
+        if (confirmExit) return
+        resumeAfterConfirm = player.playWhenReady
+        player.playWhenReady = false
+        confirmExit = true
+    }
+    fun cancelExit() {
+        confirmExit = false
+        if (resumeAfterConfirm) player.playWhenReady = true
+    }
+    // Registered after the host screen's own back handling, so it wins while the player is on
+    // screen. It is only reached once the native controls are hidden — while they're up,
+    // PlayerView.dispatchKeyEvent below consumes Back to hide them first.
+    BackHandler {
+        when {
+            confirmExit -> cancelExit()
+            relatedStripExpanded -> relatedStripExpanded = false
+            else -> requestExit()
+        }
+    }
     LaunchedEffect(player, movie.streamUrl, externalSubtitle) {
         error = null
         val resumeAt = player.currentPosition.takeIf { it > 0L } ?: startPosition
@@ -647,13 +677,12 @@ internal fun MoviePlayer(
                         }
                     }.apply {
                         useController = true
-                        // The options row above this view is Compose, so its key presses never
-                        // reach PlayerView.dispatchKeyEvent and never reset media3's own hide
-                        // timer. With a timeout the controller would therefore disappear partway
-                        // along that row - taking it out of composition mid-navigation - purely
-                        // because media3 believed the remote had gone idle. On TV the controller
-                        // is dismissed deliberately with Back instead (see dispatchKeyEvent above).
-                        if (isTv) setControllerShowTimeoutMs(0)
+                        // Hide five seconds after the last interaction. The options row above this
+                        // view is Compose, so its key presses never reach PlayerView and would not
+                        // restart this timer on their own - which is why that row reports every
+                        // press back through onUserInteraction below. Without that the controller
+                        // vanishes partway along the row, mid-navigation.
+                        setControllerShowTimeoutMs(CONTROLS_TIMEOUT_MS)
                         setShowPreviousButton(false)
                         setShowNextButton(false)
                         setControllerVisibilityListener(
@@ -708,7 +737,7 @@ internal fun MoviePlayer(
                 player = player,
                 fullscreen = true,
                 onFullscreenChange = { enabled ->
-                    if (!enabled) onExit()
+                    if (!enabled) requestExit()
                 },
                 subtitlesEnabled = subtitlesEnabled,
                 onSubtitlesEnabledChange = {
@@ -726,6 +755,9 @@ internal fun MoviePlayer(
                 showResolution = true,
                 resolutionLabel = resolutionLabel,
                 onRowFocusChanged = { optionsRowFocused = it },
+                // Restarts the native controller's five-second countdown, so working along this
+                // Compose row keeps the controls up exactly as pressing its own buttons would.
+                onUserInteraction = { runCatching { playerViewRef?.showController() } },
                 onExitDown = {
                     runCatching {
                         playerViewRef?.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play_pause)?.requestFocus()
@@ -812,6 +844,26 @@ internal fun MoviePlayer(
         }
     } else {
         playerContent(modifier.fillMaxSize(), RectangleShape)
+    }
+    if (confirmExit) {
+        val stopFocusRequester = remember { FocusRequester() }
+        // The remote has no pointer, so the dialog opens with "stop watching" already focused:
+        // Back then OK leaves in two presses, while Back on its own no longer leaves at all.
+        LaunchedEffect(Unit) { runCatching { stopFocusRequester.requestFocus() } }
+        AlertDialog(
+            onDismissRequest = { cancelExit() },
+            title = { Text(stringResource(R.string.stop_playback_title)) },
+            text = { Text(stringResource(R.string.stop_playback_message)) },
+            confirmButton = {
+                Button(
+                    onClick = { confirmExit = false; onExit() },
+                    modifier = Modifier.focusRequester(stopFocusRequester)
+                ) { Text(stringResource(R.string.stop_playback_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { cancelExit() }) { Text(stringResource(R.string.stop_playback_stay)) }
+            }
+        )
     }
 }
 
@@ -1050,7 +1102,11 @@ private fun PlaybackOptionsOverlay(
     onRowFocusChanged: ((Boolean) -> Unit)? = null,
     // Down from this row hands focus back to the player's own transport controls; without it the
     // row is a dead end, since those controls are native views Compose will not find on its own.
-    onExitDown: (() -> Unit)? = null
+    onExitDown: (() -> Unit)? = null,
+    // Fired on every key press in this row. These are Compose nodes, so their presses never reach
+    // the native PlayerView and cannot restart its auto-hide timer by themselves - the host uses
+    // this to keep the controls up while the viewer is still working along the row.
+    onUserInteraction: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var subtitleMenu by remember { mutableStateOf(false) }
@@ -1077,9 +1133,10 @@ private fun PlaybackOptionsOverlay(
                 } else Modifier
             )
             .then(
-                if (onExitDown != null) {
+                if (onExitDown != null || onUserInteraction != null) {
                     Modifier.onPreviewKeyEvent { event ->
-                        if (event.isInitialKeyDown && event.key == Key.DirectionDown) {
+                        if (event.isInitialKeyDown) onUserInteraction?.invoke()
+                        if (onExitDown != null && event.isInitialKeyDown && event.key == Key.DirectionDown) {
                             onExitDown(); true
                         } else false
                     }

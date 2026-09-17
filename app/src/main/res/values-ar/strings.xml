@@ -286,4 +286,8 @@
     <string name="all_channels_unlocked">تم فتح جميع القنوات</string>
     <string name="catalogues_loading">جارٍ تحميل بقية الأفلام والمسلسلات…</string>
     <string name="catalogues_load_failed">تعذر تحميل بعض المحتوى. حدّث قائمة التشغيل من الإعدادات للمحاولة مجددًا.</string>
+    <string name="stop_playback_title">إيقاف المشاهدة؟</string>
+    <string name="stop_playback_message">سيتوقف التشغيل وستعود إلى صفحة التفاصيل.</string>
+    <string name="stop_playback_confirm">إيقاف المشاهدة</string>
+    <string name="stop_playback_stay">متابعة المشاهدة</string>
 </resources>

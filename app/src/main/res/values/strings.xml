@@ -224,6 +224,11 @@
     <string name="player_vlc_desc">Requires VLC to be installed</string>
     <string name="player_mx_desc">Requires MX Player to be installed</string>
 
+    <string name="stop_playback_title">Stop watching?</string>
+    <string name="stop_playback_message">Playback will stop and you will go back to the details page.</string>
+    <string name="stop_playback_confirm">Stop watching</string>
+    <string name="stop_playback_stay">Keep watching</string>
+
     <string name="show_password">Show password</string>
     <string name="hide_password">Hide password</string>
 

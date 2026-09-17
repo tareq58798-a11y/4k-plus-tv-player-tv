@@ -275,4 +275,8 @@
     <string name="no_locked_channels">کوئی مقفل چینل نہیں۔</string>
     <string name="unlock_all_channels">تمام چینلز غیر مقفل کریں</string>
     <string name="all_channels_unlocked">تمام چینلز غیر مقفل کر دیے گئے</string>
+    <string name="stop_playback_title">دیکھنا بند کریں؟</string>
+    <string name="stop_playback_message">پلے بیک رک جائے گا اور آپ تفصیلات کے صفحے پر واپس چلے جائیں گے۔</string>
+    <string name="stop_playback_confirm">دیکھنا بند کریں</string>
+    <string name="stop_playback_stay">دیکھتے رہیں</string>
 </resources>
