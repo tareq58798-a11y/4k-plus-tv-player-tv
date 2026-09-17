@@ -221,7 +221,8 @@ internal fun LandingScaffold(
                 onLanguage = onLanguage,
                 onSettings = onSettings,
                 keepFocus = arrivedFromNavBar,
-                tabFocus = tabFocus
+                tabFocus = tabFocus,
+                downTarget = firstCard
             )
         }
         if (!hasContent && tile == null) {
@@ -268,7 +269,15 @@ internal fun LandingScaffold(
                             // answer for Up - and on Live TV, where nothing has been watched yet,
                             // it is the only thing in the row at all.
                             item(key = "${row.id}_all_categories") {
-                                CategoryTile(tile, upTarget = ownTab)
+                                // On a section with nothing watched yet the tile is the row's
+                                // first focusable, so it inherits the entry point Down aims at.
+                                CategoryTile(
+                                    tile,
+                                    upTarget = ownTab,
+                                    modifier = if (row.entries.isEmpty()) {
+                                        Modifier.focusRequester(firstCard)
+                                    } else Modifier
+                                )
                             }
                         }
                         if (placeholders > 0) {
@@ -416,10 +425,14 @@ private fun EmptySlot() {
 }
 
 @Composable
-private fun CategoryTile(tile: LandingTile, upTarget: FocusRequester?) {
+private fun CategoryTile(
+    tile: LandingTile,
+    upTarget: FocusRequester?,
+    modifier: Modifier = Modifier
+) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        Modifier
+        modifier
             .width(Dims.CardWidth + Dims.CardBleed * 2)
             .padding(Dims.CardBleed)
             .then(

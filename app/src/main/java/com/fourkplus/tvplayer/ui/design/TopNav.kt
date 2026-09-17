@@ -37,6 +37,11 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -57,6 +62,10 @@ import java.util.Locale
 /** The four destinations the app's top navigation offers. Favorites is deliberately not one of
  *  them: it lives inside each section's own category list, where its contents actually belong. */
 enum class NavDestination { HOME, LIVE, MOVIES, SERIES }
+
+/** True only for the opening press of a key, so a held remote button does not fire repeatedly. */
+private val androidx.compose.ui.input.key.KeyEvent.isInitialDown: Boolean
+    get() = type == KeyEventType.KeyDown && nativeKeyEvent.repeatCount == 0
 
 /**
  * The persistent header: brand mark, the four sections, and the global controls on the right.
@@ -87,7 +96,14 @@ fun AppTopBar(
      * send Up to the tab for its own kind: a film to Movies, an episode to Series, a channel to
      * Live TV, wherever that card happens to be sitting.
      */
-    tabFocus: Map<NavDestination, FocusRequester>? = null
+    tabFocus: Map<NavDestination, FocusRequester>? = null,
+    /**
+     * Where Down goes from anywhere in this bar: the start of the page's first row. Compose would
+     * otherwise drop focus onto whichever card happens to sit below the tab you were on, so coming
+     * down from Series landed you in the middle of a row while coming down from Home landed you at
+     * its start. Content begins at the beginning, wherever you stepped off the bar.
+     */
+    downTarget: FocusRequester? = null
 ) {
     val ownTabFocus = remember { NavDestination.entries.associateWith { FocusRequester() } }
     val tabs = tabFocus ?: ownTabFocus
@@ -121,6 +137,17 @@ fun AppTopBar(
         )
         Spacer(Modifier.width(Dims.GapM))
         Row(
+            // Down off a section goes to the start of its first row, not to whichever card happens
+            // to sit under that particular tab.
+            Modifier.then(
+                if (downTarget != null) {
+                    Modifier.onPreviewKeyEvent { event ->
+                        if (event.isInitialDown && event.key == Key.DirectionDown) {
+                            runCatching { downTarget.requestFocus() }.isSuccess
+                        } else false
+                    }
+                } else Modifier
+            ),
             horizontalArrangement = Arrangement.spacedBy(Dims.GapS),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -138,7 +165,16 @@ fun AppTopBar(
             }
         }
         Spacer(Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(Dims.GapS), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            // Down is swallowed here rather than left to the focus search, which would drop the
+            // viewer into the far right of a row - a corner of the page they never asked for.
+            // These are global controls: the way out of them is back along the bar.
+            Modifier.onPreviewKeyEvent { event ->
+                event.isInitialDown && event.key == Key.DirectionDown
+            },
+            horizontalArrangement = Arrangement.spacedBy(Dims.GapS),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (onSearch != null) GlobalIconButton(Icons.Default.Search, "Search", onSearch)
             if (onLanguage != null) GlobalIconButton(Icons.Default.Language, "Language", onLanguage)
             if (onSettings != null) GlobalIconButton(Icons.Default.Settings, "Settings", onSettings)
