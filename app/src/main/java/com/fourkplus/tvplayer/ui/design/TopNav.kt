@@ -82,13 +82,16 @@ fun AppTopBar(
      */
     keepFocus: Boolean = false,
     /**
-     * Points at the tab for the section currently open. Hoisted so the page below can put focus
-     * there itself rather than hoping a geometric focus search picks the right thing.
+     * A handle on each section's tab, hoisted so the page below can put focus on a particular one
+     * itself rather than hoping a geometric focus search picks the right thing. A card uses it to
+     * send Up to the tab for its own kind: a film to Movies, an episode to Series, a channel to
+     * Live TV, wherever that card happens to be sitting.
      */
-    selectedTabFocus: FocusRequester? = null
+    tabFocus: Map<NavDestination, FocusRequester>? = null
 ) {
-    val ownTabFocus = remember { FocusRequester() }
-    val selectedTab = selectedTabFocus ?: ownTabFocus
+    val ownTabFocus = remember { NavDestination.entries.associateWith { FocusRequester() } }
+    val tabs = tabFocus ?: ownTabFocus
+    val selectedTab = tabs.getValue(selected)
     LaunchedEffect(selected, keepFocus) {
         if (keepFocus) runCatching { selectedTab.requestFocus() }
     }
@@ -125,7 +128,7 @@ fun AppTopBar(
                 NavTab(
                     label = labels[destination].orEmpty(),
                     selected = destination == selected,
-                    modifier = if (destination == selected) Modifier.focusRequester(selectedTab) else Modifier,
+                    modifier = Modifier.focusRequester(tabs.getValue(destination)),
                     // Reaching a section is enough to open it. On a remote there is no hover, so
                     // requiring OK as well would mean two presses to do what the movement already
                     // said - and the viewer can see the page they are choosing while they choose.

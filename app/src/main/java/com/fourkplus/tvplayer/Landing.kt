@@ -172,10 +172,24 @@ internal fun LandingScaffold(
         runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
     }
     val firstCard = remember { FocusRequester() }
-    // The page puts focus on its own tab rather than leaving it to a geometric search. Compose
-    // looks for whatever focusable sits nearest overhead, which for a card on the right of a row
-    // is one of the header icons, not the section's tab - so Up is handled explicitly below.
-    val sectionTab = remember { FocusRequester() }
+    // Up out of the top row goes to the tab for the card's own kind - a film to Movies, a series
+    // to Series, a channel to Live TV - and because reaching a tab opens it, the card takes you to
+    // its own section. On Movies, Series and Live TV every card is that section's kind, so this
+    // reads as staying put; on Home, where the rows are mixed, each card leads where it belongs.
+    //
+    // It is declared rather than searched for: Compose's focus search picks whatever focusable
+    // sits nearest overhead, so the answer would otherwise depend on how far along the row the
+    // card happened to be, and from the right-hand end it reached the header icons.
+    val tabFocus = remember { NavDestination.entries.associateWith { FocusRequester() } }
+    val tabFor: (MediaKind) -> FocusRequester = { kind ->
+        tabFocus.getValue(
+            when (kind) {
+                MediaKind.MOVIE -> NavDestination.MOVIES
+                MediaKind.SERIES -> NavDestination.SERIES
+                MediaKind.LIVE -> NavDestination.LIVE
+            }
+        )
+    }
     val labels = mapOf(
         NavDestination.HOME to stringResource(R.string.nav_home),
         NavDestination.LIVE to stringResource(R.string.nav_live_tv),
@@ -216,7 +230,7 @@ internal fun LandingScaffold(
                 onLanguage = onLanguage,
                 onSettings = onSettings,
                 keepFocus = arrivedFromNavBar,
-                selectedTabFocus = sectionTab
+                tabFocus = tabFocus
             )
         }
         if (!hasContent && tile == null) {
@@ -231,22 +245,7 @@ internal fun LandingScaffold(
             // Each band starts a little after the one above it, so the page assembles top to
             // bottom instead of appearing all at once.
             RevealOnAppear(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // Up out of the top row goes to this section's own tab, always. Left to
-                    // Compose, the search picks whatever focusable is nearest overhead, which
-                    // depends on where along the row the card sits - so the indicator appeared to
-                    // wander into the header icons or a neighbouring section. Rows below this one
-                    // are left alone: Up there means the row above, which the search gets right.
-                    .then(
-                        if (rowIndex == 0) {
-                            Modifier.onPreviewKeyEvent { event ->
-                                if (event.isInitialKeyDown && event.key == Key.DirectionUp) {
-                                    runCatching { sectionTab.requestFocus() }.isSuccess
-                                } else false
-                            }
-                        } else Modifier
-                    ),
+                modifier = Modifier.fillMaxWidth(),
                 delayMs = Motion.StaggerMs * (rowIndex + 1)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dims.GapS)) {
@@ -264,6 +263,10 @@ internal fun LandingScaffold(
                                 entry = entry,
                                 backdrop = backdrop,
                                 modifier = if (isFirst) Modifier.focusRequester(firstCard) else Modifier,
+                                // Only the top row hands Up to the navigation. Lower rows keep
+                                // meaning "the row above", which is the one thing a viewer can
+                                // always count on Up to do.
+                                upTarget = if (rowIndex == 0) tabFor(entry.item.kind) else null,
                                 onFocused = { focused = entry },
                                 onClick = { onSelect(entry) }
                             )
@@ -334,6 +337,8 @@ private fun LandingCard(
     entry: LandingEntry,
     backdrop: BackdropState,
     modifier: Modifier,
+    /** Where Up goes from this card. Null leaves Up to the normal focus search. */
+    upTarget: FocusRequester?,
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -356,7 +361,15 @@ private fun LandingCard(
         imageUrl = entry.item.logoUrl,
         title = entry.item.name,
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.then(
+            if (upTarget != null) {
+                Modifier.onPreviewKeyEvent { event ->
+                    if (event.isInitialKeyDown && event.key == Key.DirectionUp) {
+                        runCatching { upTarget.requestFocus() }.isSuccess
+                    } else false
+                }
+            } else Modifier
+        ),
         progress = entry.progress,
         cornerBadge = entry.badge,
         liveFrame = snapshot.takeIf { live },
