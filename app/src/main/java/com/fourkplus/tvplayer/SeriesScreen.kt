@@ -164,8 +164,19 @@ internal fun SeriesScreen(
         return SeriesDetailsInfo(posterUrl = series.logoUrl, episodes = episodes)
     }
 
+    // Providers very often name an episode after the series it belongs to ("Backstrom-S1.E2"),
+    // which would read as the series name twice over in the player's title. The episode's own
+    // title is only appended when it actually says something the series name and S/E numbers
+    // haven't already.
+    fun episodeLabel(series: PlaylistItem, episode: SeriesEpisode): String {
+        val base = "${series.name} • S${episode.seasonNumber} E${episode.episodeNumber}"
+        val title = episode.title.trim()
+        val redundant = title.isEmpty() || title.contains(series.name, ignoreCase = true)
+        return if (redundant) base else "$base • $title"
+    }
+
     fun episodePlaylistItem(series: PlaylistItem, episode: SeriesEpisode) = PlaylistItem(
-        name = "${series.name} • S${episode.seasonNumber} E${episode.episodeNumber} • ${episode.title}",
+        name = episodeLabel(series, episode),
         streamUrl = episode.streamUrl,
         group = series.name,
         logoUrl = episode.thumbnailUrl ?: series.logoUrl,

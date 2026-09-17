@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -730,6 +731,28 @@ internal fun MoviePlayer(
                     modifier = Modifier
                         .align(if (feedback.first) Alignment.CenterEnd else Alignment.CenterStart)
                         .padding(horizontal = 34.dp)
+                )
+            }
+            // Part of the player's own chrome: what is playing, top-left, opposite the options
+            // row - so pressing OK brings up the controls and the title together. An episode's
+            // name already reads "Series • S1 E2 • Episode title", so one line covers both.
+            if (controllerVisible && !PictureInPictureCoordinator.active) {
+                Text(
+                    movie.name,
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    // No background box behind it, so the text carries its own drop shadow - the
+                    // same treatment the Live TV channel banner uses to stay readable over bright
+                    // video.
+                    style = TextStyle(
+                        shadow = Shadow(color = Color.Black.copy(alpha = .95f), offset = Offset(0f, 1f), blurRadius = 6f)
+                    ),
+                    modifier = Modifier.align(Alignment.TopStart)
+                        .padding(start = 18.dp, top = 14.dp)
+                        .fillMaxWidth(.55f)
                 )
             }
             if (controllerVisible && seekFeedback == null && !PictureInPictureCoordinator.active) PlaybackOptionsOverlay(
