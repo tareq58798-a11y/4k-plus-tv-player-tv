@@ -172,6 +172,25 @@ internal fun LandingScaffold(
     var focusedRow by remember { mutableIntStateOf(0) }
     // Keyed by item, so moving back onto something already looked up costs nothing.
     val bios = remember { mutableStateMapOf<String, ItemBio>() }
+    // Details for the titles in view are fetched before anyone reaches them, so that by the time a
+    // card takes focus its real backdrop is already known and already decoded. Without this the
+    // page could only show the poster first and swap to the better picture when the details
+    // landed, which read as the background changing its mind a moment after every move.
+    //
+    // Sequential on purpose: eight requests at once is a burst most panels answer slowly or not at
+    // all, and nothing here is urgent enough to be worth that.
+    LaunchedEffect(rows, loadBio) {
+        val fetch = loadBio ?: return@LaunchedEffect
+        rows.asSequence()
+            .flatMap { it.entries.asSequence() }
+            .filter { it.item.kind != MediaKind.LIVE }
+            .take(10)
+            .forEach { entry ->
+                if (bios.containsKey(entry.key)) return@forEach
+                runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
+            }
+    }
+
     // Keyed on the focused entry, so moving on cancels the wait before it ever becomes a request:
     // running a row costs one lookup for the title you stop at, not one for every title you pass.
     LaunchedEffect(focused, loadBio) {
@@ -213,11 +232,14 @@ internal fun LandingScaffold(
 
     // The first row's artwork is warmed as soon as the page appears, so the first move along it
     // shows its background immediately instead of after a round trip.
+    // Warmed with the picture each card will actually ask for - its real backdrop once the details
+    // have arrived, its poster until then - so reaching a card finds the image already decoded
+    // rather than starting a round trip.
     PreloadBackdrops(
-        remember(rows) {
+        remember(rows, bios.size) {
             rows.firstOrNull()?.entries.orEmpty()
                 .filter { it.item.kind != MediaKind.LIVE }
-                .mapNotNull { it.item.logoUrl }
+                .mapNotNull { bios[it.key]?.backdropUrl?.takeIf(String::isNotBlank) ?: it.item.logoUrl }
         }
     )
 
@@ -289,6 +311,17 @@ internal fun LandingScaffold(
                                 onFocused = {
                                     focused = entry
                                     focusedRow = rowIndex
+                                    // The title's real backdrop where it is already known, and
+                                    // only otherwise the poster. Asking for the better picture up
+                                    // front is what makes this a single transition rather than a
+                                    // poster that is replaced a moment later.
+                                    if (entry.item.kind != MediaKind.LIVE) {
+                                        backdrop.show(
+                                            entry.key,
+                                            bios[entry.key]?.backdropUrl?.takeIf { it.isNotBlank() }
+                                                ?: entry.item.logoUrl
+                                        )
+                                    }
                                 },
                                 onClick = { onSelect(entry) }
                             )
@@ -411,13 +444,10 @@ private fun LandingCard(
         // 6% growth on a small mark is far less legible than it is on a full-bleed still.
         useFocusBorder = live,
         overlayBadge = if (live) ({ LiveFlag(Modifier.align(Alignment.TopStart)) }) else null,
-        onFocusChanged = { isFocused ->
-            if (!isFocused) return@ArtCard
-            onFocused()
-            // Only films and series drive the cinematic background. A channel leaves whatever is
-            // already there untouched, so moving through Live TV never strips the room bare.
-            if (!live) backdrop.show(channelKey(entry.item), entry.item.logoUrl)
-        }
+        // Which picture the background takes is decided by the page, which knows whether this
+        // title's real backdrop has arrived yet. Channels never call it at all, so moving through
+        // Live TV leaves whatever was last shown in place rather than stripping the room bare.
+        onFocusChanged = { isFocused -> if (isFocused) onFocused() }
     )
 }
 
