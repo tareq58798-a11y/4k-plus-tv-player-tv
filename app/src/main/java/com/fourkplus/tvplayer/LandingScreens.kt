@@ -188,8 +188,20 @@ internal fun MoviesLandingScreen(
     LandingScaffold(
         destination = NavDestination.MOVIES,
         rows = listOf(
-            LandingRow("movies_recent", stringResource(R.string.landing_recently_watched_movies), recent),
-            LandingRow("movies_favorites", stringResource(R.string.section_favorites), favoriteEntries, placeholdersWhenEmpty = 5)
+            LandingRow(
+                "movies_recent",
+                stringResource(R.string.landing_recently_watched_movies),
+                recent,
+                minSlots = 5,
+                hint = stringResource(R.string.landing_hint_recent)
+            ),
+            LandingRow(
+                "movies_favorites",
+                stringResource(R.string.section_favorites),
+                favoriteEntries,
+                minSlots = 5,
+                hint = stringResource(R.string.landing_hint_favorites)
+            )
         ),
         tile = LandingTile(
             title = stringResource(R.string.landing_all_movie_categories),
@@ -246,8 +258,20 @@ internal fun SeriesLandingScreen(
     LandingScaffold(
         destination = NavDestination.SERIES,
         rows = listOf(
-            LandingRow("series_recent", stringResource(R.string.landing_recently_watched_series), recent),
-            LandingRow("series_favorites", stringResource(R.string.section_favorites), favoriteEntries, placeholdersWhenEmpty = 5)
+            LandingRow(
+                "series_recent",
+                stringResource(R.string.landing_recently_watched_series),
+                recent,
+                minSlots = 5,
+                hint = stringResource(R.string.landing_hint_recent)
+            ),
+            LandingRow(
+                "series_favorites",
+                stringResource(R.string.section_favorites),
+                favoriteEntries,
+                minSlots = 5,
+                hint = stringResource(R.string.landing_hint_favorites)
+            )
         ),
         tile = LandingTile(
             title = stringResource(R.string.landing_all_series_categories),
@@ -297,8 +321,20 @@ internal fun LiveLandingScreen(
     LandingScaffold(
         destination = NavDestination.LIVE,
         rows = listOf(
-            LandingRow("live_recent", stringResource(R.string.landing_recently_watched_channels), recent),
-            LandingRow("live_favorites", stringResource(R.string.section_favorites), favoriteEntries, placeholdersWhenEmpty = 5)
+            LandingRow(
+                "live_recent",
+                stringResource(R.string.landing_recently_watched_channels),
+                recent,
+                minSlots = 5,
+                hint = stringResource(R.string.landing_hint_recent)
+            ),
+            LandingRow(
+                "live_favorites",
+                stringResource(R.string.section_favorites),
+                favoriteEntries,
+                minSlots = 5,
+                hint = stringResource(R.string.landing_hint_favorites)
+            )
         ),
         tile = LandingTile(
             title = stringResource(R.string.landing_all_channel_categories),

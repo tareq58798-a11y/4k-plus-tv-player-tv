@@ -87,7 +87,21 @@ fun AppTopBar(
         if (keepFocus) runCatching { selectedTab.requestFocus() }
     }
     Row(
-        modifier.fillMaxWidth().padding(horizontal = Dims.SafeHorizontal - 12.dp, vertical = Dims.SafeVertical - 8.dp),
+        modifier
+            .fillMaxWidth()
+            // Coming up from the page below, focus lands on the section you are already in -
+            // whatever is directly above the card you left. Without this, Compose picks the
+            // nearest focusable overhead, so a card on the right of a row would jump to the
+            // settings icon rather than to the section's own tab. Left and right entries are left
+            // to the normal search, so stepping back from the search icon still lands beside it.
+            .focusGroup()
+            .focusProperties {
+                enter = { direction ->
+                    if (direction == FocusDirection.Up || direction == FocusDirection.Down) selectedTab
+                    else FocusRequester.Default
+                }
+            }
+            .padding(horizontal = Dims.SafeHorizontal - 12.dp, vertical = Dims.SafeVertical - 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Image(
@@ -98,19 +112,6 @@ fun AppTopBar(
         )
         Spacer(Modifier.width(Dims.GapM))
         Row(
-            // Coming up from the page below, focus lands on the section you are already in.
-            // Without this, Compose picks whichever tab is nearest the content you left - and
-            // because reaching a tab opens it, simply looking up at the bar would change the page
-            // under you. Left and right entries are left to the normal search, so stepping back
-            // from the search icon still lands on the tab beside it.
-            Modifier
-                .focusGroup()
-                .focusProperties {
-                    enter = { direction ->
-                        if (direction == FocusDirection.Up || direction == FocusDirection.Down) selectedTab
-                        else FocusRequester.Default
-                    }
-                },
             horizontalArrangement = Arrangement.spacedBy(Dims.GapS),
             verticalAlignment = Alignment.CenterVertically
         ) {

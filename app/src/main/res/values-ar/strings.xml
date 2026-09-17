@@ -314,4 +314,6 @@
     <string name="search_results_title">نتائج البحث</string>
     <string name="search_results_count">%1$d نتيجة</string>
     <string name="landing_recently_added">أضيف حديثًا</string>
+    <string name="landing_hint_recent">وصول سريع إلى آخر ما شاهدته.</string>
+    <string name="landing_hint_favorites">أضف القنوات والأفلام والمسلسلات إلى المفضلة لتبقى على بعد ضغطة واحدة.</string>
 </resources>

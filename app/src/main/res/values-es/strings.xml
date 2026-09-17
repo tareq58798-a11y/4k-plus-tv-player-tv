@@ -303,4 +303,6 @@
     <string name="search_results_title">Resultados de búsqueda</string>
     <string name="search_results_count">%1$d resultados</string>
     <string name="landing_recently_added">Añadido recientemente</string>
+    <string name="landing_hint_recent">Acceso rápido a lo último que viste.</string>
+    <string name="landing_hint_favorites">Añade canales, películas y series a tus favoritos para tenerlos a un solo clic.</string>
 </resources>

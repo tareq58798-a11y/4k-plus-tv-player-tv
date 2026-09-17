@@ -103,11 +103,17 @@ internal data class LandingRow(
     val title: String,
     val entries: List<LandingEntry>,
     /**
-     * Rows that are worth showing even with nothing in them yet - Favorites above all. An empty
-     * row that vanishes teaches the viewer it does not exist; an empty row with its slots drawn
-     * teaches them it is waiting to be filled.
+     * The number of card positions the row always shows, padding with empty slots after whatever
+     * it actually holds. Favorites uses this: a row that vanishes when empty teaches the viewer it
+     * does not exist, and a row holding one lonely card looks broken rather than new. Places set
+     * at the table say the same thing in both cases - this is where things go.
      */
-    val placeholdersWhenEmpty: Int = 0
+    val minSlots: Int = 0,
+    /**
+     * One line saying what the row is for, shown only while it still has empty places. Once the
+     * row fills up it explains itself and the line disappears rather than becoming furniture.
+     */
+    val hint: String? = null
 )
 
 /**
@@ -212,7 +218,7 @@ internal fun LandingScaffold(
         }
         rows.forEachIndexed { rowIndex, row ->
             val showTile = tile != null && rowIndex == 0
-            val placeholders = if (row.entries.isEmpty()) row.placeholdersWhenEmpty else 0
+            val placeholders = (row.minSlots - row.entries.size).coerceAtLeast(0)
             if (row.entries.isEmpty() && !showTile && placeholders == 0) return@forEachIndexed
             // Each band starts a little after the one above it, so the page assembles top to
             // bottom instead of appearing all at once.
@@ -220,7 +226,7 @@ internal fun LandingScaffold(
                 modifier = Modifier.fillMaxWidth(),
                 delayMs = Motion.StaggerMs * (rowIndex + 1)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(Dims.GapM)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Dims.GapS)) {
                     SectionHeading(row.title, Modifier.padding(horizontal = Dims.SafeHorizontal))
                     LazyRow(
                         Modifier.fillMaxWidth(),
@@ -239,12 +245,23 @@ internal fun LandingScaffold(
                                 onClick = { onSelect(entry) }
                             )
                         }
-                        if (placeholders > 0) {
-                            items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
-                        }
+                        // The way into the full catalogue comes before the empty places, never
+                        // after them: five unfilled slots would otherwise push it off the right
+                        // of the screen on a new install, hiding the one control that fills them.
                         if (showTile && tile != null) {
                             item(key = "${row.id}_all_categories") { CategoryTile(tile) }
                         }
+                        if (placeholders > 0) {
+                            items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
+                        }
+                    }
+                    if (placeholders > 0 && row.hint != null) {
+                        Text(
+                            row.hint,
+                            color = Tone.TextMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = Dims.SafeHorizontal)
+                        )
                     }
                 }
             }

@@ -57,17 +57,17 @@ object Tone {
      * the artwork is still plainly visible rather than dimmed into a texture.
      */
     fun pageScrim(): Brush = Brush.verticalGradient(
-        0f to Color(0xD90A1424),
-        0.30f to Color(0x99060D1A),
-        0.72f to Color(0xD9030711),
-        1f to Color(0xFA01030A)
+        0f to Color(0x990A1424),
+        0.32f to Color(0x3D060D1A),
+        0.74f to Color(0x8C030711),
+        1f to Color(0xE001030A)
     )
 
     fun sideScrim(): Brush = Brush.horizontalGradient(
-        0f to Color(0xF2030711),
-        0.38f to Color(0xC2040A16),
-        0.72f to Color(0x66020610),
-        1f to Color(0x1A000000)
+        0f to Color(0xD9030711),
+        0.38f to Color(0x8C040A16),
+        0.72f to Color(0x33020610),
+        1f to Color(0x00000000)
     )
 
     /** Darkens the bottom of a poster so its overlaid title/progress stays readable. */

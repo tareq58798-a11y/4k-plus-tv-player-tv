@@ -303,4 +303,6 @@
     <string name="search_results_title">खोज परिणाम</string>
     <string name="search_results_count">%1$d परिणाम</string>
     <string name="landing_recently_added">हाल में जोड़ा गया</string>
+    <string name="landing_hint_recent">आपने आख़िरी बार जो देखा, उस तक तुरंत पहुँच।</string>
+    <string name="landing_hint_favorites">चैनल, फ़िल्में और सीरीज़ पसंदीदा में जोड़ें ताकि वे एक ही बटन दूर रहें।</string>
 </resources>
