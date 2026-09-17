@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">4K Plus TV Player</string>
 
@@ -279,4 +279,24 @@
     <string name="stop_playback_message">Oynatma duracak ve ayrıntılar sayfasına döneceksiniz.</string>
     <string name="stop_playback_confirm">İzlemeyi durdur</string>
     <string name="stop_playback_stay">İzlemeye devam et</string>
+    <string name="nav_home">Ana sayfa</string>
+    <string name="kind_movie">Film</string>
+    <string name="kind_series">Dizi</string>
+    <string name="action_play">Oynat</string>
+    <string name="action_resume">Devam et</string>
+    <string name="action_resume_episode">Bölüme devam et</string>
+    <string name="action_watch_live">Canlı izle</string>
+    <string name="action_favorite">Favori</string>
+    <string name="landing_recently_watched_movies">Son izlenen filmler</string>
+    <string name="landing_recently_watched_series">Son izlenen diziler</string>
+    <string name="landing_recently_watched_channels">Son izlenen kanallar</string>
+    <string name="landing_all_movie_categories">Tüm film kategorileri</string>
+    <string name="landing_all_series_categories">Tüm dizi kategorileri</string>
+    <string name="landing_all_channel_categories">Tüm kanal kategorileri</string>
+    <string name="landing_browse_library">Tüm kitaplığa göz at</string>
+    <string name="landing_browse_channels">Tüm kanallara göz at</string>
+    <string name="landing_nothing_yet">Henüz bir şey izlenmedi. Başlamak için kategorileri açın.</string>
+    <string name="landing_time_left">%1$s kaldı</string>
+    <string name="language_choose_subtitle">Uygulama dilinizi seçin</string>
+    <string name="language_press_ok">Uygulamak için OK tuşuna basın</string>
 </resources>

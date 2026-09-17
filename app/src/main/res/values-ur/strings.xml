@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">4K Plus TV Player</string>
 
@@ -279,4 +279,24 @@
     <string name="stop_playback_message">پلے بیک رک جائے گا اور آپ تفصیلات کے صفحے پر واپس چلے جائیں گے۔</string>
     <string name="stop_playback_confirm">دیکھنا بند کریں</string>
     <string name="stop_playback_stay">دیکھتے رہیں</string>
+    <string name="nav_home">ہوم</string>
+    <string name="kind_movie">فلم</string>
+    <string name="kind_series">سیریز</string>
+    <string name="action_play">چلائیں</string>
+    <string name="action_resume">جاری رکھیں</string>
+    <string name="action_resume_episode">قسط جاری رکھیں</string>
+    <string name="action_watch_live">لائیو دیکھیں</string>
+    <string name="action_favorite">پسندیدہ</string>
+    <string name="landing_recently_watched_movies">حال ہی میں دیکھی گئی فلمیں</string>
+    <string name="landing_recently_watched_series">حال ہی میں دیکھی گئی سیریز</string>
+    <string name="landing_recently_watched_channels">حال ہی میں دیکھے گئے چینلز</string>
+    <string name="landing_all_movie_categories">تمام فلمی اقسام</string>
+    <string name="landing_all_series_categories">تمام سیریز اقسام</string>
+    <string name="landing_all_channel_categories">تمام چینل اقسام</string>
+    <string name="landing_browse_library">پوری لائبریری دیکھیں</string>
+    <string name="landing_browse_channels">تمام چینلز دیکھیں</string>
+    <string name="landing_nothing_yet">ابھی کچھ نہیں دیکھا گیا۔ شروع کرنے کے لیے اقسام کھولیں۔</string>
+    <string name="landing_time_left">%1$s باقی</string>
+    <string name="language_choose_subtitle">اپنی ایپ کی زبان منتخب کریں</string>
+    <string name="language_press_ok">لاگو کرنے کے لیے OK دبائیں</string>
 </resources>

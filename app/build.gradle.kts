@@ -1,4 +1,4 @@
-import java.util.Properties
+﻿import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -43,8 +43,8 @@ android {
         //
         // versionCode is what Android compares to decide whether something is an update. It must
         // only ever increase, and is deliberately not reset to match versionName.
-        versionCode = 76
-        versionName = "2.5"
+        versionCode = 77
+        versionName = "2.6"
     }
 
     signingConfigs {

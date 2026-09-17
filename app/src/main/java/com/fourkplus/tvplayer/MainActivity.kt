@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer
+﻿package com.fourkplus.tvplayer
 
 import android.app.Activity
 import android.content.Context
@@ -104,6 +104,12 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.fourkplus.tvplayer.ui.theme.*
+import com.fourkplus.tvplayer.ui.design.CinematicBackdrop
+import com.fourkplus.tvplayer.ui.design.LocalIsTv
+import com.fourkplus.tvplayer.ui.design.LocalReducedMotion
+import com.fourkplus.tvplayer.ui.design.NavDestination
+import com.fourkplus.tvplayer.ui.design.rememberBackdropState
+import com.fourkplus.tvplayer.ui.design.rememberReducedMotion
 import com.fourkplus.tvplayer.data.LoadedPlaylist
 import com.fourkplus.tvplayer.data.MediaKind
 import com.fourkplus.tvplayer.data.MovieDetailsInfo
@@ -226,8 +232,26 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { LOADING, ACTIVATION, MANUAL, PLAYLISTS, HOME, LIVE_TV, MOVIES, SERIES, SETTINGS, SEARCH }
+/**
+ * HOME, LIVE_TV, MOVIES and SERIES are the four landing pages behind the top navigation. Each of
+ * the latter three opens into its existing full browser - LIVE_ALL, MOVIES_ALL, SERIES_ALL - which
+ * is unchanged: the redesign covers the page that leads into them, not the browsing itself.
+ */
+private enum class Screen {
+    LOADING, ACTIVATION, MANUAL, PLAYLISTS,
+    HOME, LIVE_TV, MOVIES, SERIES,
+    LIVE_ALL, MOVIES_ALL, SERIES_ALL,
+    SETTINGS, SEARCH, LANGUAGE
+}
 internal enum class ThemeChoice { SYSTEM, LIGHT, DARK }
+
+/** The top navigation speaks in destinations; the app routes in screens. */
+private fun NavDestination.toScreen(): Screen = when (this) {
+    NavDestination.HOME -> Screen.HOME
+    NavDestination.LIVE -> Screen.LIVE_TV
+    NavDestination.MOVIES -> Screen.MOVIES
+    NavDestination.SERIES -> Screen.SERIES
+}
 
 /** A request to jump directly to a specific item in Live TV/Movies/Series, from Home's Continue
  *  Watching card (autoPlay = true) or from global search (autoPlay = false, opens details first). */
@@ -238,12 +262,14 @@ private fun App() {
     var screen by remember { mutableStateOf(Screen.LOADING) }
     var showExitConfirm by remember { mutableStateOf(false) }
     var resumeRequest by remember { mutableStateOf<ResumeRequest?>(null) }
-    var themeChoice by remember { mutableStateOf(ThemeChoice.DARK) }
-    val useDark = when (themeChoice) {
-        ThemeChoice.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
-        ThemeChoice.LIGHT -> false
-        ThemeChoice.DARK -> true
-    }
+    // One look, always. The redesign is built on a dark cinematic ground: artwork, scrims, glass
+    // panels and the cyan accent are all tuned for it, and a light variant would not be the same
+    // design with different colours - it would be a second, worse one. The stored preference is
+    // left alone rather than migrated, so nothing else that reads it has to change.
+    val themeChoice = ThemeChoice.DARK
+    val useDark = true
+    val backdrop = rememberBackdropState()
+    val reducedMotion = rememberReducedMotion()
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -319,12 +345,6 @@ private fun App() {
         )
     }
 
-    LaunchedEffect(Unit) {
-        themeChoice = runCatching {
-            ThemeChoice.valueOf(appPreferences.getString("theme", ThemeChoice.DARK.name).orEmpty())
-        }.getOrDefault(ThemeChoice.DARK)
-    }
-
     // Meaningless on TV: there's no touch screen to rotate and the device is permanently
     // landscape, so a hint about portrait/landscape differences would just be confusing.
     val isTvApp = remember { context.isTvDevice() }
@@ -334,6 +354,25 @@ private fun App() {
         ) {
             delay(700)
             showRotateHint = true
+        }
+    }
+
+    // Search, Settings and Language are reached from any landing page and must return to the one
+    // that opened them, not always to Home - landing somewhere else after changing a setting is
+    // the kind of small dishonesty that makes an interface feel unreliable.
+    var overlayReturn by remember { mutableStateOf(Screen.HOME) }
+    val openOverlay: (Screen) -> Unit = { target ->
+        overlayReturn = screen
+        screen = target
+    }
+
+    /** Hands an item to its own section's browser, which owns details, resume and playback. */
+    fun openForPlayback(item: PlaylistItem, episodeId: String?) {
+        resumeRequest = ResumeRequest(channelKey(item), episodeId, autoPlay = true)
+        screen = when (item.kind) {
+            MediaKind.LIVE -> Screen.LIVE_ALL
+            MediaKind.MOVIE -> Screen.MOVIES_ALL
+            MediaKind.SERIES -> Screen.SERIES_ALL
         }
     }
 
@@ -358,24 +397,14 @@ private fun App() {
         Box(
             Modifier.fillMaxSize().background(if (useDark) Color(0xFF04070F) else Color(0xFFEFF6FF))
         ) {
-        Image(
-            painter = painterResource(
-                when {
-                    useDark && landscapeApp -> R.drawable.bg_aurora_dark_land
-                    useDark -> R.drawable.bg_aurora_dark
-                    landscapeApp -> R.drawable.bg_sky_light_land
-                    else -> R.drawable.bg_sky_light
-                }
-            ),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            // Landscape uses its own purpose-composed artwork (already framed with the glow in the
-            // top-right corner), so it only needs top-end anchoring to keep that corner in frame on
-            // screens wider than the image; portrait's taller artwork stays top-centered.
-            alignment = if (landscapeApp) Alignment.TopEnd else Alignment.TopCenter,
-            modifier = Modifier.fillMaxSize()
-        )
-        if (!useDark) SunRays(Modifier.fillMaxSize())
+        // One background for the whole app, owned above every screen. That is what lets the
+        // artwork of the last movie or series you looked at follow you into Live TV, Search,
+        // Settings and Language instead of each page starting from a blank slate.
+        CompositionLocalProvider(
+            LocalReducedMotion provides reducedMotion,
+            LocalIsTv provides isTvApp
+        ) {
+        CinematicBackdrop(backdrop, Modifier.fillMaxSize()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             containerColor = Color.Transparent,
@@ -410,11 +439,6 @@ private fun App() {
                     }
                 }
                 Screen.ACTIVATION -> ActivationScreen(
-                    themeChoice = themeChoice,
-                    onThemeChange = {
-                        themeChoice = it
-                        appPreferences.edit().putString("theme", it.name).apply()
-                    },
                     onManual = { screen = Screen.MANUAL },
                     onMessage = message,
                     loadPlaylist = playlistViewModel::addPlaylist,
@@ -457,68 +481,89 @@ private fun App() {
                         }
                     }
                 )
-                Screen.HOME -> HomeScreen(
+                Screen.HOME -> HomeLandingScreen(
                     playlist = playlistUiState.loadedPlaylist,
-                    isDark = useDark,
-                    currentLanguage = currentLanguage,
-                    onLanguageChange = onLanguageChange,
-                    onToggleTheme = {
-                        // Commits to an explicit choice rather than leaving it on SYSTEM, so the
-                        // tap sticks even when the device theme says otherwise.
-                        val next = if (useDark) ThemeChoice.LIGHT else ThemeChoice.DARK
-                        themeChoice = next
-                        appPreferences.edit().putString("theme", next.name).apply()
-                    },
-                    onManage = { screen = Screen.SETTINGS },
-                    onPlaylists = { screen = Screen.PLAYLISTS },
-                    onOpenLive = { screen = Screen.LIVE_TV },
-                    onOpenMovies = { screen = Screen.MOVIES },
-                    onOpenSeries = { screen = Screen.SERIES },
-                    onSearch = { screen = Screen.SEARCH },
-                    onContinueWatching = { item, episodeId ->
-                        resumeRequest = ResumeRequest(channelKey(item), episodeId, autoPlay = true)
-                        screen = when (item.kind) {
-                            MediaKind.LIVE -> Screen.LIVE_TV
-                            MediaKind.MOVIE -> Screen.MOVIES
-                            MediaKind.SERIES -> Screen.SERIES
-                        }
-                    },
-                    onMessage = message
+                    backdrop = backdrop,
+                    onNavigate = { screen = it.toScreen() },
+                    onSearch = { openOverlay(Screen.SEARCH) },
+                    onLanguage = { openOverlay(Screen.LANGUAGE) },
+                    onSettings = { openOverlay(Screen.SETTINGS) },
+                    onPlay = ::openForPlayback
+                )
+                Screen.MOVIES -> MoviesLandingScreen(
+                    playlist = playlistUiState.loadedPlaylist,
+                    backdrop = backdrop,
+                    onNavigate = { screen = it.toScreen() },
+                    onSearch = { openOverlay(Screen.SEARCH) },
+                    onLanguage = { openOverlay(Screen.LANGUAGE) },
+                    onSettings = { openOverlay(Screen.SETTINGS) },
+                    onOpenAll = { screen = Screen.MOVIES_ALL },
+                    onPlay = ::openForPlayback
+                )
+                Screen.SERIES -> SeriesLandingScreen(
+                    playlist = playlistUiState.loadedPlaylist,
+                    backdrop = backdrop,
+                    onNavigate = { screen = it.toScreen() },
+                    onSearch = { openOverlay(Screen.SEARCH) },
+                    onLanguage = { openOverlay(Screen.LANGUAGE) },
+                    onSettings = { openOverlay(Screen.SETTINGS) },
+                    onOpenAll = { screen = Screen.SERIES_ALL },
+                    onPlay = ::openForPlayback
+                )
+                Screen.LIVE_TV -> LiveLandingScreen(
+                    playlist = playlistUiState.loadedPlaylist,
+                    backdrop = backdrop,
+                    onNavigate = { screen = it.toScreen() },
+                    onSearch = { openOverlay(Screen.SEARCH) },
+                    onLanguage = { openOverlay(Screen.LANGUAGE) },
+                    onSettings = { openOverlay(Screen.SETTINGS) },
+                    onOpenAll = { screen = Screen.LIVE_ALL },
+                    onPlay = ::openForPlayback
+                )
+                Screen.LANGUAGE -> LanguageScreen(
+                    current = currentLanguage,
+                    onSelect = onLanguageChange,
+                    onBack = { screen = overlayReturn }
                 )
                 Screen.SEARCH -> GlobalSearchScreen(
                     playlist = playlistUiState.loadedPlaylist,
-                    onBack = { screen = Screen.HOME },
+                    onBack = { screen = overlayReturn },
                     onSelect = { item ->
+                        // autoPlay = false: search opens the details page, it does not start
+                        // playing something the viewer has only glanced at.
                         resumeRequest = ResumeRequest(channelKey(item), autoPlay = false)
                         screen = when (item.kind) {
-                            MediaKind.LIVE -> Screen.LIVE_TV
-                            MediaKind.MOVIE -> Screen.MOVIES
-                            MediaKind.SERIES -> Screen.SERIES
+                            MediaKind.LIVE -> Screen.LIVE_ALL
+                            MediaKind.MOVIE -> Screen.MOVIES_ALL
+                            MediaKind.SERIES -> Screen.SERIES_ALL
                         }
                     }
                 )
-                Screen.LIVE_TV -> LiveTvScreen(
+                // The full browsers, reached from their landing pages. Untouched by the redesign
+                // beyond the background they now sit on: same lists, same categories, same preview
+                // and playback behaviour.
+                Screen.LIVE_ALL -> LiveTvScreen(
                     playlist = playlistUiState.loadedPlaylist,
-                    onBack = { screen = Screen.HOME },
+                    onBack = { screen = Screen.LIVE_TV },
                     onMessage = message,
                     loadEpg = playlistViewModel::shortEpg,
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null }
                 )
-                Screen.MOVIES -> MoviesScreen(
+                Screen.MOVIES_ALL -> MoviesScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     loadDetails = playlistViewModel::movieDetails,
-                    onBack = { screen = Screen.HOME },
+                    onBack = { screen = Screen.MOVIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null }
                 )
-                Screen.SERIES -> SeriesScreen(
+                Screen.SERIES_ALL -> SeriesScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     loadDetails = playlistViewModel::seriesDetails,
                     source = playlistUiState.activeSource,
-                    onBack = { screen = Screen.HOME },
+                    onBack = { screen = Screen.SERIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null }
@@ -526,11 +571,6 @@ private fun App() {
                 Screen.SETTINGS -> SettingsScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     source = playlistUiState.activeSource,
-                    themeChoice = themeChoice,
-                    onThemeChange = {
-                        themeChoice = it
-                        appPreferences.edit().putString("theme", it.name).apply()
-                    },
                     currentLanguage = currentLanguage,
                     onLanguageChange = onLanguageChange,
                     parentalEnabled = parentalEnabled,
@@ -546,7 +586,7 @@ private fun App() {
                     pinHash = pinHash,
                     onPinHashChange = { pinHash = it },
                     requirePin = requirePin,
-                    onBack = { screen = Screen.HOME },
+                    onBack = { screen = overlayReturn },
                     onRefresh = {
                         scope.launch {
                             playlistViewModel.refreshActive()
@@ -620,6 +660,8 @@ private fun App() {
                 )
             }
             }
+        }
+        }
         }
         }
     }
@@ -782,8 +824,6 @@ private fun PremiumBackground(content: @Composable BoxScope.() -> Unit) {
 
 @Composable
 private fun ActivationScreen(
-    themeChoice: ThemeChoice,
-    onThemeChange: (ThemeChoice) -> Unit,
     onManual: () -> Unit,
     onMessage: (String) -> Unit,
     loadPlaylist: suspend (PlaylistInput) -> Result<LoadedPlaylist>,
@@ -801,7 +841,6 @@ private fun ActivationScreen(
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 BrandMark(Modifier.weight(1f))
-                ThemeMenu(themeChoice, onThemeChange)
                 AnimatedIconButton(onClick = { onMessage(languageComingSoon) }) { Icon(Icons.Default.Language, stringResource(R.string.cd_language)) }
             }
 
@@ -2854,11 +2893,11 @@ private fun MovieCreditRow(icon: ImageVector, label: String, value: String) {
     }
 }
 
-private fun validMovieRating(value: String?): String? = value?.trim()?.takeIf {
+internal fun validMovieRating(value: String?): String? = value?.trim()?.takeIf {
     it.isNotBlank() && it != "0" && it != "0.0" && !it.equals("null", true)
 }
 
-private fun readableMovieDuration(value: String?): String? {
+internal fun readableMovieDuration(value: String?): String? {
     val text = value?.trim()?.takeIf(String::isNotBlank) ?: return null
     val seconds = text.toLongOrNull()
     if (seconds != null && seconds > 300L) {
@@ -2868,7 +2907,7 @@ private fun readableMovieDuration(value: String?): String? {
     return text
 }
 
-private fun watchedFraction(movie: PlaylistItem, progress: Map<String, Long>): Float? {
+internal fun watchedFraction(movie: PlaylistItem, progress: Map<String, Long>): Float? {
     val positionMs = progress[channelKey(movie)]?.takeIf { it > 0L } ?: return null
     val durationMs = parseDurationToMillis(movie.duration)?.takeIf { it > 0L } ?: return null
     return (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)

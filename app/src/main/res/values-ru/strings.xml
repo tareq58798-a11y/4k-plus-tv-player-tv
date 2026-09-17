@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">4K Plus TV Player</string>
 
@@ -279,4 +279,24 @@
     <string name="stop_playback_message">Воспроизведение остановится, и вы вернётесь на страницу с описанием.</string>
     <string name="stop_playback_confirm">Прекратить</string>
     <string name="stop_playback_stay">Продолжить просмотр</string>
+    <string name="nav_home">Главная</string>
+    <string name="kind_movie">Фильм</string>
+    <string name="kind_series">Сериал</string>
+    <string name="action_play">Смотреть</string>
+    <string name="action_resume">Продолжить</string>
+    <string name="action_resume_episode">Продолжить серию</string>
+    <string name="action_watch_live">Смотреть эфир</string>
+    <string name="action_favorite">В избранное</string>
+    <string name="landing_recently_watched_movies">Недавно просмотренные фильмы</string>
+    <string name="landing_recently_watched_series">Недавно просмотренные сериалы</string>
+    <string name="landing_recently_watched_channels">Недавно просмотренные каналы</string>
+    <string name="landing_all_movie_categories">Все категории фильмов</string>
+    <string name="landing_all_series_categories">Все категории сериалов</string>
+    <string name="landing_all_channel_categories">Все категории каналов</string>
+    <string name="landing_browse_library">Просмотреть всю библиотеку</string>
+    <string name="landing_browse_channels">Просмотреть все каналы</string>
+    <string name="landing_nothing_yet">Пока ничего не просмотрено. Откройте категории, чтобы начать.</string>
+    <string name="landing_time_left">осталось %1$s</string>
+    <string name="language_choose_subtitle">Выберите язык приложения</string>
+    <string name="language_press_ok">Нажмите OK, чтобы применить</string>
 </resources>

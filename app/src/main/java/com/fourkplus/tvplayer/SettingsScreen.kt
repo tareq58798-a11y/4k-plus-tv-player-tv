@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer
+﻿package com.fourkplus.tvplayer
 
 import android.content.Context
 import java.security.MessageDigest
@@ -31,7 +31,7 @@ import com.fourkplus.tvplayer.data.MediaKind
 import com.fourkplus.tvplayer.data.PlaylistInput
 import com.fourkplus.tvplayer.ui.theme.*
 
-private enum class SettingsPage { ROOT, PLAYLIST, INFO, PLAYBACK, APPEARANCE, LANGUAGE, HISTORY, CATEGORIES, PARENTAL, LOCK_CATEGORIES, LOCK_CHANNELS }
+private enum class SettingsPage { ROOT, PLAYLIST, INFO, PLAYBACK, LANGUAGE, HISTORY, CATEGORIES, PARENTAL, LOCK_CATEGORIES, LOCK_CHANNELS }
 
 @Composable
 private fun settingsPageTitle(page: SettingsPage): String = when (page) {
@@ -39,7 +39,6 @@ private fun settingsPageTitle(page: SettingsPage): String = when (page) {
     SettingsPage.PLAYLIST -> stringResource(R.string.settings_playlists)
     SettingsPage.INFO -> stringResource(R.string.settings_app_info)
     SettingsPage.PLAYBACK -> stringResource(R.string.settings_playback)
-    SettingsPage.APPEARANCE -> stringResource(R.string.settings_appearance)
     SettingsPage.LANGUAGE -> stringResource(R.string.cd_language)
     SettingsPage.HISTORY -> stringResource(R.string.settings_privacy_history)
     SettingsPage.CATEGORIES -> stringResource(R.string.settings_category_visibility)
@@ -53,8 +52,6 @@ private fun settingsPageTitle(page: SettingsPage): String = when (page) {
 internal fun SettingsScreen(
     playlist: LoadedPlaylist?,
     source: PlaylistInput?,
-    themeChoice: ThemeChoice,
-    onThemeChange: (ThemeChoice) -> Unit,
     currentLanguage: AppLanguage,
     onLanguageChange: (AppLanguage) -> Unit,
     parentalEnabled: Boolean,
@@ -188,7 +185,6 @@ internal fun SettingsScreen(
                         SettingsMenuRow(Icons.Default.PlaylistPlay, stringResource(R.string.settings_playlists), Orange) { settingsPage = SettingsPage.PLAYLIST }
                         SettingsMenuRow(Icons.Default.Info, stringResource(R.string.settings_app_info), BrandBlue) { settingsPage = SettingsPage.INFO }
                         SettingsMenuRow(Icons.Default.PlayCircle, stringResource(R.string.settings_playback), Cyan) { settingsPage = SettingsPage.PLAYBACK }
-                        SettingsMenuRow(Icons.Default.Palette, stringResource(R.string.settings_appearance), BrandBlue) { settingsPage = SettingsPage.APPEARANCE }
                         SettingsMenuRow(Icons.Default.Language, stringResource(R.string.cd_language), Cyan) { settingsPage = SettingsPage.LANGUAGE }
                     }
                 }
@@ -428,19 +424,6 @@ internal fun SettingsScreen(
                                 playerEngine = option.first
                                 playback.edit().putString("player_engine", option.first).apply()
                             }
-                        )
-                    }
-                }
-            }
-
-            if (settingsPage == SettingsPage.APPEARANCE) item {
-                SettingsSection(stringResource(R.string.settings_appearance), Icons.Default.Palette) {
-                    Text(stringResource(R.string.theme_label), fontWeight = FontWeight.Bold)
-                    ThemeChoice.entries.forEach { choice ->
-                        RadioSetting(
-                            title = themeChoiceLabel(choice),
-                            selected = themeChoice == choice,
-                            onClick = { onThemeChange(choice) }
                         )
                     }
                 }

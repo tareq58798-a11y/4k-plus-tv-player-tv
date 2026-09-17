@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">4K Plus TV Player</string>
 
@@ -279,4 +279,24 @@
     <string name="stop_playback_message">La reproducción se detendrá y volverás a la página de detalles.</string>
     <string name="stop_playback_confirm">Dejar de ver</string>
     <string name="stop_playback_stay">Seguir viendo</string>
+    <string name="nav_home">Inicio</string>
+    <string name="kind_movie">Película</string>
+    <string name="kind_series">Serie</string>
+    <string name="action_play">Reproducir</string>
+    <string name="action_resume">Continuar</string>
+    <string name="action_resume_episode">Continuar episodio</string>
+    <string name="action_watch_live">Ver en directo</string>
+    <string name="action_favorite">Favorito</string>
+    <string name="landing_recently_watched_movies">Películas vistas recientemente</string>
+    <string name="landing_recently_watched_series">Series vistas recientemente</string>
+    <string name="landing_recently_watched_channels">Canales vistos recientemente</string>
+    <string name="landing_all_movie_categories">Todas las categorías de películas</string>
+    <string name="landing_all_series_categories">Todas las categorías de series</string>
+    <string name="landing_all_channel_categories">Todas las categorías de canales</string>
+    <string name="landing_browse_library">Explora la biblioteca completa</string>
+    <string name="landing_browse_channels">Explora todos los canales</string>
+    <string name="landing_nothing_yet">Aún no has visto nada. Abre las categorías para empezar.</string>
+    <string name="landing_time_left">quedan %1$s</string>
+    <string name="language_choose_subtitle">Elige el idioma de la aplicación</string>
+    <string name="language_press_ok">Pulsa OK para aplicar</string>
 </resources>

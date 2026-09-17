@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">4K Plus TV Player</string>
 
@@ -303,4 +303,24 @@
     <string name="all_channels_unlocked">All channels are unlocked</string>
     <string name="catalogues_loading">Loading the remaining Movies and Series…</string>
     <string name="catalogues_load_failed">Some content could not load. Refresh the playlist in Settings to retry.</string>
+    <string name="nav_home">Home</string>
+    <string name="kind_movie">Movie</string>
+    <string name="kind_series">Series</string>
+    <string name="action_play">Play</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_resume_episode">Resume Episode</string>
+    <string name="action_watch_live">Watch Live</string>
+    <string name="action_favorite">Favorite</string>
+    <string name="landing_recently_watched_movies">Recently Watched Movies</string>
+    <string name="landing_recently_watched_series">Recently Watched Series</string>
+    <string name="landing_recently_watched_channels">Recently Watched Channels</string>
+    <string name="landing_all_movie_categories">All Movie Categories</string>
+    <string name="landing_all_series_categories">All Series Categories</string>
+    <string name="landing_all_channel_categories">All Channel Categories</string>
+    <string name="landing_browse_library">Browse the complete library</string>
+    <string name="landing_browse_channels">Browse all channels</string>
+    <string name="landing_nothing_yet">Nothing watched yet. Open the categories to start.</string>
+    <string name="landing_time_left">%1$s left</string>
+    <string name="language_choose_subtitle">Choose your app language</string>
+    <string name="language_press_ok">Press OK to apply</string>
 </resources>
