@@ -143,7 +143,13 @@ fun AppTopBar(
                 if (downTarget != null) {
                     Modifier.onPreviewKeyEvent { event ->
                         if (event.isInitialDown && event.key == Key.DirectionDown) {
-                            runCatching { downTarget.requestFocus() }.isSuccess
+                            // Consumed whether or not the target took it. If the top row has not
+                            // composed a focusable yet - a catalogue still loading, a section with
+                            // nothing in it - the request fails, and letting the press fall through
+                            // to the focus search would drop the viewer onto the Play button below
+                            // the row. Staying on the bar is the better of the two.
+                            runCatching { downTarget.requestFocus() }
+                            true
                         } else false
                     }
                 } else Modifier
