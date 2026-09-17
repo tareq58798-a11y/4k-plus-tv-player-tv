@@ -263,10 +263,7 @@ internal fun LandingScaffold(
                                 entry = entry,
                                 backdrop = backdrop,
                                 modifier = if (isFirst) Modifier.focusRequester(firstCard) else Modifier,
-                                // Only the top row hands Up to the navigation. Lower rows keep
-                                // meaning "the row above", which is the one thing a viewer can
-                                // always count on Up to do.
-                                upTarget = if (rowIndex == 0) tabFor(entry.item.kind) else null,
+                                upTarget = tabFor(entry.item.kind),
                                 onFocused = { focused = entry },
                                 onClick = { onSelect(entry) }
                             )
@@ -275,7 +272,13 @@ internal fun LandingScaffold(
                         // after them: five unfilled slots would otherwise push it off the right
                         // of the screen on a new install, hiding the one control that fills them.
                         if (showTile && tile != null) {
-                            item(key = "${row.id}_all_categories") { CategoryTile(tile) }
+                            // The tile belongs to the page it is on, so Up from it goes to that
+                            // page's tab. Without this it was the one focusable in the row with no
+                            // answer for Up - and on Live TV, where nothing has been watched yet,
+                            // it is the only thing in the row at all.
+                            item(key = "${row.id}_all_categories") {
+                                CategoryTile(tile, upTarget = tabFocus.getValue(destination))
+                            }
                         }
                         if (placeholders > 0) {
                             items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
@@ -422,12 +425,21 @@ private fun EmptySlot() {
 }
 
 @Composable
-private fun CategoryTile(tile: LandingTile) {
+private fun CategoryTile(tile: LandingTile, upTarget: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
     Box(
         Modifier
             .width(Dims.CardWidth + Dims.CardBleed * 2)
             .padding(Dims.CardBleed)
+            .then(
+                if (upTarget != null) {
+                    Modifier.onPreviewKeyEvent { event ->
+                        if (event.isInitialKeyDown && event.key == Key.DirectionUp) {
+                            runCatching { upTarget.requestFocus() }.isSuccess
+                        } else false
+                    }
+                } else Modifier
+            )
     ) {
         GlassPanel(
             Modifier
