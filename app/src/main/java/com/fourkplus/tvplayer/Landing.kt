@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -167,6 +168,8 @@ internal fun LandingScaffold(
     footer: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf<LandingEntry?>(null) }
+    /** Which row the focused card belongs to, and so which row shows the information block. */
+    var focusedRow by remember { mutableIntStateOf(0) }
     // Keyed by item, so moving back onto something already looked up costs nothing.
     val bios = remember { mutableStateMapOf<String, ItemBio>() }
     // Keyed on the focused entry, so moving on cancels the wait before it ever becomes a request:
@@ -283,7 +286,10 @@ internal fun LandingScaffold(
                                 } else {
                                     topRowFocus.getOrNull(index) ?: topRowFocus.last()
                                 },
-                                onFocused = { focused = entry },
+                                onFocused = {
+                                    focused = entry
+                                    focusedRow = rowIndex
+                                },
                                 onClick = { onSelect(entry) }
                             )
                         }
@@ -321,37 +327,35 @@ internal fun LandingScaffold(
                     }
                 }
             }
-            if (rowIndex == 0) {
-                // Sits between the first row and everything below it, exactly as in the design:
-                // the row you are working in, then what you have landed on.
-                //
-                // It takes only the height it actually needs. Reserving room for the tallest
-                // possible description left a hole on the page whenever nothing was focused - on
-                // arrival, or while the viewer is up in the navigation bar. Instead the block
-                // grows as the details arrive and the rows beneath slide down with it, which
-                // animateContentSize makes a movement rather than a jump.
-                FadingInfo(
-                    key = focused,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateContentSize(
-                            if (LocalReducedMotion.current) snap() else Motion.info()
-                        )
-                        .padding(horizontal = Dims.SafeHorizontal)
-                ) { current ->
-                    if (current == null) {
-                        // Nothing at all, not an empty box: a zero-height branch is what lets the
-                        // next row sit directly under the artwork when no card holds focus.
-                        Spacer(Modifier.fillMaxWidth().height(0.dp))
-                    } else {
-                        FocusedItemInfo(
-                            entry = current,
-                            bio = bios[current.key],
-                            favorite = isFavorite(current.item),
-                            onPlay = { onSelect(current) },
-                            onToggleFavorite = { onToggleFavorite(current.item) }
-                        )
-                    }
+            // Every row has a slot for the information block beneath it, but only the row holding
+            // focus ever fills its own. Moving between rows therefore closes one slot and opens
+            // the other, which is what carries the rows above up the screen to make room.
+            //
+            // Both slots are always in the layout so both can animate: were the block simply
+            // removed from one place and added to another it would jump, where this collapses and
+            // expands. And it takes only the height it needs - reserving room for the tallest
+            // possible description left a hole on the page whenever nothing was focused at all.
+            FadingInfo(
+                key = focused?.takeIf { rowIndex == focusedRow },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(
+                        if (LocalReducedMotion.current) snap() else Motion.info()
+                    )
+                    .padding(horizontal = Dims.SafeHorizontal)
+            ) { current ->
+                if (current == null) {
+                    // Nothing at all, not an empty box: a zero-height branch is what lets the
+                    // next row sit directly under the artwork when this row does not hold focus.
+                    Spacer(Modifier.fillMaxWidth().height(0.dp))
+                } else {
+                    FocusedItemInfo(
+                        entry = current,
+                        bio = bios[current.key],
+                        favorite = isFavorite(current.item),
+                        onPlay = { onSelect(current) },
+                        onToggleFavorite = { onToggleFavorite(current.item) }
+                    )
                 }
             }
         }
