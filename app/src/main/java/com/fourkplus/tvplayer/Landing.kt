@@ -172,24 +172,15 @@ internal fun LandingScaffold(
         runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
     }
     val firstCard = remember { FocusRequester() }
-    // Up out of the top row goes to the tab for the card's own kind - a film to Movies, a series
-    // to Series, a channel to Live TV - and because reaching a tab opens it, the card takes you to
-    // its own section. On Movies, Series and Live TV every card is that section's kind, so this
-    // reads as staying put; on Home, where the rows are mixed, each card leads where it belongs.
+    // Up from anything in the page goes to the tab of the page it is on, and stays there: Home to
+    // Home, Series to Series, and so on. Up is how you get back to the navigation, so it always
+    // does the same thing wherever it is pressed - it never changes section under the viewer.
     //
-    // It is declared rather than searched for: Compose's focus search picks whatever focusable
+    // It is declared rather than searched for. Compose's focus search picks whatever focusable
     // sits nearest overhead, so the answer would otherwise depend on how far along the row the
-    // card happened to be, and from the right-hand end it reached the header icons.
+    // card happened to be, and from the right-hand end it reached the header icons instead.
     val tabFocus = remember { NavDestination.entries.associateWith { FocusRequester() } }
-    val tabFor: (MediaKind) -> FocusRequester = { kind ->
-        tabFocus.getValue(
-            when (kind) {
-                MediaKind.MOVIE -> NavDestination.MOVIES
-                MediaKind.SERIES -> NavDestination.SERIES
-                MediaKind.LIVE -> NavDestination.LIVE
-            }
-        )
-    }
+    val ownTab = tabFocus.getValue(destination)
     val labels = mapOf(
         NavDestination.HOME to stringResource(R.string.nav_home),
         NavDestination.LIVE to stringResource(R.string.nav_live_tv),
@@ -263,7 +254,7 @@ internal fun LandingScaffold(
                                 entry = entry,
                                 backdrop = backdrop,
                                 modifier = if (isFirst) Modifier.focusRequester(firstCard) else Modifier,
-                                upTarget = tabFor(entry.item.kind),
+                                upTarget = ownTab,
                                 onFocused = { focused = entry },
                                 onClick = { onSelect(entry) }
                             )
@@ -277,7 +268,7 @@ internal fun LandingScaffold(
                             // answer for Up - and on Live TV, where nothing has been watched yet,
                             // it is the only thing in the row at all.
                             item(key = "${row.id}_all_categories") {
-                                CategoryTile(tile, upTarget = tabFocus.getValue(destination))
+                                CategoryTile(tile, upTarget = ownTab)
                             }
                         }
                         if (placeholders > 0) {
