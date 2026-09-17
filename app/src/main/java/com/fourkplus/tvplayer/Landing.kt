@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -182,7 +183,15 @@ internal fun LandingScaffold(
         // crossfade handles the swap, and if the two are the same image nothing happens at all.
         bio.backdropUrl?.takeIf { it.isNotBlank() }?.let { backdrop.show(entry.key, it) }
     }
-    val firstCard = remember { FocusRequester() }
+    // A handle on each focusable position in the top row, in the order they are laid out: its
+    // cards, then the category tile. Both rows use the same card width and start at the same
+    // margin, so position N in the row below sits directly under position N here - which is what
+    // lets Up from the second row step straight up into the artwork above it instead of stopping
+    // at the Play button that happens to sit between them.
+    val topRowSlots = ((rows.firstOrNull()?.entries?.size ?: 0) + (if (tile != null) 1 else 0))
+        .coerceAtLeast(1)
+    val topRowFocus = remember(topRowSlots) { List(topRowSlots) { FocusRequester() } }
+    val firstCard = topRowFocus.first()
     // Up from anything in the page goes to the tab of the page it is on, and stays there: Home to
     // Home, Series to Series, and so on. Up is how you get back to the navigation, so it always
     // does the same thing wherever it is pressed - it never changes section under the viewer.
@@ -260,13 +269,20 @@ internal fun LandingScaffold(
                         ),
                         horizontalArrangement = Arrangement.spacedBy(Dims.GapXs)
                     ) {
-                        items(row.entries, key = { "${row.id}_${it.key}" }) { entry ->
-                            val isFirst = rowIndex == 0 && entry == row.entries.firstOrNull()
+                        itemsIndexed(row.entries, key = { _, it -> "${row.id}_${it.key}" }) { index, entry ->
                             LandingCard(
                                 entry = entry,
                                 backdrop = backdrop,
-                                modifier = if (isFirst) Modifier.focusRequester(firstCard) else Modifier,
-                                upTarget = ownTab,
+                                modifier = if (rowIndex == 0 && index < topRowFocus.size) {
+                                    Modifier.focusRequester(topRowFocus[index])
+                                } else Modifier,
+                                // The top row answers Up with the navigation; every row beneath it
+                                // answers with the position above it in that top row.
+                                upTarget = if (rowIndex == 0) {
+                                    ownTab
+                                } else {
+                                    topRowFocus.getOrNull(index) ?: topRowFocus.last()
+                                },
                                 onFocused = { focused = entry },
                                 onClick = { onSelect(entry) }
                             )
@@ -280,14 +296,14 @@ internal fun LandingScaffold(
                             // answer for Up - and on Live TV, where nothing has been watched yet,
                             // it is the only thing in the row at all.
                             item(key = "${row.id}_all_categories") {
-                                // On a section with nothing watched yet the tile is the row's
-                                // first focusable, so it inherits the entry point Down aims at.
+                                // The tile is the last focusable position in the top row, so it
+                                // takes the requester for that slot - which is also the entry
+                                // point Down aims at when nothing has been watched yet.
                                 CategoryTile(
                                     tile,
                                     upTarget = ownTab,
-                                    modifier = if (row.entries.isEmpty()) {
-                                        Modifier.focusRequester(firstCard)
-                                    } else Modifier
+                                    modifier = topRowFocus.getOrNull(row.entries.size)
+                                        ?.let { Modifier.focusRequester(it) } ?: Modifier
                                 )
                             }
                         }
