@@ -129,7 +129,13 @@ internal data class ItemBio(
     val year: String? = null,
     val rating: String? = null,
     val duration: String? = null,
-    val genre: String? = null
+    val genre: String? = null,
+    /**
+     * The title's own landscape artwork. Catalogue listings only carry a poster, which is a tall
+     * crop a few hundred pixels wide - stretched across a television it is the weakest picture in
+     * the app. This is the image the backdrop actually wants, and it arrives with the details.
+     */
+    val backdropUrl: String? = null
 )
 
 /** The tile that opens a section's full category list, shown at the end of its first row. */
@@ -169,7 +175,12 @@ internal fun LandingScaffold(
         val fetch = loadBio ?: return@LaunchedEffect
         if (entry.item.kind == MediaKind.LIVE || bios.containsKey(entry.key)) return@LaunchedEffect
         delay(400)
-        runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
+        val bio = runCatching { fetch(entry.item) }.getOrNull() ?: return@LaunchedEffect
+        bios[entry.key] = bio
+        // The poster went up the moment this card was focused, so the page was never blank; now
+        // the title's proper landscape artwork has arrived, the backdrop upgrades to it. The
+        // crossfade handles the swap, and if the two are the same image nothing happens at all.
+        bio.backdropUrl?.takeIf { it.isNotBlank() }?.let { backdrop.show(entry.key, it) }
     }
     val firstCard = remember { FocusRequester() }
     // Up from anything in the page goes to the tab of the page it is on, and stays there: Home to

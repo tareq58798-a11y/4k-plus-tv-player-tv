@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer.ui.design
+﻿package com.fourkplus.tvplayer.ui.design
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Image
@@ -26,6 +26,8 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.imageLoader
 import coil.request.ImageRequest
+import coil.size.Precision
+import coil.size.Scale
 import com.fourkplus.tvplayer.R
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -94,7 +96,25 @@ fun CinematicBackdrop(
     var incomingModel by remember { mutableStateOf<String?>(null) }
     val fade = remember { Animatable(0f) }
 
-    val incomingPainter = rememberAsyncImagePainter(model = incomingModel, contentScale = ContentScale.Crop)
+    val context = LocalContext.current
+    // Backdrops are decoded at up to 4K rather than at the size of the view they land in. Coil
+    // sizes a request to its composable by default, which on a 1080p panel throws away every pixel
+    // beyond 1920 wide before the image is ever drawn - so a 4K still and a 1080p one ended up
+    // identical on screen, and identical again on a 4K panel where the difference would show.
+    //
+    // It never invents detail: this is a ceiling, not a target. A source smaller than 4K is decoded
+    // whole, at its own resolution, because that is all there is to decode.
+    val incomingRequest = remember(incomingModel) {
+        incomingModel?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .size(BackdropWidthPx, BackdropHeightPx)
+                .scale(Scale.FILL)
+                .precision(Precision.INEXACT)
+                .build()
+        }
+    }
+    val incomingPainter = rememberAsyncImagePainter(model = incomingRequest, contentScale = ContentScale.Crop)
 
     // Rapid D-pad movement produces a request per item. Debouncing means only the item the viewer
     // actually settles on costs an image load, while the ones they scrolled past cost nothing.
@@ -158,10 +178,17 @@ fun CinematicBackdrop(
     }
 }
 
+/** The ceiling a backdrop is decoded at. Sources below it are decoded whole; nothing is upscaled. */
+private const val BackdropWidthPx = 3840
+private const val BackdropHeightPx = 2160
+
 /**
  * Warms Coil's cache with artwork the viewer is about to reach, so a deliberate move along a row
  * shows its background immediately instead of after a round trip. Fire-and-forget: failures are
  * irrelevant, and the requests are plain cache fills with no UI attached.
+ *
+ * Sized to match the backdrop's own request, so the cached entry is the one the backdrop will ask
+ * for. A preload at a different size fills the cache with a bitmap the backdrop then ignores.
  */
 @Composable
 fun PreloadBackdrops(urls: List<String>) {
@@ -169,7 +196,14 @@ fun PreloadBackdrops(urls: List<String>) {
     LaunchedEffect(urls) {
         urls.filter { it.isNotBlank() }.take(6).forEach { url ->
             runCatching {
-                context.imageLoader.enqueue(ImageRequest.Builder(context).data(url).build())
+                context.imageLoader.enqueue(
+                    ImageRequest.Builder(context)
+                        .data(url)
+                        .size(BackdropWidthPx, BackdropHeightPx)
+                        .scale(Scale.FILL)
+                        .precision(Precision.INEXACT)
+                        .build()
+                )
             }
         }
     }

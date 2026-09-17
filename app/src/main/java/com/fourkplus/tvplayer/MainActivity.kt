@@ -381,11 +381,20 @@ private fun App() {
     // for it the same way the details pages do, once per title and only after focus has settled.
     val loadBio: suspend (PlaylistItem) -> ItemBio? = { item ->
         when (item.kind) {
+            // backdropUrl first, posterUrl only as a fallback: the backdrop is the landscape still
+            // a television actually wants, where the poster is a tall crop a few hundred pixels
+            // wide that has to be blown up to fill the screen.
             MediaKind.MOVIE -> playlistViewModel.movieDetails(item).getOrNull()?.let {
-                ItemBio(it.description, it.year, it.rating, it.duration, it.genre)
+                ItemBio(
+                    it.description, it.year, it.rating, it.duration, it.genre,
+                    backdropUrl = it.backdropUrl ?: it.posterUrl
+                )
             }
             MediaKind.SERIES -> playlistViewModel.seriesDetails(item).getOrNull()?.let {
-                ItemBio(it.description, it.year, it.rating, null, it.genre)
+                ItemBio(
+                    it.description, it.year, it.rating, null, it.genre,
+                    backdropUrl = it.backdropUrl ?: it.posterUrl
+                )
             }
             MediaKind.LIVE -> null
         }
