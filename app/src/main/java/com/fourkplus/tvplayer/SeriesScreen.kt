@@ -19,6 +19,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -541,6 +544,19 @@ private fun LandscapeSeriesBrowser(
         if (index >= 0) categoryListState.animateScrollToItem(index)
     }
     val continueWatchingFocusRequester = remember { FocusRequester() }
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryScope = rememberCoroutineScope()
+    // Left from the grid's first column returns to the category being browsed - see the matching
+    // comment in LandscapeMovieBrowser.
+    fun focusSelectedCategory() {
+        categoryScope.launch {
+            val index = allCategories.indexOf(selectedCategory)
+            if (index >= 0) runCatching { categoryListState.scrollToItem(index) }
+            if (!requestFocusWithRetry(selectedCategoryFocusRequester)) {
+                requestFocusWithRetry(continueWatchingFocusRequester)
+            }
+        }
+    }
     // Skipped when returning from a details page - SeriesGrid is restoring focus to the poster the
     // user left from, and both requests racing would land focus back on the category list instead.
     LaunchedEffect(isTv) {
@@ -581,6 +597,7 @@ private fun LandscapeSeriesBrowser(
                         Surface(
                             modifier = Modifier.fillMaxWidth()
                                 .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
+                                .then(if (category == selectedCategory) Modifier.focusRequester(selectedCategoryFocusRequester) else Modifier)
                                 .categoryReorderKeys(
                                     active = isReordering,
                                     onMove = { up -> moveCategory(context, MediaKind.SERIES, categories, category, up); onCategoriesReordered() },
@@ -611,7 +628,8 @@ private fun LandscapeSeriesBrowser(
             Spacer(Modifier.height(6.dp))
             SeriesGrid(
                 displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true,
-                firstItemFocusRequester, restoreFocusKey, onRestoreHandled
+                firstItemFocusRequester, restoreFocusKey, onRestoreHandled,
+                onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null
             )
         }
     }
@@ -746,7 +764,9 @@ private fun SeriesGrid(
     firstItemFocusRequester: FocusRequester? = null,
     // Set once, on the way back from a series' details page: the poster to scroll to and focus.
     restoreFocusKey: String? = null,
-    onRestoreHandled: () -> Unit = {}
+    onRestoreHandled: () -> Unit = {},
+    // Left from the grid's first column, where there is nothing further left inside the grid.
+    onExitLeft: (() -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
     val restoreFocusRequester = remember { FocusRequester() }
@@ -769,8 +789,9 @@ private fun SeriesGrid(
             Text(stringResource(R.string.no_series_match), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     } else BoxWithConstraints(modifier) {
+        val columns = posterGridColumns(maxWidth, landscape)
         LazyVerticalGrid(
-            columns = GridCells.Fixed(posterGridColumns(maxWidth, landscape)),
+            columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(),
             state = gridState,
             horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp),
@@ -790,6 +811,16 @@ private fun SeriesGrid(
                     modifier = Modifier
                         .then(if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
                         .then(if (index == restoreIndex) Modifier.focusRequester(restoreFocusRequester) else Modifier)
+                        // Only the first column: elsewhere Left is ordinary movement between posters.
+                        .then(
+                            if (onExitLeft != null && index % columns == 0) {
+                                Modifier.onPreviewKeyEvent { event ->
+                                    if (event.isInitialKeyDown && event.key == Key.DirectionLeft) {
+                                        onExitLeft(); true
+                                    } else false
+                                }
+                            } else Modifier
+                        )
                 )
             }
         }

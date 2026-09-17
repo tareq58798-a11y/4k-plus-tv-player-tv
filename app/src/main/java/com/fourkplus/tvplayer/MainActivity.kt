@@ -2073,6 +2073,20 @@ private fun LandscapeMovieBrowser(
         if (index >= 0) categoryListState.animateScrollToItem(index)
     }
     val continueWatchingFocusRequester = remember { FocusRequester() }
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryScope = rememberCoroutineScope()
+    // Left from the first column of the grid returns to the category actually being browsed,
+    // scrolled into view first. Compose's own focus search would otherwise pick whichever category
+    // sits at the same height on screen, which is rarely the one the user opened.
+    fun focusSelectedCategory() {
+        categoryScope.launch {
+            val index = allCategories.indexOf(selectedCategory)
+            if (index >= 0) runCatching { categoryListState.scrollToItem(index) }
+            if (!requestFocusWithRetry(selectedCategoryFocusRequester)) {
+                requestFocusWithRetry(continueWatchingFocusRequester)
+            }
+        }
+    }
     // Skipped when returning from a details page - MovieGrid is restoring focus to the poster the
     // user left from, and both requests racing would land focus back on the category list instead.
     LaunchedEffect(isTv) {
@@ -2114,6 +2128,7 @@ private fun LandscapeMovieBrowser(
                         Surface(
                             modifier = Modifier.fillMaxWidth()
                                 .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
+                                .then(if (category == selectedCategory) Modifier.focusRequester(selectedCategoryFocusRequester) else Modifier)
                                 .categoryReorderKeys(
                                     active = isReordering,
                                     onMove = { up -> moveCategory(context, MediaKind.MOVIE, categories, category, up); onCategoriesReordered() },
@@ -2144,7 +2159,8 @@ private fun LandscapeMovieBrowser(
             Spacer(Modifier.height(6.dp))
             MovieGrid(
                 displayed, favoriteIds, onFavorite, onMovie, Modifier.weight(1f), true, progress,
-                firstItemFocusRequester, restoreFocusKey, onRestoreHandled
+                firstItemFocusRequester, restoreFocusKey, onRestoreHandled,
+                onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null
             )
         }
     }
@@ -2206,7 +2222,10 @@ private fun LandscapeLiveBrowser(
     // browsed), and only a further Back from there - when this handler switches itself off and
     // LiveTvScreen's own handler takes over - actually leaves Live TV.
     var categoryColumnFocused by remember { mutableStateOf(false) }
-    BackHandler(enabled = isTv && !categoryColumnFocused) {
+    // Puts focus back on the category actually being browsed, scrolling it into view first - a
+    // focus requester pointing at a row the list has scrolled past belongs to no node and would
+    // silently do nothing. Used both by Back and by Left from the channel list.
+    fun focusSelectedCategory() {
         backScope.launch {
             val index = searchedCategories.indexOf(selectedCategory)
             if (index >= 0) runCatching { categoryListState.scrollToItem(index) }
@@ -2217,6 +2236,7 @@ private fun LandscapeLiveBrowser(
             }
         }
     }
+    BackHandler(enabled = isTv && !categoryColumnFocused) { focusSelectedCategory() }
     // What the preview is playing is only treated as the chosen row once the user has picked
     // something - see channelChosen.
     val highlightedChannel = selectedChannel?.takeIf { channelChosen }
@@ -2352,6 +2372,15 @@ private fun LandscapeLiveBrowser(
                             modifier = Modifier.fillMaxWidth()
                                 .then(if (index == 0) Modifier.focusRequester(firstChannelFocusRequester) else Modifier)
                                 .then(if (selected) Modifier.focusRequester(selectedChannelFocusRequester) else Modifier)
+                                // This is a single column, so Left always means "back to the
+                                // categories" - and specifically to the one being browsed. Left to
+                                // Compose's own focus search it would instead pick whichever
+                                // category happens to sit at the same height on screen.
+                                .onPreviewKeyEvent { event ->
+                                    if (isTv && event.isInitialKeyDown && event.key == Key.DirectionLeft) {
+                                        focusSelectedCategory(); true
+                                    } else false
+                                }
                                 .onFocusChanged { if (!it.isFocused) lastActivationAt = 0L }
                                 .focusableClickable(
                                     cornerRadius = 9.dp,
@@ -2492,7 +2521,10 @@ private fun MovieGrid(
     firstItemFocusRequester: FocusRequester? = null,
     // Set once, on the way back from a movie's details page: the poster to scroll to and focus.
     restoreFocusKey: String? = null,
-    onRestoreHandled: () -> Unit = {}
+    onRestoreHandled: () -> Unit = {},
+    // Invoked when Left is pressed from the grid's first column, where there is nothing further to
+    // the left inside the grid itself. Null on touch devices, which have no directional focus.
+    onExitLeft: (() -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
     val restoreFocusRequester = remember { FocusRequester() }
@@ -2513,8 +2545,9 @@ private fun MovieGrid(
     if (movies.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_movies_match), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     } else BoxWithConstraints(modifier) {
+        val columns = posterGridColumns(maxWidth, landscape)
         LazyVerticalGrid(
-            columns = GridCells.Fixed(posterGridColumns(maxWidth, landscape)),
+            columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(), state = gridState,
             horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp), verticalArrangement = Arrangement.spacedBy(if (landscape) 9.dp else 16.dp),
             contentPadding = PaddingValues(bottom = 20.dp)
@@ -2528,7 +2561,18 @@ private fun MovieGrid(
                     movie, channelKey(movie) in favoriteIds, { onFavorite(movie) }, { onMovie(movie) },
                     modifier = Modifier
                         .then(if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                        .then(if (index == restoreIndex) Modifier.focusRequester(restoreFocusRequester) else Modifier),
+                        .then(if (index == restoreIndex) Modifier.focusRequester(restoreFocusRequester) else Modifier)
+                        // Only the first column: everywhere else Left is ordinary movement between
+                        // posters and must not be intercepted.
+                        .then(
+                            if (onExitLeft != null && index % columns == 0) {
+                                Modifier.onPreviewKeyEvent { event ->
+                                    if (event.isInitialKeyDown && event.key == Key.DirectionLeft) {
+                                        onExitLeft(); true
+                                    } else false
+                                }
+                            } else Modifier
+                        ),
                     watchedFraction = watchedFraction(movie, progress)
                 )
             }
