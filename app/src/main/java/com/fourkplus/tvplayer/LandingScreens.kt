@@ -70,6 +70,7 @@ internal fun HomeLandingScreen(
     onSearch: () -> Unit,
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
+    arrivedFromNavBar: Boolean,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -122,6 +123,7 @@ internal fun HomeLandingScreen(
         onSearch = onSearch,
         onLanguage = onLanguage,
         onSettings = onSettings,
+        arrivedFromNavBar = arrivedFromNavBar,
         emptyMessage = stringResource(R.string.home_no_history),
         footer = { LandingDeviceStrip(playlist) }
     )
@@ -136,6 +138,7 @@ internal fun MoviesLandingScreen(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
+    arrivedFromNavBar: Boolean,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -171,6 +174,7 @@ internal fun MoviesLandingScreen(
         onSearch = onSearch,
         onLanguage = onLanguage,
         onSettings = onSettings,
+        arrivedFromNavBar = arrivedFromNavBar,
         emptyMessage = stringResource(R.string.landing_nothing_yet)
     )
 }
@@ -184,6 +188,7 @@ internal fun SeriesLandingScreen(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
+    arrivedFromNavBar: Boolean,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -225,6 +230,7 @@ internal fun SeriesLandingScreen(
         onSearch = onSearch,
         onLanguage = onLanguage,
         onSettings = onSettings,
+        arrivedFromNavBar = arrivedFromNavBar,
         emptyMessage = stringResource(R.string.landing_nothing_yet)
     )
 }
@@ -238,6 +244,7 @@ internal fun LiveLandingScreen(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
+    arrivedFromNavBar: Boolean,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -272,6 +279,7 @@ internal fun LiveLandingScreen(
         onSearch = onSearch,
         onLanguage = onLanguage,
         onSettings = onSettings,
+        arrivedFromNavBar = arrivedFromNavBar,
         emptyMessage = stringResource(R.string.home_no_history)
     )
 }

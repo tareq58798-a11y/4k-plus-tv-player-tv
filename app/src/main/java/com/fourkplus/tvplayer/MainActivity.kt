@@ -366,8 +366,18 @@ private fun App() {
         screen = target
     }
 
+    // True while the viewer is moving along the top navigation, which switches section on focus
+    // rather than on OK. Every other way of reaching a landing page clears it, so arriving from a
+    // browser, from playback or at startup still puts focus where the content is.
+    var travellingNavBar by remember { mutableStateOf(false) }
+    val openSection: (NavDestination) -> Unit = { destination ->
+        travellingNavBar = true
+        screen = destination.toScreen()
+    }
+
     /** Hands an item to its own section's browser, which owns details, resume and playback. */
     fun openForPlayback(item: PlaylistItem, episodeId: String?) {
+        travellingNavBar = false
         resumeRequest = ResumeRequest(channelKey(item), episodeId, autoPlay = true)
         screen = when (item.kind) {
             MediaKind.LIVE -> Screen.LIVE_ALL
@@ -486,40 +496,44 @@ private fun App() {
                 Screen.HOME -> HomeLandingScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     backdrop = backdrop,
-                    onNavigate = { screen = it.toScreen() },
+                    onNavigate = openSection,
                     onSearch = { openOverlay(Screen.SEARCH) },
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
+                    arrivedFromNavBar = travellingNavBar,
                     onPlay = ::openForPlayback
                 )
                 Screen.MOVIES -> MoviesLandingScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     backdrop = backdrop,
-                    onNavigate = { screen = it.toScreen() },
+                    onNavigate = openSection,
                     onSearch = { openOverlay(Screen.SEARCH) },
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
-                    onOpenAll = { screen = Screen.MOVIES_ALL },
+                    onOpenAll = { travellingNavBar = false; screen = Screen.MOVIES_ALL },
+                    arrivedFromNavBar = travellingNavBar,
                     onPlay = ::openForPlayback
                 )
                 Screen.SERIES -> SeriesLandingScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     backdrop = backdrop,
-                    onNavigate = { screen = it.toScreen() },
+                    onNavigate = openSection,
                     onSearch = { openOverlay(Screen.SEARCH) },
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
-                    onOpenAll = { screen = Screen.SERIES_ALL },
+                    onOpenAll = { travellingNavBar = false; screen = Screen.SERIES_ALL },
+                    arrivedFromNavBar = travellingNavBar,
                     onPlay = ::openForPlayback
                 )
                 Screen.LIVE_TV -> LiveLandingScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     backdrop = backdrop,
-                    onNavigate = { screen = it.toScreen() },
+                    onNavigate = openSection,
                     onSearch = { openOverlay(Screen.SEARCH) },
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
-                    onOpenAll = { screen = Screen.LIVE_ALL },
+                    onOpenAll = { travellingNavBar = false; screen = Screen.LIVE_ALL },
+                    arrivedFromNavBar = travellingNavBar,
                     onPlay = ::openForPlayback
                 )
                 Screen.LANGUAGE -> LanguageScreen(
@@ -547,7 +561,7 @@ private fun App() {
                 // and playback behaviour.
                 Screen.LIVE_ALL -> LiveTvScreen(
                     playlist = playlistUiState.loadedPlaylist,
-                    onBack = { screen = Screen.LIVE_TV },
+                    onBack = { travellingNavBar = false; screen = Screen.LIVE_TV },
                     onMessage = message,
                     loadEpg = playlistViewModel::shortEpg,
                     requirePin = requirePin,
@@ -557,7 +571,7 @@ private fun App() {
                 Screen.MOVIES_ALL -> MoviesScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     loadDetails = playlistViewModel::movieDetails,
-                    onBack = { screen = Screen.MOVIES },
+                    onBack = { travellingNavBar = false; screen = Screen.MOVIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null }
@@ -566,7 +580,7 @@ private fun App() {
                     playlist = playlistUiState.loadedPlaylist,
                     loadDetails = playlistViewModel::seriesDetails,
                     source = playlistUiState.activeSource,
-                    onBack = { screen = Screen.SERIES },
+                    onBack = { travellingNavBar = false; screen = Screen.SERIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null }

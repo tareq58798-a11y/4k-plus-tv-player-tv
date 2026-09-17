@@ -111,6 +111,8 @@ internal fun LandingScaffold(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     emptyMessage: String,
+    /** True when this page was reached by moving along the top bar rather than by opening it. */
+    arrivedFromNavBar: Boolean = false,
     footer: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf<LandingEntry?>(null) }
@@ -133,8 +135,11 @@ internal fun LandingScaffold(
     )
 
     val hasContent = rows.any { it.entries.isNotEmpty() }
-    LaunchedEffect(hasContent) {
-        if (hasContent) runCatching { firstCard.requestFocus() }
+    // Only claim focus for the content when the viewer actually opened this page. If they are
+    // still moving along the top bar, pulling focus down would end their journey along it after
+    // one step - the bar keeps focus and the page just changes underneath.
+    LaunchedEffect(hasContent, arrivedFromNavBar) {
+        if (hasContent && !arrivedFromNavBar) runCatching { firstCard.requestFocus() }
     }
 
     Column(
@@ -149,7 +154,8 @@ internal fun LandingScaffold(
             labels = labels,
             onSearch = onSearch,
             onLanguage = onLanguage,
-            onSettings = onSettings
+            onSettings = onSettings,
+            keepFocus = arrivedFromNavBar
         )
         if (!hasContent && tile == null) {
             EmptyState(emptyMessage, Modifier.fillMaxWidth().padding(Dims.SafeHorizontal))

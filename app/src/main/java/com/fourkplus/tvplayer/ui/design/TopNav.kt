@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -59,6 +64,7 @@ enum class NavDestination { HOME, LIVE, MOVIES, SERIES }
  * There is no theme toggle. The app has one look now - a dark cinematic one - and a control that
  * let the viewer break it was worth less than the consistency of not having it.
  */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun AppTopBar(
     selected: NavDestination,
@@ -67,8 +73,19 @@ fun AppTopBar(
     onSearch: (() -> Unit)?,
     onLanguage: (() -> Unit)?,
     onSettings: (() -> Unit)?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /**
+     * True while the viewer is working along the bar itself. Moving onto a section switches to it
+     * immediately, which replaces the whole page under the remote - including this bar. Focus has
+     * to be put back on the section they landed on, or a single press would drop them into the new
+     * page's content and they could never reach the tab after it.
+     */
+    keepFocus: Boolean = false
 ) {
+    val selectedTab = remember { FocusRequester() }
+    LaunchedEffect(selected, keepFocus) {
+        if (keepFocus) runCatching { selectedTab.requestFocus() }
+    }
     Row(
         modifier.fillMaxWidth().padding(horizontal = Dims.SafeHorizontal - 12.dp, vertical = Dims.SafeVertical - 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -80,11 +97,32 @@ fun AppTopBar(
             modifier = Modifier.height(46.dp)
         )
         Spacer(Modifier.width(Dims.GapL))
-        Row(horizontalArrangement = Arrangement.spacedBy(Dims.GapS), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            // Coming up from the page below, focus lands on the section you are already in.
+            // Without this, Compose picks whichever tab is nearest the content you left - and
+            // because reaching a tab opens it, simply looking up at the bar would change the page
+            // under you. Left and right entries are left to the normal search, so stepping back
+            // from the search icon still lands on the tab beside it.
+            Modifier
+                .focusGroup()
+                .focusProperties {
+                    enter = { direction ->
+                        if (direction == FocusDirection.Up || direction == FocusDirection.Down) selectedTab
+                        else FocusRequester.Default
+                    }
+                },
+            horizontalArrangement = Arrangement.spacedBy(Dims.GapS),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             NavDestination.entries.forEach { destination ->
                 NavTab(
                     label = labels[destination].orEmpty(),
                     selected = destination == selected,
+                    modifier = if (destination == selected) Modifier.focusRequester(selectedTab) else Modifier,
+                    // Reaching a section is enough to open it. On a remote there is no hover, so
+                    // requiring OK as well would mean two presses to do what the movement already
+                    // said - and the viewer can see the page they are choosing while they choose.
+                    onFocused = { onSelect(destination) },
                     onClick = { onSelect(destination) }
                 )
             }
@@ -101,7 +139,13 @@ fun AppTopBar(
 }
 
 @Composable
-private fun NavTab(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavTab(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier,
+    onFocused: () -> Unit,
+    onClick: () -> Unit
+) {
     var focused by remember { mutableStateOf(false) }
     val border by animateColorAsState(
         if (focused) Tone.Accent else Color.Transparent,
@@ -119,10 +163,16 @@ private fun NavTab(label: String, selected: Boolean, onClick: () -> Unit) {
     )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier
+            modifier
                 .clip(RoundedCornerShape(Dims.RadiusPill))
                 .border(BorderStroke(2.dp, border), RoundedCornerShape(Dims.RadiusPill))
-                .tvFocusable(onFocusChanged = { focused = it }, onClick = onClick)
+                .tvFocusable(
+                    onFocusChanged = {
+                        focused = it
+                        if (it) onFocused()
+                    },
+                    onClick = onClick
+                )
                 .padding(horizontal = 16.dp, vertical = 9.dp)
         ) {
             Text(label, color = textColor, fontSize = 18.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
