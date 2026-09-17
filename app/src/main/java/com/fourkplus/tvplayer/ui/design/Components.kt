@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer.ui.design
+﻿package com.fourkplus.tvplayer.ui.design
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -105,7 +107,7 @@ fun SectionHeading(text: String, modifier: Modifier = Modifier) {
         text,
         modifier = modifier,
         color = Tone.TextPrimary,
-        fontSize = 22.sp,
+        fontSize = 19.sp,
         fontWeight = FontWeight.Bold
     )
 }
@@ -192,16 +194,19 @@ fun ArtCard(
             }
             overlayBadge?.invoke(this)
             Column(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 if (showTitle) {
+                    // One line only. Cards are small enough now that a wrapped title swallows the
+                    // artwork, and the full name is always spelled out in the information block
+                    // below the row for whichever card is focused.
                     Text(
                         title,
                         color = Tone.TextPrimary,
-                        fontSize = 13.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -223,11 +228,11 @@ fun ArtCard(
                         }
                         if (!cornerBadge.isNullOrBlank()) {
                             Spacer(Modifier.width(8.dp))
-                            Text(cornerBadge, color = Tone.TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text(cornerBadge, color = Tone.TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 } else if (!cornerBadge.isNullOrBlank()) {
-                    Text(cornerBadge, color = Tone.TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(cornerBadge, color = Tone.TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -242,9 +247,9 @@ fun LiveFlag(modifier: Modifier = Modifier) {
             .padding(8.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(Tone.LiveRed)
-            .padding(horizontal = 7.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
-        Text("LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -288,14 +293,14 @@ fun ActionButton(
             )
             .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(Dims.RadiusPill))
             .tvFocusable(onFocusChanged = { focused = it }, enabled = enabled, onClick = onClick)
-            .padding(horizontal = 26.dp, vertical = 13.dp)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
             .alpha(if (enabled) 1f else .45f)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (icon != null) {
-                Icon(icon, null, tint = Tone.TextPrimary, modifier = Modifier.size(22.dp))
+                Icon(icon, null, tint = Tone.TextPrimary, modifier = Modifier.size(18.dp))
             }
-            Text(label, color = Tone.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = Tone.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -335,12 +340,12 @@ fun CategoryPill(
                 },
                 onClick = onClick
             )
-            .padding(horizontal = 18.dp, vertical = 11.dp)
+            .padding(horizontal = 15.dp, vertical = 9.dp)
     ) {
         Text(
             label,
             color = if (selected) Color(0xFF04121F) else Tone.TextSecondary,
-            fontSize = 17.sp,
+            fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -348,26 +353,38 @@ fun CategoryPill(
     }
 }
 
-/** A row of "Year · Rating · Duration · Genre" style facts. Missing values are simply left out. */
+/** One fact in a metadata row. [star] marks the rating, which carries its own icon. */
+data class MetaItem(val text: String, val star: Boolean = false, val accent: Boolean = false)
+
+/**
+ * A row of "Movie | 2026 | ★ 8.2 | 2h 08m | Sci-Fi • Drama" facts, divided by thin rules rather
+ * than dots so the genre list's own bullets stay readable as a list. Missing values are simply
+ * left out - the row gets shorter rather than showing an empty slot.
+ */
 @Composable
-fun MetadataRow(parts: List<String>, modifier: Modifier = Modifier, accentLast: Boolean = false) {
-    val shown = parts.filter { it.isNotBlank() }
+fun MetadataRow(items: List<MetaItem>, modifier: Modifier = Modifier) {
+    val shown = items.filter { it.text.isNotBlank() }
     if (shown.isEmpty()) return
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        shown.forEachIndexed { index, part ->
+        shown.forEachIndexed { index, item ->
             if (index > 0) {
-                Text("  •  ", color = Tone.TextMuted, fontSize = 15.sp)
+                Text("   |   ", color = Tone.TextMuted.copy(alpha = .55f), fontSize = 13.sp)
+            }
+            if (item.star) {
+                Icon(Icons.Default.Star, null, tint = Tone.Star, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(5.dp))
             }
             Text(
-                part,
-                color = if (accentLast && index == shown.lastIndex) Tone.Accent else Tone.TextSecondary,
-                fontSize = 15.sp,
-                fontWeight = if (accentLast && index == shown.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                item.text,
+                color = if (item.accent) Tone.Accent else Tone.TextSecondary,
+                fontSize = 13.sp,
+                fontWeight = if (item.accent || item.star) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1
             )
         }
     }
 }
+
 
 /**
  * Wraps the block of information about whatever is focused, fading the old text out and the new

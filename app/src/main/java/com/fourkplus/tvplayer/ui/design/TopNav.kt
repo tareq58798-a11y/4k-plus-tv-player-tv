@@ -94,9 +94,9 @@ fun AppTopBar(
             painter = painterResource(R.drawable.brand_logo_dark),
             contentDescription = "4K Plus TV",
             contentScale = ContentScale.Fit,
-            modifier = Modifier.height(46.dp)
+            modifier = Modifier.height(38.dp)
         )
-        Spacer(Modifier.width(Dims.GapL))
+        Spacer(Modifier.width(Dims.GapM))
         Row(
             // Coming up from the page below, focus lands on the section you are already in.
             // Without this, Compose picks whichever tab is nearest the content you left - and
@@ -132,7 +132,14 @@ fun AppTopBar(
             if (onSearch != null) GlobalIconButton(Icons.Default.Search, "Search", onSearch)
             if (onLanguage != null) GlobalIconButton(Icons.Default.Language, "Language", onLanguage)
             if (onSettings != null) GlobalIconButton(Icons.Default.Settings, "Settings", onSettings)
-            Spacer(Modifier.width(Dims.GapS))
+            // Separates the controls you can act on from the clock, which you cannot.
+            Box(
+                Modifier
+                    .padding(horizontal = Dims.GapS)
+                    .width(1.dp)
+                    .height(22.dp)
+                    .background(Color.White.copy(alpha = .22f))
+            )
             ClockLabel()
         }
     }
@@ -148,45 +155,43 @@ private fun NavTab(
 ) {
     var focused by remember { mutableStateOf(false) }
     val border by animateColorAsState(
-        if (focused) Tone.Accent else Color.Transparent,
+        when {
+            focused -> Tone.Accent
+            selected -> Tone.Accent.copy(alpha = .55f)
+            else -> Color.Transparent
+        },
         Motion.focus(),
         label = "tabBorder"
     )
     val textColor by animateColorAsState(
         when {
-            selected -> Tone.Accent
+            selected -> Tone.TextPrimary
             focused -> Tone.TextPrimary
             else -> Tone.TextSecondary
         },
         Motion.focus(),
         label = "tabText"
     )
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier
-                .clip(RoundedCornerShape(Dims.RadiusPill))
-                .border(BorderStroke(2.dp, border), RoundedCornerShape(Dims.RadiusPill))
-                .tvFocusable(
-                    onFocusChanged = {
-                        focused = it
-                        if (it) onFocused()
-                    },
-                    onClick = onClick
-                )
-                .padding(horizontal = 16.dp, vertical = 9.dp)
-        ) {
-            Text(label, color = textColor, fontSize = 18.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
-        }
-        // A second, non-colour cue for the active section, so it still reads as selected for
-        // viewers who cannot separate the cyan from the grey.
-        Box(
-            Modifier
-                .padding(top = 3.dp)
-                .height(3.dp)
-                .width(if (selected) 34.dp else 0.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Brush.horizontalGradient(Tone.CategoryGradient))
-        )
+    // The section you are in is ringed. That is a difference in shape, not only in colour, so it
+    // still reads as the active one for anyone who cannot separate the cyan from the grey.
+    Box(
+        modifier
+            .clip(RoundedCornerShape(Dims.RadiusPill))
+            .then(if (selected) Modifier.background(Tone.Accent.copy(alpha = .10f)) else Modifier)
+            .border(
+                BorderStroke(if (selected || focused) 2.dp else 0.dp, border),
+                RoundedCornerShape(Dims.RadiusPill)
+            )
+            .tvFocusable(
+                onFocusChanged = {
+                    focused = it
+                    if (it) onFocused()
+                },
+                onClick = onClick
+            )
+            .padding(horizontal = 18.dp, vertical = 8.dp)
+    ) {
+        Text(label, color = textColor, fontSize = 15.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
 
@@ -206,13 +211,13 @@ fun GlobalIconButton(icon: ImageVector, description: String, onClick: () -> Unit
     Box(
         Modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .size(40.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .border(BorderStroke(2.dp, border), RoundedCornerShape(22.dp))
+            .size(34.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .border(BorderStroke(2.dp, border), RoundedCornerShape(18.dp))
             .tvFocusable(onFocusChanged = { focused = it }, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, description, tint = Tone.TextPrimary, modifier = Modifier.size(24.dp))
+        Icon(icon, description, tint = Tone.TextPrimary, modifier = Modifier.size(20.dp))
     }
 }
 

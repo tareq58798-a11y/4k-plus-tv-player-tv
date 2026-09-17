@@ -49,6 +49,7 @@ import com.fourkplus.tvplayer.ui.design.EmptyState
 import com.fourkplus.tvplayer.ui.design.FadingInfo
 import com.fourkplus.tvplayer.ui.design.GlobalIconButton
 import com.fourkplus.tvplayer.ui.design.LiveFlag
+import com.fourkplus.tvplayer.ui.design.MetaItem
 import com.fourkplus.tvplayer.ui.design.MetadataRow
 import com.fourkplus.tvplayer.ui.design.Motion
 import com.fourkplus.tvplayer.ui.design.Tone
@@ -197,16 +198,18 @@ private fun SearchResultInfo(
             if (item.kind == MediaKind.LIVE) LiveFlag()
         }
         MetadataRow(
-            parts = listOfNotNull(
-                when (item.kind) {
-                    MediaKind.LIVE -> stringResource(R.string.nav_live_tv)
-                    MediaKind.MOVIE -> stringResource(R.string.kind_movie)
-                    MediaKind.SERIES -> stringResource(R.string.kind_series)
-                },
-                item.year?.takeIf { it.isNotBlank() },
-                validMovieRating(item.rating),
-                readableMovieDuration(item.duration),
-                item.group.takeIf { it.isNotBlank() }
+            items = listOfNotNull(
+                MetaItem(
+                    when (item.kind) {
+                        MediaKind.LIVE -> stringResource(R.string.nav_live_tv)
+                        MediaKind.MOVIE -> stringResource(R.string.kind_movie)
+                        MediaKind.SERIES -> stringResource(R.string.kind_series)
+                    }
+                ),
+                item.year?.takeIf { it.isNotBlank() }?.let { MetaItem(it) },
+                validMovieRating(item.rating)?.let { MetaItem(it, star = true) },
+                readableMovieDuration(item.duration)?.let { MetaItem(it) },
+                item.group.takeIf { it.isNotBlank() }?.let { MetaItem(it) }
             )
         )
         Row(horizontalArrangement = Arrangement.spacedBy(Dims.GapM), modifier = Modifier.padding(top = Dims.GapXs)) {

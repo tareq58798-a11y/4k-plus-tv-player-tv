@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer
+﻿package com.fourkplus.tvplayer
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +21,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DeviceHub
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -56,6 +59,7 @@ import com.fourkplus.tvplayer.ui.design.EmptyState
 import com.fourkplus.tvplayer.ui.design.FadingInfo
 import com.fourkplus.tvplayer.ui.design.GlassPanel
 import com.fourkplus.tvplayer.ui.design.LiveFlag
+import com.fourkplus.tvplayer.ui.design.MetaItem
 import com.fourkplus.tvplayer.ui.design.MetadataRow
 import com.fourkplus.tvplayer.ui.design.NavDestination
 import com.fourkplus.tvplayer.ui.design.PreloadBackdrops
@@ -195,7 +199,7 @@ internal fun LandingScaffold(
                         .padding(horizontal = Dims.SafeHorizontal)
                         // Fixed floor so a one-line description and a three-line one do not shunt
                         // the rows below up and down as focus moves.
-                        .heightIn(min = 196.dp)
+                        .heightIn(min = 166.dp)
                 ) { current ->
                     if (current == null) {
                         Spacer(Modifier.fillMaxWidth())
@@ -266,18 +270,18 @@ private fun CategoryTile(tile: LandingTile) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(34.dp))
+                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(26.dp))
                 Text(
                     tile.title,
                     color = Tone.TextPrimary,
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tile.caption, color = Tone.TextMuted, fontSize = 12.sp, maxLines = 2)
-                    Icon(Icons.Default.ChevronRight, null, tint = Tone.TextMuted, modifier = Modifier.size(16.dp))
+                    Text(tile.caption, color = Tone.TextMuted, fontSize = 11.sp, maxLines = 2)
+                    Icon(Icons.Default.ChevronRight, null, tint = Tone.TextMuted, modifier = Modifier.size(14.dp))
                 }
             }
         }
@@ -301,43 +305,39 @@ private fun FocusedItemInfo(
         Text(
             item.name,
             color = Tone.TextPrimary,
-            fontSize = 34.sp,
+            fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!item.rating.isNullOrBlank() && validMovieRating(item.rating) != null) {
-                Icon(Icons.Default.Star, null, tint = Tone.Star, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-            }
-            MetadataRow(
-                parts = listOfNotNull(
+        MetadataRow(
+            items = listOfNotNull(
+                MetaItem(
                     when (item.kind) {
                         MediaKind.LIVE -> stringResource(R.string.nav_live_tv)
                         MediaKind.MOVIE -> stringResource(R.string.kind_movie)
                         MediaKind.SERIES -> stringResource(R.string.kind_series)
-                    },
-                    item.year?.takeIf { it.isNotBlank() },
-                    validMovieRating(item.rating),
-                    readableMovieDuration(item.duration),
-                    item.group.takeIf { it.isNotBlank() },
-                    entry.badge
+                    }
                 ),
-                accentLast = entry.badge != null
+                item.year?.takeIf { it.isNotBlank() }?.let { MetaItem(it) },
+                validMovieRating(item.rating)?.let { MetaItem(it, star = true) },
+                readableMovieDuration(item.duration)?.let { MetaItem(it) },
+                item.group.takeIf { it.isNotBlank() }?.let { MetaItem(it) },
+                entry.badge?.let { MetaItem(it, accent = true) }
             )
-        }
+        )
         if (!item.description.isNullOrBlank()) {
             Text(
                 item.description.orEmpty(),
                 color = Tone.TextSecondary,
-                fontSize = 15.sp,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(.62f)
+                modifier = Modifier.fillMaxWidth(.55f)
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(Dims.GapM), modifier = Modifier.padding(top = Dims.GapXs)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Dims.GapS), modifier = Modifier.padding(top = Dims.GapXs)) {
             ActionButton(
                 label = when {
                     item.kind == MediaKind.LIVE -> stringResource(R.string.action_watch_live)
@@ -385,22 +385,33 @@ internal fun LandingDeviceStrip(playlist: LoadedPlaylist?) {
     Column(Modifier.fillMaxWidth().padding(horizontal = Dims.SafeHorizontal, vertical = Dims.GapS)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = .10f)))
         Row(
-            Modifier.fillMaxWidth().padding(top = Dims.GapM),
-            horizontalArrangement = Arrangement.spacedBy(Dims.GapXl)
+            Modifier.fillMaxWidth().padding(top = Dims.GapM, bottom = Dims.GapXs),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            DeviceFact("Playlist expires", expiryText)
-            DeviceFact("App MAC", appMac)
-            DeviceFact("Device key", deviceKey)
+            DeviceFact(Icons.Default.Schedule, "Playlist expires", expiryText)
+            FactDivider()
+            DeviceFact(Icons.Default.DeviceHub, "App MAC", appMac)
+            FactDivider()
+            DeviceFact(Icons.Default.VpnKey, "Device key", deviceKey)
         }
     }
 }
 
 @Composable
-private fun DeviceFact(label: String, value: String) {
-    Column {
-        Text(label, color = Tone.TextMuted, fontSize = 13.sp)
-        Text(value, color = Tone.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+private fun DeviceFact(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dims.GapS)) {
+        Icon(icon, null, tint = Tone.TextMuted, modifier = Modifier.size(22.dp))
+        Column {
+            Text(label, color = Tone.TextMuted, fontSize = 11.sp)
+            Text(value, color = Tone.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
+}
+
+@Composable
+private fun FactDivider() {
+    Box(Modifier.width(1.dp).height(34.dp).background(Color.White.copy(alpha = .14f)))
 }
 
 /** A rounded corner used by callers that need the landing card's shape. */

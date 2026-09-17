@@ -81,8 +81,8 @@ object Tone {
 /** Spacing and sizing measured for a 10-foot viewing distance. */
 object Dims {
     /** TV-safe horizontal/vertical margins - nothing important is drawn outside these. */
-    val SafeHorizontal: Dp = 48.dp
-    val SafeVertical: Dp = 28.dp
+    val SafeHorizontal: Dp = 40.dp
+    val SafeVertical: Dp = 22.dp
 
     val GapXs: Dp = 4.dp
     val GapS: Dp = 8.dp
@@ -90,8 +90,8 @@ object Dims {
     val GapL: Dp = 24.dp
     val GapXl: Dp = 36.dp
 
-    val RadiusCard: Dp = 12.dp
-    val RadiusPanel: Dp = 20.dp
+    val RadiusCard: Dp = 10.dp
+    val RadiusPanel: Dp = 18.dp
     val RadiusPill: Dp = 28.dp
 
     /**
@@ -99,11 +99,15 @@ object Dims {
      * Because the card grows into its own padding rather than past its bounds, a focused poster is
      * never clipped by the row that holds it and never pushes its neighbours around.
      */
-    val CardBleed: Dp = 10.dp
+    val CardBleed: Dp = 8.dp
 
-    /** Landscape artwork cards, as proportioned in the mockups (16:9). */
-    val CardWidth: Dp = 232.dp
-    val CardWidthCompact: Dp = 188.dp
+    /**
+     * Landscape artwork cards (16:9), sized so a row shows roughly five at once on a 1080p panel
+     * rather than three. A row you can see the shape of is worth more than a row of larger
+     * pictures you have to scroll to discover.
+     */
+    val CardWidth: Dp = 172.dp
+    val CardWidthCompact: Dp = 144.dp
 }
 
 /**
