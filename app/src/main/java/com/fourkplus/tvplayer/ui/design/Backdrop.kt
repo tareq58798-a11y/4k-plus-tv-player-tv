@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -29,6 +30,7 @@ import com.fourkplus.tvplayer.R
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 
 /**
  * What the app is currently asking the cinematic background to show.
@@ -40,9 +42,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 @Stable
 class BackdropState {
     /** The artwork the most recently focused eligible item wants shown. */
-    internal var requestedKey by mutableStateOf<String?>(null)
-        private set
-    internal var requestedModel by mutableStateOf<Any?>(null)
+    internal var requestedModel by mutableStateOf<String?>(null)
         private set
 
     /**
@@ -52,14 +52,12 @@ class BackdropState {
      */
     fun show(key: String?, model: String?) {
         if (model.isNullOrBlank() || key.isNullOrBlank()) return
-        if (key == requestedKey) return
-        requestedKey = key
+        if (model == requestedModel) return
         requestedModel = model
     }
 
     /** Explicitly returns to the app's own default artwork (used when a session has no content yet). */
     fun reset() {
-        requestedKey = null
         requestedModel = null
     }
 }
@@ -68,14 +66,18 @@ class BackdropState {
 fun rememberBackdropState(): BackdropState = remember { BackdropState() }
 
 /**
- * The app-wide background: the default artwork at the bottom, two crossfading artwork layers above
- * it, and a gradient scrim above those.
+ * The app-wide background: the default artwork at the bottom, the settled image over it, and the
+ * incoming image fading in over both.
  *
- * The two layers ping-pong rather than one being overwritten. The layer showing the current image
- * is never touched while the next one loads, so there is no moment where the old image has been
- * released and the new one has not arrived - no black frame, no placeholder, no flash back to the
- * default. The incoming layer only becomes visible once Coil reports it fully decoded, and a failed
- * load simply never fades in, leaving the previous artwork in place.
+ * The settled layer is a [Painter] kept from the last image that finished loading - not a second
+ * request for the same URL. Nothing ever asks Coil to re-fetch what is already on screen, so the
+ * visible image cannot blink while a new one arrives. The incoming layer only becomes visible once
+ * Coil reports it fully decoded, and a failed load simply never fades in, leaving the previous
+ * artwork exactly where it was.
+ *
+ * The handover at the end of a fade is ordered so that every intermediate frame shows the new
+ * image, from one layer or the other or both: the settled painter is replaced first, and only then
+ * is the incoming layer released.
  */
 @OptIn(FlowPreview::class)
 @Composable
@@ -87,52 +89,48 @@ fun CinematicBackdrop(
 ) {
     val reducedMotion = LocalReducedMotion.current
 
-    // Two artwork slots. `frontIsA` says which one is currently the visible image; the other is
-    // where the next request is loaded. They swap on every successful crossfade.
-    var modelA by remember { mutableStateOf<Any?>(null) }
-    var modelB by remember { mutableStateOf<Any?>(null) }
-    var frontIsA by remember { mutableStateOf(true) }
-    var committedKey by remember { mutableStateOf<String?>(null) }
+    var settled by remember { mutableStateOf<Painter?>(null) }
+    var settledModel by remember { mutableStateOf<String?>(null) }
+    var incomingModel by remember { mutableStateOf<String?>(null) }
     val fade = remember { Animatable(0f) }
 
-    val painterA = rememberAsyncImagePainter(model = modelA, contentScale = ContentScale.Crop)
-    val painterB = rememberAsyncImagePainter(model = modelB, contentScale = ContentScale.Crop)
+    val incomingPainter = rememberAsyncImagePainter(model = incomingModel, contentScale = ContentScale.Crop)
 
     // Rapid D-pad movement produces a request per item. Debouncing means only the item the viewer
     // actually settles on costs an image load, while the ones they scrolled past cost nothing.
     LaunchedEffect(state) {
-        snapshotFlow { state.requestedKey to state.requestedModel }
+        snapshotFlow { state.requestedModel }
             .distinctUntilChanged()
             .debounce(Motion.BackdropDebounceMs)
-            .collect { (key, model) ->
-                if (model == null || key == null || key == committedKey) return@collect
-                // Load into whichever slot is currently hidden.
-                if (frontIsA) modelB = model else modelA = model
-                committedKey = key
+            .collect { model ->
+                // Already showing it, or already loading it: starting the transition again would
+                // fade the picture out and back into itself for no reason.
+                if (model == null || model == settledModel || model == incomingModel) return@collect
+                fade.snapTo(0f)
+                incomingModel = model
             }
     }
 
-    // Fade the hidden slot in once - and only once - its image is fully decoded.
-    val incomingPainter = if (frontIsA) painterB else painterA
-    val incomingModel = if (frontIsA) modelB else modelA
-    LaunchedEffect(incomingModel, incomingPainter) {
-        if (incomingModel == null) return@LaunchedEffect
-        snapshotFlow { incomingPainter.state }
-            .collect { painterState ->
-                when (painterState) {
-                    is AsyncImagePainter.State.Success -> {
-                        fade.snapTo(0f)
-                        if (reducedMotion) fade.snapTo(1f)
-                        else fade.animateTo(1f, Motion.backdrop())
-                        frontIsA = !frontIsA
-                        fade.snapTo(0f)
-                    }
-                    // A failed request is not an error the viewer should see: the artwork simply
-                    // never appears and the background they already had stays exactly as it is.
-                    is AsyncImagePainter.State.Error -> if (frontIsA) modelB = null else modelA = null
-                    else -> Unit
-                }
-            }
+    // One pass per requested image: wait for that image to resolve, fade it up, hand it over.
+    // Keyed on the model alone, so the effect cannot be restarted by the handover it performs -
+    // an earlier version keyed it on derived state and re-ran on its own completion, which made
+    // the background oscillate between the last two images forever.
+    LaunchedEffect(incomingModel) {
+        val requested = incomingModel ?: return@LaunchedEffect
+        val result = snapshotFlow { incomingPainter.state }
+            .first { it is AsyncImagePainter.State.Success || it is AsyncImagePainter.State.Error }
+        if (result !is AsyncImagePainter.State.Success) {
+            // Not an error the viewer should see: the artwork simply never appears.
+            incomingModel = null
+            return@LaunchedEffect
+        }
+        if (reducedMotion) fade.snapTo(1f) else fade.animateTo(1f, Motion.backdrop())
+        // Order matters. The settled layer takes the finished image first, so the frame in which
+        // the incoming layer disappears is already showing that same image underneath.
+        settled = result.painter
+        settledModel = requested
+        incomingModel = null
+        fade.snapTo(0f)
     }
 
     Box(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Tone.PageTop, Tone.PageBottom)))) {
@@ -143,16 +141,16 @@ fun CinematicBackdrop(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
-        // Draw the settled image first, then the incoming one over it as it fades up.
-        val backPainter = if (frontIsA) painterB else painterA
-        val frontPainter = if (frontIsA) painterA else painterB
-        val backModel = if (frontIsA) modelB else modelA
-        val frontModel = if (frontIsA) modelA else modelB
-        if (frontModel != null) {
-            Image(frontPainter, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        settled?.let { current ->
+            Image(current, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
-        if (backModel != null) {
-            Image(backPainter, null, Modifier.fillMaxSize().alpha(fade.value), contentScale = ContentScale.Crop)
+        if (incomingModel != null) {
+            Image(
+                incomingPainter,
+                null,
+                Modifier.fillMaxSize().alpha(fade.value),
+                contentScale = ContentScale.Crop
+            )
         }
         Box(Modifier.fillMaxSize().background(Tone.sideScrim()))
         Box(Modifier.fillMaxSize().background(scrim))
