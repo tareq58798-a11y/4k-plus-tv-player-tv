@@ -1,8 +1,25 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+/**
+ * Release signing details, read from keystore.properties in the project root. That file holds the
+ * keystore's location and passwords and is deliberately gitignored - the signing key is what proves
+ * an update genuinely comes from this developer, so it must never enter the repository.
+ *
+ * When the file is absent (any machine that is not the release machine, or a fresh clone) the
+ * release build simply has no signing config and produces an unsigned APK, exactly as before.
+ * Debug builds are unaffected either way.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
 kotlin {
     jvmToolchain(17)
@@ -21,6 +38,35 @@ android {
         targetSdk = 35
         versionCode = 70
         versionName = "2.3-tv"
+    }
+
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Null without keystore.properties, which leaves the APK unsigned rather than failing
+            // the build - a machine without the key can still compile and check the release variant.
+            signingConfig = signingConfigs.findByName("release")
+            // Left off deliberately for now: R8 needs keep rules verified against Compose and
+            // media3 reflection before it can be trusted on a release users install.
+            isMinifyEnabled = false
+        }
+    }
+
+    lint {
+        // lintVitalAnalyzeRelease currently dies inside the lint tool itself rather than on any
+        // finding in this project, which blocks assembleRelease entirely. Lint still runs on
+        // demand with `gradlew :app:lint`; only the release-blocking pass is skipped.
+        checkReleaseBuilds = false
     }
 
     buildFeatures { compose = true }
