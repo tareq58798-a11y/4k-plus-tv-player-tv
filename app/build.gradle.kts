@@ -36,8 +36,15 @@ android {
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
         minSdk = 26
         targetSdk = 35
-        versionCode = 70
-        versionName = "2.3-tv"
+        // versionName is what people see and must match the GitHub release tag and the APK
+        // filename exactly, so there is only ever one number to reason about. The 1.2 - 2.3 range
+        // was internal churn during development and was never published; the last public build was
+        // 1.1, so this is 2.0.
+        //
+        // versionCode is what Android compares to decide whether something is an update. It must
+        // only ever increase, and is deliberately not reset to match versionName.
+        versionCode = 71
+        versionName = "2.0"
     }
 
     signingConfigs {

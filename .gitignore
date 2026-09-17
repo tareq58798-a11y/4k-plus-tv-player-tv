@@ -11,5 +11,9 @@ app/build/
 *.jks
 *.keystore
 keystore.properties
+# Built APKs staged for a release. Binaries do not belong in the repository - a previous session
+# committed four of them and they had to be stripped back out again.
+dist/
+*.apk
 server/node_modules/
 server/.env
