@@ -299,4 +299,7 @@
     <string name="landing_time_left">%1$s باقی</string>
     <string name="language_choose_subtitle">اپنی ایپ کی زبان منتخب کریں</string>
     <string name="language_press_ok">لاگو کرنے کے لیے OK دبائیں</string>
+    <string name="search_filter_all">سب</string>
+    <string name="search_results_title">تلاش کے نتائج</string>
+    <string name="search_results_count">%1$d نتائج</string>
 </resources>

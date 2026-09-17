@@ -299,4 +299,7 @@
     <string name="landing_time_left">осталось %1$s</string>
     <string name="language_choose_subtitle">Выберите язык приложения</string>
     <string name="language_press_ok">Нажмите OK, чтобы применить</string>
+    <string name="search_filter_all">Все</string>
+    <string name="search_results_title">Результаты поиска</string>
+    <string name="search_results_count">Результатов: %1$d</string>
 </resources>

@@ -323,4 +323,7 @@
     <string name="landing_time_left">%1$s left</string>
     <string name="language_choose_subtitle">Choose your app language</string>
     <string name="language_press_ok">Press OK to apply</string>
+    <string name="search_filter_all">All</string>
+    <string name="search_results_title">Search Results</string>
+    <string name="search_results_count">%1$d results</string>
 </resources>

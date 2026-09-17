@@ -310,4 +310,7 @@
     <string name="landing_time_left">متبقٍ %1$s</string>
     <string name="language_choose_subtitle">اختر لغة التطبيق</string>
     <string name="language_press_ok">اضغط OK للتطبيق</string>
+    <string name="search_filter_all">الكل</string>
+    <string name="search_results_title">نتائج البحث</string>
+    <string name="search_results_count">%1$d نتيجة</string>
 </resources>

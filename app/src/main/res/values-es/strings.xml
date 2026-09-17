@@ -299,4 +299,7 @@
     <string name="landing_time_left">quedan %1$s</string>
     <string name="language_choose_subtitle">Elige el idioma de la aplicación</string>
     <string name="language_press_ok">Pulsa OK para aplicar</string>
+    <string name="search_filter_all">Todo</string>
+    <string name="search_results_title">Resultados de búsqueda</string>
+    <string name="search_results_count">%1$d resultados</string>
 </resources>

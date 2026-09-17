@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer
+﻿package com.fourkplus.tvplayer
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -316,8 +316,19 @@ internal class MixedFavorites(
     fun toggle(item: PlaylistItem) = setFor(item).toggle(channelKey(item))
 }
 
+/** For screens that span all three sections and have no store of their own, such as Search. */
 @Composable
-private fun rememberMixedFavorites(
+internal fun rememberMixedFavorites(): MixedFavorites {
+    val context = LocalContext.current
+    return rememberMixedFavorites(
+        movieStore = remember { context.getSharedPreferences("movie_library", Context.MODE_PRIVATE) },
+        seriesStore = remember { context.getSharedPreferences("series_library", Context.MODE_PRIVATE) },
+        liveStore = remember { context.getSharedPreferences("favorite_channels", Context.MODE_PRIVATE) }
+    )
+}
+
+@Composable
+internal fun rememberMixedFavorites(
     movieStore: SharedPreferences,
     seriesStore: SharedPreferences,
     liveStore: SharedPreferences

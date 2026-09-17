@@ -439,6 +439,8 @@ private fun App() {
                     }
                 }
                 Screen.ACTIVATION -> ActivationScreen(
+                    currentLanguage = currentLanguage,
+                    onLanguageChange = onLanguageChange,
                     onManual = { screen = Screen.MANUAL },
                     onMessage = message,
                     loadPlaylist = playlistViewModel::addPlaylist,
@@ -525,8 +527,9 @@ private fun App() {
                     onSelect = onLanguageChange,
                     onBack = { screen = overlayReturn }
                 )
-                Screen.SEARCH -> GlobalSearchScreen(
+                Screen.SEARCH -> SearchScreen(
                     playlist = playlistUiState.loadedPlaylist,
+                    backdrop = backdrop,
                     onBack = { screen = overlayReturn },
                     onSelect = { item ->
                         // autoPlay = false: search opens the details page, it does not start
@@ -822,67 +825,13 @@ private fun PremiumBackground(content: @Composable BoxScope.() -> Unit) {
     }
 }
 
-@Composable
-private fun ActivationScreen(
-    onManual: () -> Unit,
-    onMessage: (String) -> Unit,
-    loadPlaylist: suspend (PlaylistInput) -> Result<LoadedPlaylist>,
-    onConnected: (LoadedPlaylist) -> Unit
-) {
-    val languageComingSoon = stringResource(R.string.language_selection_coming_soon)
-    PremiumBackground {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val landscape = maxWidth > maxHeight
-        val sidePadding = if (landscape) 34.dp else 20.dp
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                .padding(horizontal = sidePadding, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                BrandMark(Modifier.weight(1f))
-                AnimatedIconButton(onClick = { onMessage(languageComingSoon) }) { Icon(Icons.Default.Language, stringResource(R.string.cd_language)) }
-            }
 
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(stringResource(R.string.welcome), fontSize = 34.sp, fontWeight = FontWeight.Black)
-                Text(stringResource(R.string.activation_hero), color = Cyan, fontWeight = FontWeight.SemiBold)
-                Text(stringResource(R.string.activation_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
 
-            if (landscape) {
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    RemoteActivationCard(Modifier.weight(1.15f), onMessage, loadPlaylist, onConnected)
-                    ManualEntryCard(Modifier.weight(.85f), onManual)
-                }
-            } else {
-                RemoteActivationCard(Modifier.fillMaxWidth(), onMessage, loadPlaylist, onConnected)
-                ManualEntryCard(Modifier.fillMaxWidth(), onManual)
-            }
 
-            Text(
-                stringResource(R.string.not_a_media_provider),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
-    }
-}
-
-@Composable
-internal fun themeChoiceLabel(choice: ThemeChoice): String = when (choice) {
-    ThemeChoice.SYSTEM -> stringResource(R.string.theme_system)
-    ThemeChoice.LIGHT -> stringResource(R.string.theme_light)
-    ThemeChoice.DARK -> stringResource(R.string.theme_dark)
-}
-
+/** A language's own name, except for "System default", which is shown in the current language. */
 @Composable
 internal fun languageLabel(language: AppLanguage): String =
     if (language == AppLanguage.SYSTEM) stringResource(R.string.language_system_default) else language.nativeName
-
 @Composable
 internal fun LanguageDialog(current: AppLanguage, onSelect: (AppLanguage) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
@@ -911,111 +860,9 @@ internal fun LanguageDialog(current: AppLanguage, onSelect: (AppLanguage) -> Uni
     )
 }
 
+/** A rounded, tinted plate behind a feature icon. */
 @Composable
-private fun ThemeMenu(choice: ThemeChoice, onChange: (ThemeChoice) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        AnimatedIconButton(onClick = { open = true }) { Icon(Icons.Default.Contrast, stringResource(R.string.cd_appearance)) }
-        DropdownMenu(open, onDismissRequest = { open = false }) {
-            ThemeChoice.entries.forEach {
-                DropdownMenuItem(
-                    text = { Text(themeChoiceLabel(it)) },
-                    leadingIcon = { if (choice == it) Icon(Icons.Default.Check, null) },
-                    onClick = { onChange(it); open = false }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RemoteActivationCard(
-    modifier: Modifier,
-    onMessage: (String) -> Unit,
-    loadPlaylist: suspend (PlaylistInput) -> Result<LoadedPlaylist>,
-    onConnected: (LoadedPlaylist) -> Unit
-) {
-    val context = LocalContext.current
-    var refreshing by remember { mutableStateOf(false) }
-    val mac = remember { com.fourkplus.tvplayer.data.DeviceIdentity.mac(context) }
-    val deviceKey = remember { com.fourkplus.tvplayer.data.DeviceIdentity.deviceKey(context) }
-    val activatedPlaylistName = stringResource(R.string.activated_playlist_default_name)
-    val noPlaylistAssignedYet = stringResource(R.string.no_playlist_assigned_yet)
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var refreshSignal by remember { mutableIntStateOf(0) }
-    var assigned by remember { mutableStateOf(false) }
-    val currentLoad by rememberUpdatedState(loadPlaylist)
-    val currentConnected by rememberUpdatedState(onConnected)
-    val currentMessage by rememberUpdatedState(onMessage)
-    LaunchedEffect(mac, deviceKey, lifecycleOwner, refreshSignal) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-            var failures = 0
-            while (!assigned) {
-                refreshing = true
-                val result = try {
-                    currentLoad(PlaylistInput(activatedPlaylistName, PlaylistKind.DEVICE_ACTIVATION, "", mac, deviceKey))
-                } finally { refreshing = false }
-                if (result.isSuccess) {
-                    assigned = true
-                    currentConnected(result.getOrThrow())
-                    break
-                }
-                val error = result.exceptionOrNull()
-                if (error is com.fourkplus.tvplayer.data.ActivationPendingException) {
-                    failures = 0
-                } else {
-                    failures++
-                    if (failures == 1) currentMessage(error?.message ?: noPlaylistAssignedYet)
-                }
-                delay(if (failures == 0) 5_000L else (5_000L * failures).coerceAtMost(30_000L))
-            }
-        }
-    }
-    ElevatedCard(
-        modifier,
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .96f)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 10.dp)
-    ) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AccentIcon(Icons.Default.Devices, Cyan)
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.activate_via_app), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(stringResource(R.string.recommended), color = Cyan, style = MaterialTheme.typography.labelMedium)
-                }
-            }
-            Text(stringResource(R.string.activation_instructions))
-            DeviceCode(stringResource(R.string.device_id), mac, onMessage)
-            DeviceCode(stringResource(R.string.device_key), deviceKey, onMessage)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = Orange.copy(alpha = .14f),
-                    shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.dp, Orange.copy(alpha = .28f))
-                ) {
-                    Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 2.dp, color = Orange)
-                        Spacer(Modifier.width(7.dp))
-                        Text(stringResource(R.string.waiting_for_activation), style = MaterialTheme.typography.labelMedium, color = Orange)
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                AnimatedFilledIconButton(
-                    enabled = !refreshing,
-                    onClick = { refreshSignal++ }
-                ) {
-                    val rotation by animateFloatAsState(if (refreshing) 360f else 0f, tween(650), label = "refresh")
-                    Icon(Icons.Default.Refresh, stringResource(R.string.cd_refresh_activation), Modifier.graphicsLayer(rotationZ = rotation))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AccentIcon(icon: ImageVector, color: Color) {
+internal fun AccentIcon(icon: ImageVector, color: Color) {
     Box(
         Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
             .background(Brush.linearGradient(listOf(color.copy(alpha = .28f), color.copy(alpha = .08f)))),
@@ -1024,48 +871,6 @@ private fun AccentIcon(icon: ImageVector, color: Color) {
         Icon(icon, null, tint = color, modifier = Modifier.size(25.dp))
     }
 }
-
-@Composable
-private fun DeviceCode(label: String, value: String, onMessage: (String) -> Unit) {
-    val clipboard = LocalClipboardManager.current
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.primary.copy(alpha = .12f))
-                )
-            ).padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
-            Text(value, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        }
-        AnimatedIconButton(onClick = {
-            clipboard.setText(AnnotatedString(value))
-            onMessage("$label copied")
-        }) { Icon(Icons.Default.ContentCopy, "Copy $label") }
-    }
-}
-
-@Composable
-private fun ManualEntryCard(modifier: Modifier, onManual: () -> Unit) {
-    val interactive = pressFeedback(onManual)
-    ElevatedCard(
-        modifier.then(interactive),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .96f)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            AccentIcon(Icons.Default.PlaylistAdd, Orange)
-            Text(stringResource(R.string.add_playlist_manually), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.add_playlist_manually_desc))
-            Button(onClick = onManual, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.add_playlist)) }
-        }
-    }
-}
-
 @Composable
 private fun ManualPlaylistScreen(
     onBack: () -> Unit,
@@ -3473,7 +3278,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit, placehol
  *  category/channel search fields, which use their own white-on-black colour scheme instead of
  *  the app's default Material field styling. */
 @Composable
-private fun DarkTvSearchField(
+internal fun DarkTvSearchField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
