@@ -90,9 +90,14 @@ class PlaylistRepository(context: Context) {
         cacheStore.deleteLegacy()
     }
 
-    suspend fun loadCached(source: PlaylistInput? = sourceStore.savedSource()): LoadedPlaylist? = withContext(Dispatchers.IO) {
+    /** [onLiveReady], when supplied, fires as soon as the cache's Live TV section has been decoded,
+     *  ahead of the Movies and Series sections - see [PlaylistCacheStore.load]. */
+    suspend fun loadCached(
+        source: PlaylistInput? = sourceStore.savedSource(),
+        onLiveReady: (suspend (LoadedPlaylist) -> Unit)? = null
+    ): LoadedPlaylist? = withContext(Dispatchers.IO) {
         val selected = source ?: return@withContext null
-        PlaylistTiming.measure("cache_read") { cacheStore.load(selected) }
+        PlaylistTiming.measure("cache_read") { cacheStore.load(selected, onLiveReady) }
     }
 
     fun lastRefreshedAt(source: PlaylistInput): Long? = cacheStore.lastSavedAt(source)

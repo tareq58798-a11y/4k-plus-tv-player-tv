@@ -92,6 +92,7 @@ internal fun SettingsScreen(
     var preferredSubtitle by remember { mutableStateOf(playback.getString("subtitle_language", "ar,en") ?: "ar,en") }
     var videoMode by remember { mutableStateOf(playback.getString("video_mode", "fit") ?: "fit") }
     var playerEngine by remember { mutableStateOf(playback.getString("player_engine", "default") ?: "default") }
+    var connectionMode by remember { mutableStateOf(ConnectionMode.read(context)) }
     var liveChannelSort by remember { mutableStateOf(playback.getString("live_channel_sort", "default") ?: "default") }
     var autoUpdateInterval by remember { mutableStateOf(playback.getString("auto_update_interval", "daily") ?: "daily") }
     var hiddenLive by remember {
@@ -391,6 +392,27 @@ internal fun SettingsScreen(
                             }
                         )
                     }
+                    HorizontalDivider()
+                    Text(stringResource(R.string.connection_mode), fontWeight = FontWeight.Bold)
+                    listOf(
+                        ConnectionMode.FAST to (stringResource(R.string.connection_fast_name) to stringResource(R.string.connection_fast_desc)),
+                        ConnectionMode.SLOW to (stringResource(R.string.connection_slow_name) to stringResource(R.string.connection_slow_desc))
+                    ).forEach { option ->
+                        RadioSetting(
+                            title = option.second.first,
+                            description = option.second.second,
+                            selected = connectionMode == option.first,
+                            onClick = {
+                                connectionMode = option.first
+                                playback.edit().putString(ConnectionMode.KEY, option.first.name).apply()
+                            }
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.connection_mode_restart_note),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     HorizontalDivider()
                     Text(stringResource(R.string.player_engine), fontWeight = FontWeight.Bold)
                     listOf(
@@ -1011,20 +1033,16 @@ internal fun PinDialog(
         title = { Text(if (mode == "set") stringResource(R.string.create_parental_pin) else stringResource(R.string.enter_parental_pin)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
+                RevealablePasswordField(
                     value = pin,
                     onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) pin = it },
-                    label = { Text(stringResource(R.string.pin_digit_hint)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
+                    label = stringResource(R.string.pin_digit_hint)
                 )
                 if (mode == "set") {
-                    OutlinedTextField(
+                    RevealablePasswordField(
                         value = confirmation,
                         onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) confirmation = it },
-                        label = { Text(stringResource(R.string.confirm_pin)) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
+                        label = stringResource(R.string.confirm_pin)
                     )
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

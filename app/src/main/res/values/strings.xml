@@ -224,6 +224,16 @@
     <string name="player_vlc_desc">Requires VLC to be installed</string>
     <string name="player_mx_desc">Requires MX Player to be installed</string>
 
+    <string name="show_password">Show password</string>
+    <string name="hide_password">Hide password</string>
+
+    <string name="connection_mode">Connection</string>
+    <string name="connection_fast_name">Fast connection</string>
+    <string name="connection_fast_desc">Starts playing as soon as possible, so channels open quickly.</string>
+    <string name="connection_slow_name">Slow connection</string>
+    <string name="connection_slow_desc">Waits for a larger buffer before playing, then keeps a deep reserve so the picture holds through drops. Channels take longer to open.</string>
+    <string name="connection_mode_restart_note">Takes effect the next time a channel or title starts playing.</string>
+
     <string name="theme_label">Theme</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>

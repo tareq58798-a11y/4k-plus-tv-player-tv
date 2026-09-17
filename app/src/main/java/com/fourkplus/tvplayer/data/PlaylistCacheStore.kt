@@ -1,10 +1,13 @@
 package com.fourkplus.tvplayer.data
 
 import android.content.Context
+import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.util.zip.Deflater
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +18,18 @@ internal class PlaylistCacheStore(context: Context) {
     private val appContext = context.applicationContext
     private val legacyCacheFile = appContext.filesDir.resolve("playlist_cache_v1.bin.gz")
 
-    suspend fun load(source: PlaylistInput): LoadedPlaylist? = withContext(Dispatchers.IO) {
+    /**
+     * Reads a cached playlist back. The file stores Live TV first (see [save]), so when
+     * [onLiveReady] is supplied it is invoked with a Live-only playlist as soon as that section has
+     * been read - typically a fraction of the whole file - and the Movies/Series sections are
+     * decoded afterwards. That lets the app open on a usable Live TV catalogue instead of holding a
+     * loading screen until every one of eighty thousand-odd items has been rebuilt, mirroring how
+     * the network path already publishes Live before the on-demand catalogues.
+     */
+    suspend fun load(
+        source: PlaylistInput,
+        onLiveReady: (suspend (LoadedPlaylist) -> Unit)? = null
+    ): LoadedPlaylist? = withContext(Dispatchers.IO) {
         runCatching {
             val specificCache = cacheFileFor(source)
             val selectedFile = when {
@@ -23,88 +37,122 @@ internal class PlaylistCacheStore(context: Context) {
                 legacyCacheFile.exists() -> legacyCacheFile
                 else -> return@runCatching null
             }
-            val loaded = DataInputStream(
+            DataInputStream(
                 // Buffer decompressed bytes too: readInt/readBoolean otherwise call through
                 // the inflater for each byte across hundreds of thousands of cached fields.
                 GZIPInputStream(selectedFile.inputStream().buffered(IO_BUFFER_BYTES), IO_BUFFER_BYTES)
                     .buffered(IO_BUFFER_BYTES)
             ).use { input ->
                 require(input.readInt() == CACHE_VERSION) { "Unsupported playlist cache." }
-                val name = input.readSizedString()
-                val accountStatus = input.readNullableString()
+                val text = CachedStringReader()
+                val name = text.read(input)
+                val accountStatus = text.readNullable(input)
                 val expiryEpochSeconds = input.readLong().takeIf { it > 0L }
-                val itemCount = input.readInt()
-                require(itemCount in 0..500_000) { "Invalid playlist cache." }
-                val items = ArrayList<PlaylistItem>(itemCount)
+                val items = ArrayList<PlaylistItem>()
                 // Building the distinct group set inline (instead of a second
                 // items.map{}.distinct() pass afterwards) skips allocating an
                 // 80,000+-element intermediate list just to deduplicate it - the same
                 // information is already right here as each item is read.
                 val groups = LinkedHashSet<String>()
-                repeat(itemCount) {
-                    // Field order here must exactly match save()'s write order below - these
-                    // are read into locals first (rather than inline in the constructor call)
-                    // so that order is unambiguous regardless of Kotlin's argument evaluation
-                    // rules, since each read has the side effect of advancing the stream.
-                    val itemName = input.readSizedString()
-                    val streamUrl = input.readSizedString()
-                    val group = input.readSizedString()
-                    val logoUrl = input.readNullableString()
-                    val channelId = input.readNullableString()
-                    val kind = MediaKind.valueOf(input.readSizedString())
-                    val description = input.readNullableString()
-                    val year = input.readNullableString()
-                    val rating = input.readNullableString()
-                    val duration = input.readNullableString()
-                    groups += group
-                    items += PlaylistItem(
-                        name = itemName,
-                        streamUrl = streamUrl,
-                        group = group,
-                        logoUrl = logoUrl,
-                        channelId = channelId,
-                        kind = kind,
-                        description = description,
-                        year = year,
-                        rating = rating,
-                        duration = duration
-                    )
-                }
-                LoadedPlaylist(
+                // The partial handed to onLiveReady needs its own copy, since decoding continues to
+                // append to `items` afterwards. The final result is the last reader of that list,
+                // so it takes ownership instead of paying for another full copy.
+                fun snapshot(own: Boolean) = LoadedPlaylist(
                     name = name,
-                    items = items,
+                    items = if (own) items else ArrayList(items),
                     groups = groups.toList(),
                     accountStatus = accountStatus,
                     expiryEpochSeconds = expiryEpochSeconds
                 )
+                // Section order must match save()'s. Each section's kind is implied by its
+                // position, so it is not stored per item.
+                SECTION_KINDS.forEachIndexed { index, kind ->
+                    if (index == 0) PlaylistTiming.measure("cache_read_live") {
+                        input.readSection(kind, text, items, groups)
+                    } else {
+                        input.readSection(kind, text, items, groups)
+                    }
+                    if (index == 0 && onLiveReady != null) onLiveReady(snapshot(own = false))
+                }
+                snapshot(own = true)
             }
-            if (selectedFile == legacyCacheFile && loaded.name != source.name) return@runCatching null
-            if (selectedFile == legacyCacheFile) save(source, loaded)
-            loaded
         }.getOrNull()
+    }
+
+    private fun DataInputStream.readSection(
+        kind: MediaKind,
+        text: CachedStringReader,
+        items: ArrayList<PlaylistItem>,
+        groups: LinkedHashSet<String>
+    ) {
+        val count = readInt()
+        require(count in 0..500_000) { "Invalid playlist cache." }
+        items.ensureCapacity(items.size + count)
+        repeat(count) {
+            // Field order here must exactly match save()'s write order - these are read into
+            // locals first (rather than inline in the constructor call) so that order is
+            // unambiguous regardless of Kotlin's argument evaluation rules, since each read has
+            // the side effect of advancing the stream.
+            val itemName = text.read(this)
+            val streamUrl = text.read(this)
+            val group = text.read(this)
+            val logoUrl = text.readNullable(this)
+            val channelId = text.readNullable(this)
+            val description = text.readNullable(this)
+            val year = text.readNullable(this)
+            val rating = text.readNullable(this)
+            val duration = text.readNullable(this)
+            groups += group
+            items += PlaylistItem(
+                name = itemName,
+                streamUrl = streamUrl,
+                group = group,
+                logoUrl = logoUrl,
+                channelId = channelId,
+                kind = kind,
+                description = description,
+                year = year,
+                rating = rating,
+                duration = duration
+            )
+        }
     }
 
     fun save(source: PlaylistInput, playlist: LoadedPlaylist) {
         val destination = cacheFileFor(source)
         val temporary = appContext.filesDir.resolve(destination.name + ".tmp")
         runCatching {
-            DataOutputStream(GZIPOutputStream(temporary.outputStream().buffered(IO_BUFFER_BYTES))).use { output ->
+            DataOutputStream(
+                // Buffer the uncompressed side too, mirroring load(): DataOutputStream otherwise
+                // pushes every writeInt/writeBoolean/write straight into the deflater, which is
+                // roughly ten separate compressor calls per item across the whole catalogue.
+                BufferedOutputStream(
+                    FastGzipOutputStream(temporary.outputStream().buffered(IO_BUFFER_BYTES), IO_BUFFER_BYTES),
+                    IO_BUFFER_BYTES
+                )
+            ).use { output ->
                 output.writeInt(CACHE_VERSION)
                 output.writeSizedString(playlist.name)
                 output.writeNullableString(playlist.accountStatus)
                 output.writeLong(playlist.expiryEpochSeconds ?: 0L)
-                output.writeInt(playlist.items.size)
-                playlist.items.forEach { item ->
-                    output.writeSizedString(item.name)
-                    output.writeSizedString(item.streamUrl)
-                    output.writeSizedString(item.group)
-                    output.writeNullableString(item.logoUrl)
-                    output.writeNullableString(item.channelId)
-                    output.writeSizedString(item.kind.name)
-                    output.writeNullableString(item.description)
-                    output.writeNullableString(item.year)
-                    output.writeNullableString(item.rating)
-                    output.writeNullableString(item.duration)
+                // Grouped into per-kind sections with Live first so load() can hand back a usable
+                // Live TV catalogue without decoding the (far larger) Movies and Series sections
+                // behind it. The kind is implied by the section and so is not written per item.
+                val byKind = playlist.items.groupBy { it.kind }
+                SECTION_KINDS.forEach { kind ->
+                    val section = byKind[kind].orEmpty()
+                    output.writeInt(section.size)
+                    section.forEach { item ->
+                        output.writeSizedString(item.name)
+                        output.writeSizedString(item.streamUrl)
+                        output.writeSizedString(item.group)
+                        output.writeNullableString(item.logoUrl)
+                        output.writeNullableString(item.channelId)
+                        output.writeNullableString(item.description)
+                        output.writeNullableString(item.year)
+                        output.writeNullableString(item.rating)
+                        output.writeNullableString(item.duration)
+                    }
                 }
             }
             if (!temporary.renameTo(destination)) {
@@ -146,19 +194,37 @@ internal class PlaylistCacheStore(context: Context) {
         if (value != null) writeSizedString(value)
     }
 
-    private fun DataInputStream.readSizedString(): String {
-        val size = readInt()
-        require(size in 0..2_000_000) { "Invalid cached text." }
-        val bytes = ByteArray(size)
-        readFully(bytes)
-        return String(bytes, StandardCharsets.UTF_8)
+    /** Decodes the cache's length-prefixed strings through one growable scratch buffer instead of
+     *  allocating a fresh ByteArray per field. A full catalogue carries roughly ten string fields
+     *  per item, so the throwaway arrays alone ran to hundreds of thousands of allocations - and
+     *  the GC pressure from them lands squarely on app startup. */
+    private class CachedStringReader {
+        private var scratch = ByteArray(256)
+
+        fun read(input: DataInputStream): String {
+            val size = input.readInt()
+            require(size in 0..2_000_000) { "Invalid cached text." }
+            if (scratch.size < size) scratch = ByteArray(maxOf(size, scratch.size * 2))
+            input.readFully(scratch, 0, size)
+            return String(scratch, 0, size, StandardCharsets.UTF_8)
+        }
+
+        fun readNullable(input: DataInputStream): String? =
+            if (input.readBoolean()) read(input) else null
     }
 
-    private fun DataInputStream.readNullableString(): String? =
-        if (readBoolean()) readSizedString() else null
+    /** gzip tuned for a local cache, where the file is rewritten on every refresh and read back on
+     *  every launch: the fastest compression level costs a modestly larger file on disk and saves
+     *  far more CPU than the space is worth. The output is ordinary gzip, so a cache written at any
+     *  level still reads back with the existing loader - this is not a format change. */
+    private class FastGzipOutputStream(out: OutputStream, size: Int) : GZIPOutputStream(out, size) {
+        init { def.setLevel(Deflater.BEST_SPEED) }
+    }
 
     private companion object {
-        const val CACHE_VERSION = 4
+        /** Section order on disk. Live is deliberately first so it can be read and shown alone. */
+        val SECTION_KINDS = listOf(MediaKind.LIVE, MediaKind.MOVIE, MediaKind.SERIES)
+        const val CACHE_VERSION = 5
         // Larger than the default 8KB: fewer read()/write() syscalls against the underlying
         // file for a cache that's routinely several MB (tens of thousands of items), which
         // matters more on the slower flash storage typical of budget TV boxes than it would

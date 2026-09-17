@@ -45,6 +45,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -135,6 +136,42 @@ internal object PictureInPictureCoordinator {
     var aspectRatio by mutableFloatStateOf(16f / 9f)
 }
 
+/** Swallows the leftover events of a remote button press whose key-down already caused a screen
+ *  change (entering/leaving Live TV fullscreen, say). Compose delivers the matching key-up to
+ *  whatever holds focus *after* that change, which is a different widget than the one that handled
+ *  the key-down — on TV that meant the OK press that closed fullscreen immediately re-activated the
+ *  channel row it landed back on, so the menu appeared and vanished again. The handler that acts on
+ *  the key-down calls [consumeRestOfPress]; [MainActivity.dispatchKeyEvent] then drops every
+ *  further event of that same press before it reaches the new focus target. */
+internal object RemoteInputGate {
+    private var swallowedKeyCode: Int? = null
+    private var armedAt = 0L
+
+    fun consumeRestOfPress(keyCode: Int) {
+        swallowedKeyCode = keyCode
+        armedAt = android.os.SystemClock.uptimeMillis()
+    }
+
+    fun shouldSwallow(event: android.view.KeyEvent): Boolean {
+        val code = swallowedKeyCode ?: return false
+        // A key-up that never arrives (focus left the app mid-press) must not deafen the button
+        // for the rest of the session.
+        if (android.os.SystemClock.uptimeMillis() - armedAt > 1_500L) {
+            swallowedKeyCode = null
+            return false
+        }
+        if (event.keyCode != code) return false
+        if (event.action == android.view.KeyEvent.ACTION_UP) swallowedKeyCode = null
+        return true
+    }
+}
+
+/** True only for the opening key-down of a physical press. A held remote button auto-repeats, and
+ *  every repeat arrives as another key-down — acting on those turned one OK press into a burst of
+ *  enter/exit fullscreen toggles. */
+internal val androidx.compose.ui.input.key.KeyEvent.isInitialKeyDown: Boolean
+    get() = type == KeyEventType.KeyDown && nativeKeyEvent.repeatCount == 0
+
 class MainActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleHelper.wrap(newBase))
@@ -158,11 +195,20 @@ class MainActivity : ComponentActivity() {
         setContent { App() }
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (RemoteInputGate.shouldSwallow(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
     // Called just before the app leaves the foreground for a user-initiated reason (Home,
     // recents, another app) — not on rotation, dialogs, or the system just backgrounding us.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (!PictureInPictureCoordinator.eligible) return
+        // On TV, Home means "leave the app" — shrinking into a floating window there would keep
+        // the stream's audio playing over the launcher. The player instead stays alive and muted
+        // in the background (see MutePlayerWhileBackgrounded), so returning resumes instantly.
+        if (isTvDevice()) return
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
         val ratio = PictureInPictureCoordinator.aspectRatio.coerceIn(0.42f, 2.39f)
         runCatching {
@@ -1021,9 +1067,10 @@ private fun ManualPlaylistScreen(
         }
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(username, { username = it }, label = { Text(stringResource(R.string.username_label)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(
-                password, { password = it }, label = { Text(stringResource(R.string.password_label)) },
-                visualTransformation = PasswordVisualTransformation(), singleLine = true,
+            RevealablePasswordField(
+                value = password,
+                onValueChange = { password = it },
+                label = stringResource(R.string.password_label),
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -1277,7 +1324,10 @@ private fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, content = header)
-                AutoSizeText(greeting, Modifier.fillMaxWidth(), maxFontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    AutoSizeText(greeting, Modifier.weight(1f), maxFontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp)
+                    HomeDateTime(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                }
                 Row(
                     Modifier.fillMaxWidth().weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(18.dp)
@@ -1338,6 +1388,7 @@ private fun HomeScreen(
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                HomeDateTime(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             AnimatedVisibility(
                 visible = visible,
@@ -1376,6 +1427,38 @@ private fun HomeScreen(
         }
     }
     }
+}
+
+/** Live clock + date shown on Home. Ticks on a plain 30s delay loop rather than a
+ *  once-a-minute-aligned timer — nothing here needs second-level precision, and this keeps the
+ *  displayed minute from ever drifting more than 30s stale. */
+@Composable
+private fun HomeDateTime(
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = 13.sp
+) {
+    var now by remember { mutableStateOf(java.time.LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            now = java.time.LocalDateTime.now()
+        }
+    }
+    // The app's own language setting, not the device's: LocaleHelper rewrites the Activity's
+    // configuration, so a user reading the app in Arabic must not get an English date beside it.
+    val locale = LocalConfiguration.current.locales[0]
+    val formatter = remember(locale) {
+        java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM • h:mm a", locale)
+    }
+    Text(
+        text = runCatching { now.format(formatter) }.getOrDefault(""),
+        modifier = modifier,
+        color = color,
+        fontSize = fontSize,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1
+    )
 }
 
 private enum class TileKind { LIVE, MOVIES, SERIES }
@@ -1663,6 +1746,11 @@ private fun MoviesScreen(
     val categories = remember(movies, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.MOVIE, movies.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("movie_library", android.content.Context.MODE_PRIVATE) }
     var view by remember { mutableStateOf(MovieView.BROWSE) }
+    // Which list the open details page was reached from, and the poster to scroll back to and
+    // focus once it closes - the grid is torn down while details are showing, so without these it
+    // rebuilds scrolled to the top with focus on the first item.
+    var detailsReturnView by remember { mutableStateOf(MovieView.BROWSE) }
+    var restoreFocusKey by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf("Continue watching") }
     var selectedMovie by remember { mutableStateOf<PlaylistItem?>(null) }
     var details by remember { mutableStateOf<MovieDetailsInfo?>(null) }
@@ -1706,6 +1794,7 @@ private fun MoviesScreen(
         store.edit().putStringSet("favorites", updated).apply()
     }
     fun openDetails(movie: PlaylistItem) {
+        detailsReturnView = if (view == MovieView.CATEGORY) MovieView.CATEGORY else MovieView.BROWSE
         selectedMovie = movie
         details = null
         detailsError = null
@@ -1732,7 +1821,10 @@ private fun MoviesScreen(
         when (view) {
             MovieView.BROWSE -> onBack()
             MovieView.CATEGORY -> { search = ""; view = MovieView.BROWSE }
-            MovieView.DETAILS -> view = MovieView.BROWSE
+            MovieView.DETAILS -> {
+                restoreFocusKey = selectedMovie?.let(::channelKey)
+                view = detailsReturnView
+            }
             MovieView.PLAYER -> view = MovieView.DETAILS
         }
     }
@@ -1800,6 +1892,8 @@ private fun MoviesScreen(
                     recent = recent,
                     favorites = favorites,
                     continueWatching = continueWatching,
+                    restoreFocusKey = restoreFocusKey,
+                    onRestoreHandled = { restoreFocusKey = null },
                     progress = progress,
                     onCategory = { category ->
                         fun enter() { selectedCategory = category; search = ""; view = MovieView.CATEGORY }
@@ -1862,7 +1956,10 @@ private fun MoviesScreen(
                         SearchField(search, { search = it }, stringResource(R.string.search_all_movies))
                         if (search.isNotBlank()) {
                             val results = remember(movies, search) { movies.filter { it.name.contains(search.trim(), true) } }
-                            MovieGrid(results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress)
+                            MovieGrid(
+                                results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress,
+                                restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
+                            )
                         } else {
                             val sections = buildList {
                                 if (continueWatching.isNotEmpty()) add("Continue watching" to continueWatching)
@@ -1908,7 +2005,10 @@ private fun MoviesScreen(
                             else -> movies.filter { it.group == selectedCategory }
                         }
                         val results = if (search.isBlank()) base else movies.filter { it.name.contains(search.trim(), true) }
-                        MovieGrid(results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress)
+                        MovieGrid(
+                            results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress,
+                            restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
+                        )
                     }
                     MovieView.DETAILS -> selectedMovie?.let { movie ->
                         MovieDetails(
@@ -1942,6 +2042,8 @@ private fun LandscapeMovieBrowser(
     recent: List<PlaylistItem>,
     favorites: List<PlaylistItem>,
     continueWatching: List<PlaylistItem>,
+    restoreFocusKey: String?,
+    onRestoreHandled: () -> Unit,
     onCategory: (String) -> Unit,
     onSearch: (String) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
@@ -1971,7 +2073,11 @@ private fun LandscapeMovieBrowser(
         if (index >= 0) categoryListState.animateScrollToItem(index)
     }
     val continueWatchingFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(isTv) { if (isTv) runCatching { continueWatchingFocusRequester.requestFocus() } }
+    // Skipped when returning from a details page - MovieGrid is restoring focus to the poster the
+    // user left from, and both requests racing would land focus back on the category list instead.
+    LaunchedEffect(isTv) {
+        if (isTv && restoreFocusKey == null) requestFocusWithRetry(continueWatchingFocusRequester)
+    }
     // Pressing OK on a category should move the remote's focus straight into that category's
     // grid rather than leaving it on the category button — 0 means "not from a press yet".
     var categorySelectionTick by remember { mutableIntStateOf(0) }
@@ -2029,7 +2135,10 @@ private fun LandscapeMovieBrowser(
         Column(Modifier.weight(1f).fillMaxHeight()) {
             Text(localizedSectionTitle(selectedCategory).ifBlank { stringResource(R.string.nav_movies) }, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
             Spacer(Modifier.height(6.dp))
-            MovieGrid(displayed, favoriteIds, onFavorite, onMovie, Modifier.weight(1f), true, progress, firstItemFocusRequester)
+            MovieGrid(
+                displayed, favoriteIds, onFavorite, onMovie, Modifier.weight(1f), true, progress,
+                firstItemFocusRequester, restoreFocusKey, onRestoreHandled
+            )
         }
     }
 }
@@ -2043,6 +2152,10 @@ private fun LandscapeLiveBrowser(
     // channel in the playlist instead of just the ones in the currently selected category.
     allChannels: List<PlaylistItem>,
     selectedChannel: PlaylistItem?,
+    // False until the user has actually picked a channel or category this session. The preview
+    // still plays [selectedChannel] either way; this only governs whether a row in the list is
+    // drawn as the chosen one.
+    channelChosen: Boolean,
     favoriteIds: Set<String>,
     returningFromFullscreen: Boolean,
     onCategory: (String) -> Unit,
@@ -2076,15 +2189,53 @@ private fun LandscapeLiveBrowser(
         if (index >= 0) categoryListState.animateScrollToItem(index)
     }
     val recentCategoryFocusRequester = remember { FocusRequester() }
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
     val selectedChannelFocusRequester = remember { FocusRequester() }
-    // On first ever open, land the remote's focus on the Recently watched category; after
-    // returning from fullscreen, land it back on the channel that was just playing instead.
+    val channelListState = rememberLazyListState()
+    val backScope = rememberCoroutineScope()
+    // Back walks out of this menu one level at a time rather than leaving Live TV outright: from
+    // the channel list it steps across to the category list (landing on the category being
+    // browsed), and only a further Back from there - when this handler switches itself off and
+    // LiveTvScreen's own handler takes over - actually leaves Live TV.
+    var categoryColumnFocused by remember { mutableStateOf(false) }
+    BackHandler(enabled = isTv && !categoryColumnFocused) {
+        backScope.launch {
+            val index = searchedCategories.indexOf(selectedCategory)
+            if (index >= 0) runCatching { categoryListState.scrollToItem(index) }
+            // Recently watched is always present, so it is a safe landing spot if the selected
+            // category is filtered out of the list by an active search.
+            if (!requestFocusWithRetry(selectedCategoryFocusRequester)) {
+                requestFocusWithRetry(recentCategoryFocusRequester)
+            }
+        }
+    }
+    // What the preview is playing is only treated as the chosen row once the user has picked
+    // something - see channelChosen.
+    val highlightedChannel = selectedChannel?.takeIf { channelChosen }
+    val selectedChannelIndex = remember(searchedChannels, highlightedChannel) {
+        val key = highlightedChannel?.let(::channelKey)
+        searchedChannels.indexOfFirst { channelKey(it) == key }
+    }
+    // This whole menu is torn down while fullscreen is showing and rebuilt on the way back, so its
+    // lists always return scrolled to the top. On first ever open, land the remote's focus on the
+    // Recently watched category; after returning from fullscreen, put both lists back where they
+    // were and land focus on the channel that was playing.
     LaunchedEffect(isTv) {
         if (!isTv) return@LaunchedEffect
-        runCatching {
-            if (returningFromFullscreen) selectedChannelFocusRequester.requestFocus()
-            else recentCategoryFocusRequester.requestFocus()
+        if (!returningFromFullscreen) {
+            requestFocusWithRetry(recentCategoryFocusRequester)
+            return@LaunchedEffect
         }
+        val categoryIndex = searchedCategories.indexOf(selectedCategory)
+        if (categoryIndex >= 0) runCatching { categoryListState.scrollToItem(categoryIndex) }
+        val restored = restoreListPosition(
+            index = selectedChannelIndex,
+            scrollToItem = { channelListState.scrollToItem(it) },
+            focusRequester = selectedChannelFocusRequester
+        )
+        // Leaving the screen with nothing focused is what makes a remote feel like it is being
+        // ignored, so fall back to a target that is always present.
+        if (!restored) requestFocusWithRetry(recentCategoryFocusRequester)
     }
     // Pressing OK on a category should move the remote's focus straight into that category's
     // channel list rather than leaving it sitting on the category button — 0 means "not from a
@@ -2099,7 +2250,8 @@ private fun LandscapeLiveBrowser(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Surface(
-                Modifier.width(240.dp).fillMaxHeight(),
+                Modifier.width(240.dp).fillMaxHeight()
+                    .onFocusChanged { categoryColumnFocused = it.hasFocus },
                 shape = RoundedCornerShape(16.dp),
                 color = Color.Transparent
             ) {
@@ -2120,6 +2272,7 @@ private fun LandscapeLiveBrowser(
                             Surface(
                                 modifier = Modifier.fillMaxWidth()
                                     .then(if (category == "Recently watched") Modifier.focusRequester(recentCategoryFocusRequester) else Modifier)
+                                    .then(if (category == selectedCategory) Modifier.focusRequester(selectedCategoryFocusRequester) else Modifier)
                                     .categoryReorderKeys(
                                         active = isReordering,
                                         onMove = { up -> moveCategory(context, MediaKind.LIVE, reorderableCategories, category, up); onCategoriesReordered() },
@@ -2158,9 +2311,20 @@ private fun LandscapeLiveBrowser(
                         fontSize = 14.sp,
                         modifier = Modifier.fillMaxWidth().padding(8.dp)
                     )
-                    LazyColumn(contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    itemsIndexed(searchedChannels) { index, channel ->
-                        val selected = channelKey(channel) == selectedChannel?.let(::channelKey)
+                    LazyColumn(state = channelListState, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    // Keyed so a row's remembered state stays tied to its channel. Without this,
+                    // lazy items are identified by position, so swapping category or searching
+                    // hands slot N's remembered interaction source - and with it the focus ring's
+                    // animated alpha - to whichever unrelated channel now sits at that position,
+                    // leaving the highlight stranded on the wrong row. The index suffix only
+                    // guarantees uniqueness: a playlist with no stream ids falls back to
+                    // group:name in channelKey, which is not guaranteed distinct, and a duplicate
+                    // key would crash the list outright.
+                    itemsIndexed(
+                        searchedChannels,
+                        key = { index, channel -> "${channelKey(channel)}#$index" }
+                    ) { index, channel ->
+                        val selected = channelKey(channel) == highlightedChannel?.let(::channelKey)
                         // combinedClickable reports remote OK presses as individual clicks.
                         // Pair activations on this row so double-tap also opens fullscreen (touch);
                         // a single OK press does it directly on TV, see isTv below.
@@ -2223,17 +2387,35 @@ private fun LandscapeLiveBrowser(
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 selectedChannel?.let {
                     val nowNext = rememberEpgNowNext(it, loadEpg)
+                    // No panel behind it, matching the rest of this menu — every line carries its
+                    // own drop shadow instead so it stays readable over a bright video frame.
+                    val legibleShadow = androidx.compose.ui.graphics.Shadow(
+                        color = Color.Black.copy(alpha = .95f),
+                        offset = Offset(0f, 1f),
+                        blurRadius = 6f
+                    )
                     Surface(
                         Modifier.align(Alignment.BottomEnd).padding(8.dp).widthIn(max = 260.dp),
-                        color = Color.Black.copy(alpha = .64f),
+                        color = Color.Transparent,
                         shape = RoundedCornerShape(11.dp)
                     ) {
                         Column(
                             Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                             verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Text(it.name, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
-                            NowNextLine(nowNext, titleColor = Color.White, nextColor = Color.White.copy(alpha = .75f))
+                            Text(
+                                it.name,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                style = androidx.compose.ui.text.TextStyle(shadow = legibleShadow)
+                            )
+                            NowNextLine(
+                                nowNext,
+                                titleColor = Color.White,
+                                nextColor = Color.White.copy(alpha = .75f),
+                                textShadow = legibleShadow
+                            )
                         }
                     }
                 }
@@ -2291,20 +2473,45 @@ private fun MovieGrid(
     modifier: Modifier,
     landscape: Boolean,
     progress: Map<String, Long> = emptyMap(),
-    firstItemFocusRequester: FocusRequester? = null
+    firstItemFocusRequester: FocusRequester? = null,
+    // Set once, on the way back from a movie's details page: the poster to scroll to and focus.
+    restoreFocusKey: String? = null,
+    onRestoreHandled: () -> Unit = {}
 ) {
+    val gridState = rememberLazyGridState()
+    val restoreFocusRequester = remember { FocusRequester() }
+    val restoreIndex = remember(movies, restoreFocusKey) {
+        if (restoreFocusKey == null) -1 else movies.indexOfFirst { channelKey(it) == restoreFocusKey }
+    }
+    val context = LocalContext.current
+    val isTvDevice = remember { context.isTvDevice() }
+    LaunchedEffect(restoreFocusKey, restoreIndex) {
+        if (restoreFocusKey == null) return@LaunchedEffect
+        restoreListPosition(
+            index = restoreIndex,
+            scrollToItem = { gridState.scrollToItem(it) },
+            focusRequester = restoreFocusRequester.takeIf { isTvDevice }
+        )
+        onRestoreHandled()
+    }
     if (movies.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_movies_match), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     } else {
         LazyVerticalGrid(
-            columns = GridCells.Fixed(if (landscape) 7 else 3), modifier = modifier,
+            columns = GridCells.Fixed(if (landscape) 7 else 3), modifier = modifier, state = gridState,
             horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp), verticalArrangement = Arrangement.spacedBy(if (landscape) 9.dp else 16.dp),
             contentPadding = PaddingValues(bottom = 20.dp)
         ) {
-            gridItemsIndexed(movies) { index, movie ->
+            // Keyed for the same reason as the Live TV channel list - see the comment there.
+            gridItemsIndexed(
+                movies,
+                key = { index, movie -> "${channelKey(movie)}#$index" }
+            ) { index, movie ->
                 MoviePoster(
                     movie, channelKey(movie) in favoriteIds, { onFavorite(movie) }, { onMovie(movie) },
-                    modifier = if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
+                    modifier = Modifier
+                        .then(if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                        .then(if (index == restoreIndex) Modifier.focusRequester(restoreFocusRequester) else Modifier),
                     watchedFraction = watchedFraction(movie, progress)
                 )
             }
@@ -2376,7 +2583,9 @@ private fun MovieDetails(
     val duration = readableMovieDuration(details?.duration ?: movie.duration)
     val displayTitle = details?.originalTitle ?: movie.name
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val trailerScope = rememberCoroutineScope()
+    // Null unless the provider actually sent a trailer for this title, which is what gates the
+    // button below - see trailerVideoId.
+    val trailerId = remember(details?.trailerUrl) { trailerVideoId(details?.trailerUrl) }
     val isTv = remember { context.isTvDevice() }
     val playFocusRequester = remember { FocusRequester() }
     LaunchedEffect(movie, isTv) {
@@ -2404,10 +2613,12 @@ private fun MovieDetails(
                     Text(if (resumePosition > 0L) stringResource(R.string.resume_time, formatPlaybackTime(resumePosition)) else stringResource(R.string.play_action))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, year) } }, modifier = Modifier.weight(1f).height(44.dp)) {
-                        Icon(Icons.Default.SmartDisplay, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
+                    trailerId?.let { id ->
+                        OutlinedButton(onClick = { openTrailer(context, id) }, modifier = Modifier.weight(1f).height(44.dp)) {
+                            Icon(Icons.Default.SmartDisplay, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
+                        }
                     }
                     AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(44.dp)) {
                         Icon(
@@ -2517,13 +2728,15 @@ private fun MovieDetails(
                 )
             }
         }
-        OutlinedButton(
-            onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, year) } },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Default.SmartDisplay, null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.watch_trailer))
+        trailerId?.let { id ->
+            OutlinedButton(
+                onClick = { openTrailer(context, id) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.SmartDisplay, null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.watch_trailer))
+            }
         }
 
         if (loading) {
@@ -2602,42 +2815,28 @@ private fun watchedFraction(movie: PlaylistItem, progress: Map<String, Long>): F
 
 private val youtubeVideoIdPattern = Regex("(?:v=|youtu\\.be/|/embed/)([\\w-]{11})")
 
-/** Opens a trailer as directly as possible: when [trailerUrl] resolves to a YouTube video id
- *  (provided by the server alongside movie/series metadata), this jumps straight into that
- *  video's fullscreen player — in the YouTube app if installed, its web player otherwise — with
- *  no search results list to pick from first. Falls back to a plain YouTube search only when no
- *  direct video id is available (e.g. M3U playlists with no provider-supplied trailer). */
-/** Opens the trailer for [title] (optionally with [year] to disambiguate remakes/shows with
- *  reused titles). Prefers a video ID already supplied by the provider ([trailerUrl]); otherwise
- *  asks the activation backend's /api/trailer endpoint (a thin YouTube Data API proxy) for the
- *  real official trailer's video ID so playback starts directly instead of on a search-results
- *  page. Falls back to that search page only if no direct video ID could be resolved at all (no
- *  provider URL, no network, or the backend has no API key configured). Every launched activity
- *  is opened with FLAG_ACTIVITY_NO_HISTORY so a single Back press returns straight to this app
- *  instead of stepping back through YouTube's own internal navigation first. */
-internal suspend fun openTrailer(context: android.content.Context, trailerUrl: String?, title: String, year: String?) {
-    val directId = trailerUrl?.let(youtubeVideoIdPattern::find)?.groupValues?.get(1)
-    val videoId = directId ?: com.fourkplus.tvplayer.data.TrailerSearchClient.findTrailerVideoId(title, year)
-    if (videoId != null) {
-        val opened = runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
-            )
-            true
-        }.getOrDefault(false)
-        if (opened) return
-        runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId")).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
-            )
-        }
-        return
-    }
-    val searchUri = Uri.parse("https://www.youtube.com/results").buildUpon()
-        .appendQueryParameter("search_query", listOfNotNull(title, year, "official trailer").joinToString(" "))
-        .build()
+/** The YouTube video id the provider supplied for this title, or null when it sent none. Callers
+ *  use it both to decide whether a Trailer button is worth showing and to open it — a button that
+ *  only appears when there is a real video behind it can never land the viewer on a search page
+ *  hunting for their own trailer. */
+internal fun trailerVideoId(trailerUrl: String?): String? =
+    trailerUrl?.let(youtubeVideoIdPattern::find)?.groupValues?.get(1)?.takeIf(String::isNotBlank)
+
+/** Plays [videoId] in the YouTube app if it is installed, otherwise its web player. Opened with
+ *  FLAG_ACTIVITY_NO_HISTORY so a single Back press returns straight here rather than stepping back
+ *  through YouTube's own navigation first. */
+internal fun openTrailer(context: android.content.Context, videoId: String) {
+    val opened = runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+        )
+        true
+    }.getOrDefault(false)
+    if (opened) return
     runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, searchUri).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY))
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId")).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+        )
     }
 }
 
@@ -2697,6 +2896,12 @@ private fun LiveTvScreen(
     var channelQuery by remember { mutableStateOf("") }
     var showRecentInPlayer by remember { mutableStateOf(false) }
     var previewChannel by remember(channels) { mutableStateOf(channels.firstOrNull()) }
+    // The preview auto-plays the playlist's first channel so the screen is not dead on arrival,
+    // but that is the app's choice, not the user's. Until they actually pick something this
+    // session, no row is marked as chosen - otherwise that arbitrary first channel shows up
+    // highlighted at whatever position it happens to occupy in whichever category is open,
+    // typically somewhere meaningless like the bottom of Recently watched.
+    var hasChosenChannel by remember(channels) { mutableStateOf(false) }
     val store = remember { context.getSharedPreferences("favorite_channels", android.content.Context.MODE_PRIVATE) }
     var favoriteIds by remember { mutableStateOf(store.getStringSet("ids", emptySet()).orEmpty().toSet()) }
     var recentIds by remember {
@@ -2732,6 +2937,7 @@ private fun LiveTvScreen(
         val request = resumeRequest ?: return@LaunchedEffect
         channelByKey[request.itemKey]?.let { channel ->
             previewChannel = channel
+            hasChosenChannel = true
             view = LiveView.PLAYER
             if (request.autoPlay) enterFullscreen()
         }
@@ -2766,6 +2972,7 @@ private fun LiveTvScreen(
 
     fun rememberChannelUnchecked(channel: PlaylistItem) {
         previewChannel = channel
+        hasChosenChannel = true
         val key = channelKey(channel)
         val updated = (listOf(key) + recentIds.filterNot { it == key }).take(20)
         recentIds = updated
@@ -2860,12 +3067,16 @@ private fun LiveTvScreen(
                             channels = selectedChannels,
                             allChannels = channels,
                             selectedChannel = previewChannel,
+                            channelChosen = hasChosenChannel,
                             favoriteIds = favoriteIds,
                             returningFromFullscreen = hasOpenedFullscreenOnce,
                             onCategory = { category ->
                                 fun enter() {
                                     selectedCategory = category
                                     channelQuery = ""
+                                    // Opening a category is a deliberate pick, so the channel it
+                                    // switches the preview to is worth marking as chosen.
+                                    hasChosenChannel = true
                                     previewChannel = when (category) {
                                         recentlyWatched -> recentChannels.firstOrNull()
                                         favorites -> favoriteChannels.firstOrNull()
@@ -3432,6 +3643,34 @@ internal fun Context.isTvDevice(): Boolean {
     return uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
 }
 
+/** Asks for focus across the next few frames instead of once. A [FocusRequester] only works after
+ *  the node it is attached to has been composed and laid out; asking in the same frame the owning
+ *  screen appears is routinely too early, and a single failed attempt leaves the screen with
+ *  nothing focused — which on a remote reads as the app ignoring the first button presses. */
+internal suspend fun requestFocusWithRetry(requester: FocusRequester, attempts: Int = 6): Boolean {
+    repeat(attempts) {
+        if (runCatching { requester.requestFocus() }.isSuccess) return true
+        withFrameNanos {}
+    }
+    return false
+}
+
+/** Puts a lazy list back exactly where the user left it: scrolls [index] into view, then focuses
+ *  it. The scroll has to come first — an item a lazy list has scrolled past is not composed at all,
+ *  so a focus requester pointing at it belongs to no node and silently does nothing. Pass a null
+ *  [focusRequester] to restore the scroll position only, as on a touch device where an unexplained
+ *  focus ring would just look like a glitch. */
+internal suspend fun restoreListPosition(
+    index: Int,
+    scrollToItem: suspend (Int) -> Unit,
+    focusRequester: FocusRequester?
+): Boolean {
+    if (index < 0) return false
+    runCatching { scrollToItem(index) }
+    if (focusRequester == null) return true
+    return requestFocusWithRetry(focusRequester)
+}
+
 /** Looks up (and caches) the now/next programme for [channel], gated behind [EpgStore]'s shared
  *  semaphore so scrolling a long channel list can't fire dozens of EPG requests at once. Returns
  *  null silently for M3U playlists, channels without an id, or providers with no EPG data —
@@ -3467,16 +3706,21 @@ private fun NowNextLine(
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
     nextColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     titleFontSize: androidx.compose.ui.unit.TextUnit = 12.sp,
-    nextFontSize: androidx.compose.ui.unit.TextUnit = 10.sp
+    nextFontSize: androidx.compose.ui.unit.TextUnit = 10.sp,
+    // Set where this sits directly on video with no panel behind it, so the text stays readable
+    // against a bright frame.
+    textShadow: androidx.compose.ui.graphics.Shadow? = null
 ) {
     val now = nowNext?.now
     val next = nowNext?.next
     if (now == null && next == null) return
+    val shadowStyle = androidx.compose.ui.text.TextStyle(shadow = textShadow)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         now?.let { program ->
             Text(
                 stringResource(R.string.epg_now_format, program.title),
-                color = titleColor, fontSize = titleFontSize, fontWeight = FontWeight.SemiBold, maxLines = 1
+                color = titleColor, fontSize = titleFontSize, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                style = shadowStyle
             )
             val nowEpoch = System.currentTimeMillis() / 1000
             val total = (program.endEpochSeconds - program.startEpochSeconds).coerceAtLeast(1)
@@ -3491,7 +3735,8 @@ private fun NowNextLine(
         next?.let { program ->
             Text(
                 stringResource(R.string.epg_next_format, program.title),
-                color = nextColor, fontSize = nextFontSize, maxLines = 1
+                color = nextColor, fontSize = nextFontSize, maxLines = 1,
+                style = shadowStyle
             )
         }
     }
@@ -3965,6 +4210,43 @@ private fun rememberIconBurst(): Pair<Animatable<Float, *>, () -> Unit> {
         }
     }
     return burst to fire
+}
+
+/**
+ * A masked text field with a reveal toggle. Every password in this app is typed on a remote, one
+ * character at a time through an on-screen keyboard, which is exactly the situation where a
+ * mistyped character is both most likely and least visible - so the value can be checked rather
+ * than retyped from scratch. Starts masked, and the toggle is an ordinary focusable button so a
+ * D-pad can reach it.
+ */
+@Composable
+internal fun RevealablePasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    var revealed by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = if (revealed) {
+            androidx.compose.ui.text.input.VisualTransformation.None
+        } else {
+            PasswordVisualTransformation()
+        },
+        trailingIcon = {
+            AnimatedIconButton(onClick = { revealed = !revealed }) {
+                Icon(
+                    if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    stringResource(if (revealed) R.string.hide_password else R.string.show_password)
+                )
+            }
+        },
+        modifier = modifier
+    )
 }
 
 /** Drop-in replacement for Material3's [IconButton]: squeezes the icon down on press, springing

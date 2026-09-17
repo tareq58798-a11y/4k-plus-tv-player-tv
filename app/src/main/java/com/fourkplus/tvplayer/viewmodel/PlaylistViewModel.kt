@@ -61,7 +61,21 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
                 _uiState.update { it.copy(bootstrapping = false) }
                 return@launch
             }
-            val cached = repository.loadCached(activeSource)
+            // Clearing `bootstrapping` on the Live-only section drops the loading screen as soon as
+            // Live TV is usable, rather than holding it until the whole catalogue has been rebuilt
+            // from disk. Movies and Series arrive moments later in the full result below.
+            val cached = repository.loadCached(activeSource) { liveOnly ->
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                    _uiState.update {
+                        it.copy(
+                            loadedPlaylist = liveOnly,
+                            activeSource = activeSource,
+                            savedPlaylists = repository.savedSources(),
+                            bootstrapping = false
+                        )
+                    }
+                }
+            }
             if (cached != null) {
                 memoryCache[memoryKey(activeSource)] = cached
                 _uiState.update {

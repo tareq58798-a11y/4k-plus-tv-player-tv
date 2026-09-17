@@ -323,13 +323,17 @@ internal class XtreamProviderClient {
     }
 
     private fun liveItems(array: JSONArray, groups: Map<String, String>, server: String, input: PlaylistInput) = buildList {
+        // Percent-encoding the account once outside the loop rather than twice per entry: this runs
+        // over every channel the panel returns (tens of thousands on a full playlist), and the
+        // result is identical every time.
+        val streamPrefix = "$server/live/${encode(input.username)}/${encode(input.password)}/"
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val id = item.optString("stream_id")
             if (id.isBlank()) continue
             add(PlaylistItem(
                 item.optString("name", "Unnamed channel"),
-                "$server/live/${encode(input.username)}/${encode(input.password)}/$id.ts",
+                "$streamPrefix$id.ts",
                 groups[item.optString("category_id")] ?: "Other",
                 item.optText("stream_icon"),
                 // stream_id is the provider's unique channel identity. EPG IDs
@@ -342,6 +346,8 @@ internal class XtreamProviderClient {
     }
 
     private fun movieItems(array: JSONArray, groups: Map<String, String>, server: String, input: PlaylistInput) = buildList {
+        // See liveItems: hoisted out of a loop that runs once per title in the whole VOD catalogue.
+        val streamPrefix = "$server/movie/${encode(input.username)}/${encode(input.password)}/"
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val id = item.optString("stream_id")
@@ -349,7 +355,7 @@ internal class XtreamProviderClient {
             val extension = item.optText("container_extension") ?: "mp4"
             add(PlaylistItem(
                 item.optString("name", "Unnamed movie"),
-                "$server/movie/${encode(input.username)}/${encode(input.password)}/$id.$extension",
+                "$streamPrefix$id.$extension",
                 groups[item.optString("category_id")] ?: "Other",
                 // Field name for the poster varies a lot between Xtream panel forks - some put it
                 // on stream_icon (like live channels), others only on cover/cover_big/movie_image

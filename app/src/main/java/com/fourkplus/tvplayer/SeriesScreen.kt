@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -85,6 +86,11 @@ internal fun SeriesScreen(
     val categories = remember(seriesItems, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.SERIES, seriesItems.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("series_library", Context.MODE_PRIVATE) }
     var view by remember { mutableStateOf(SeriesView.BROWSE) }
+    // Which list the open details page was reached from, and the poster to scroll back to and
+    // focus once it closes - the grid is torn down while details are showing, so without these it
+    // rebuilds scrolled to the top with focus on the first item.
+    var detailsReturnView by remember { mutableStateOf(SeriesView.BROWSE) }
+    var restoreFocusKey by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf("Continue watching") }
     var selectedSeries by remember { mutableStateOf<PlaylistItem?>(null) }
     var selectedEpisode by remember { mutableStateOf<SeriesEpisode?>(null) }
@@ -167,6 +173,7 @@ internal fun SeriesScreen(
     )
 
     fun openDetails(series: PlaylistItem) {
+        detailsReturnView = if (view == SeriesView.CATEGORY) SeriesView.CATEGORY else SeriesView.BROWSE
         selectedSeries = series
         selectedEpisode = null
         details = null
@@ -211,7 +218,10 @@ internal fun SeriesScreen(
         when (view) {
             SeriesView.BROWSE -> onBack()
             SeriesView.CATEGORY -> { search = ""; view = SeriesView.BROWSE }
-            SeriesView.DETAILS -> view = SeriesView.BROWSE
+            SeriesView.DETAILS -> {
+                restoreFocusKey = selectedSeries?.let(::channelKey)
+                view = detailsReturnView
+            }
             SeriesView.PLAYER -> view = SeriesView.DETAILS
         }
     }
@@ -338,6 +348,8 @@ internal fun SeriesScreen(
                 recent = recent,
                 favorites = favorites,
                 continueWatching = continueWatching,
+                restoreFocusKey = restoreFocusKey,
+                onRestoreHandled = { restoreFocusKey = null },
                 onCategory = { category ->
                     fun enter() { selectedCategory = category; search = ""; view = SeriesView.CATEGORY }
                     if (category in lockedCategories) requirePin(::enter) else enter()
@@ -397,7 +409,10 @@ internal fun SeriesScreen(
                     SeriesSearch(search, { search = it })
                     if (search.isNotBlank()) {
                         val results = seriesItems.filter { it.name.contains(search.trim(), true) }
-                        SeriesGrid(results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape)
+                        SeriesGrid(
+                            results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape,
+                            restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
+                        )
                     } else {
                         val sections = buildList {
                             if (continueWatching.isNotEmpty()) add("Continue watching" to continueWatching)
@@ -447,7 +462,10 @@ internal fun SeriesScreen(
                         else -> seriesItems.filter { it.group == selectedCategory }
                     }
                     val results = if (search.isBlank()) base else seriesItems.filter { it.name.contains(search.trim(), true) }
-                    SeriesGrid(results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape)
+                    SeriesGrid(
+                        results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape,
+                        restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
+                    )
                 }
 
                 SeriesView.DETAILS -> selectedSeries?.let { series ->
@@ -493,6 +511,8 @@ private fun LandscapeSeriesBrowser(
     recent: List<PlaylistItem>,
     favorites: List<PlaylistItem>,
     continueWatching: List<PlaylistItem>,
+    restoreFocusKey: String?,
+    onRestoreHandled: () -> Unit,
     onCategory: (String) -> Unit,
     onSearch: (String) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
@@ -521,7 +541,11 @@ private fun LandscapeSeriesBrowser(
         if (index >= 0) categoryListState.animateScrollToItem(index)
     }
     val continueWatchingFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(isTv) { if (isTv) runCatching { continueWatchingFocusRequester.requestFocus() } }
+    // Skipped when returning from a details page - SeriesGrid is restoring focus to the poster the
+    // user left from, and both requests racing would land focus back on the category list instead.
+    LaunchedEffect(isTv) {
+        if (isTv && restoreFocusKey == null) requestFocusWithRetry(continueWatchingFocusRequester)
+    }
     // Pressing OK on a category should move the remote's focus straight into that category's
     // grid rather than leaving it on the category button — 0 means "not from a press yet".
     var categorySelectionTick by remember { mutableIntStateOf(0) }
@@ -579,7 +603,10 @@ private fun LandscapeSeriesBrowser(
         Column(Modifier.weight(1f).fillMaxHeight()) {
             Text(localizedSectionTitle(selectedCategory).ifBlank { stringResource(R.string.nav_series) }, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
             Spacer(Modifier.height(6.dp))
-            SeriesGrid(displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true, firstItemFocusRequester)
+            SeriesGrid(
+                displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true,
+                firstItemFocusRequester, restoreFocusKey, onRestoreHandled
+            )
         }
     }
 }
@@ -709,8 +736,27 @@ private fun SeriesGrid(
     onSeries: (PlaylistItem) -> Unit,
     modifier: Modifier,
     landscape: Boolean,
-    firstItemFocusRequester: FocusRequester? = null
+    firstItemFocusRequester: FocusRequester? = null,
+    // Set once, on the way back from a series' details page: the poster to scroll to and focus.
+    restoreFocusKey: String? = null,
+    onRestoreHandled: () -> Unit = {}
 ) {
+    val gridState = rememberLazyGridState()
+    val restoreFocusRequester = remember { FocusRequester() }
+    val restoreIndex = remember(seriesItems, restoreFocusKey) {
+        if (restoreFocusKey == null) -1 else seriesItems.indexOfFirst { channelKey(it) == restoreFocusKey }
+    }
+    val context = LocalContext.current
+    val isTvDevice = remember { context.isTvDevice() }
+    LaunchedEffect(restoreFocusKey, restoreIndex) {
+        if (restoreFocusKey == null) return@LaunchedEffect
+        restoreListPosition(
+            index = restoreIndex,
+            scrollToItem = { gridState.scrollToItem(it) },
+            focusRequester = restoreFocusRequester.takeIf { isTvDevice }
+        )
+        onRestoreHandled()
+    }
     if (seriesItems.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text(stringResource(R.string.no_series_match), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -719,17 +765,24 @@ private fun SeriesGrid(
         LazyVerticalGrid(
             columns = GridCells.Fixed(if (landscape) 7 else 3),
             modifier = modifier,
+            state = gridState,
             horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp),
             verticalArrangement = Arrangement.spacedBy(if (landscape) 9.dp else 16.dp),
             contentPadding = PaddingValues(bottom = 20.dp)
         ) {
-            gridItemsIndexed(seriesItems) { index, series ->
+            // Keyed for the same reason as the Live TV channel list - see the comment there.
+            gridItemsIndexed(
+                seriesItems,
+                key = { index, series -> "${channelKey(series)}#$index" }
+            ) { index, series ->
                 SeriesPoster(
                     series,
                     channelKey(series) in favoriteIds,
                     { onFavorite(series) },
                     { onSeries(series) },
-                    modifier = if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier
+                    modifier = Modifier
+                        .then(if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                        .then(if (index == restoreIndex) Modifier.focusRequester(restoreFocusRequester) else Modifier)
                 )
             }
         }
@@ -797,7 +850,9 @@ private fun SeriesDetails(
     val seasons = details?.seasons.orEmpty()
     val displayTitle = details?.originalTitle ?: series.name
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val trailerScope = rememberCoroutineScope()
+    // Null unless the provider actually sent a trailer for this series, which is what gates the
+    // button below - see trailerVideoId.
+    val trailerId = remember(details?.trailerUrl) { trailerVideoId(details?.trailerUrl) }
     // Series details has no single Play/Resume button the way movies do - playback always starts
     // from a specific episode - so the nearest equivalent is landing D-pad focus on the first
     // episode row once the page (and its episode list) has actually loaded.
@@ -856,10 +911,12 @@ private fun SeriesDetails(
                     if (!poster.isNullOrBlank()) AsyncImage(poster, series.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, details?.year) } }, modifier = Modifier.weight(1f).height(44.dp)) {
-                        Icon(Icons.Default.SmartDisplay, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
+                    trailerId?.let { id ->
+                        OutlinedButton(onClick = { openTrailer(context, id) }, modifier = Modifier.weight(1f).height(44.dp)) {
+                            Icon(Icons.Default.SmartDisplay, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
+                        }
                     }
                     AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(44.dp)) {
                         Icon(if (favorite) Icons.Default.Star else Icons.Default.StarBorder, if (favorite) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add), tint = if (favorite) Orange else Cyan)
@@ -983,13 +1040,15 @@ private fun SeriesDetails(
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(
-                onClick = { trailerScope.launch { openTrailer(context, details?.trailerUrl, displayTitle, details?.year) } },
-                modifier = Modifier.weight(1f).height(52.dp)
-            ) {
-                Icon(Icons.Default.SmartDisplay, null)
-                Spacer(Modifier.width(7.dp))
-                Text(stringResource(R.string.trailer_label))
+            trailerId?.let { id ->
+                OutlinedButton(
+                    onClick = { openTrailer(context, id) },
+                    modifier = Modifier.weight(1f).height(52.dp)
+                ) {
+                    Icon(Icons.Default.SmartDisplay, null)
+                    Spacer(Modifier.width(7.dp))
+                    Text(stringResource(R.string.trailer_label))
+                }
             }
             AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(52.dp)) {
                 Icon(if (favorite) Icons.Default.Star else Icons.Default.StarBorder, if (favorite) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add), tint = if (favorite) Orange else Cyan)
