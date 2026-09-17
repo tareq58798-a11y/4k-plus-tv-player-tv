@@ -313,4 +313,5 @@
     <string name="search_filter_all">الكل</string>
     <string name="search_results_title">نتائج البحث</string>
     <string name="search_results_count">%1$d نتيجة</string>
+    <string name="landing_recently_added">أضيف حديثًا</string>
 </resources>

@@ -326,4 +326,5 @@
     <string name="search_filter_all">All</string>
     <string name="search_results_title">Search Results</string>
     <string name="search_results_count">%1$d results</string>
+    <string name="landing_recently_added">Recently Added</string>
 </resources>

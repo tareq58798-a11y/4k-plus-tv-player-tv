@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -135,6 +137,12 @@ fun ArtCard(
     overlayBadge: (@Composable BoxScope.() -> Unit)? = null,
     /** Channels and other non-artwork tiles keep a visible outline; posters never do. */
     useFocusBorder: Boolean = false,
+    /**
+     * A still lifted from a live channel a moment ago. When present it is shown instead of the
+     * channel's logo: what is actually on air right now tells a viewer far more than a station
+     * mark does.
+     */
+    liveFrame: android.graphics.Bitmap? = null,
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -177,7 +185,14 @@ fun ArtCard(
                     } else Modifier
                 )
         ) {
-            if (!imageUrl.isNullOrBlank()) {
+            if (liveFrame != null) {
+                Image(
+                    liveFrame.asImageBitmap(),
+                    contentDescription = title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (!imageUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = imageUrl,
                     contentDescription = title,

@@ -366,7 +366,8 @@ internal class XtreamProviderClient {
                 description = item.optText("plot"),
                 year = item.optText("year") ?: item.optText("releaseDate")?.take(4),
                 rating = item.optText("rating"),
-                duration = item.optText("duration")
+                duration = item.optText("duration"),
+                addedEpochSeconds = epochSeconds(item, "added")
             ))
         }
     }
@@ -379,9 +380,24 @@ internal class XtreamProviderClient {
             add(PlaylistItem(
                 item.optString("name", "Unnamed series"), "series://$id",
                 groups[item.optString("category_id")] ?: "Other",
-                firstText(item, "cover", "cover_big", "movie_image", "stream_icon"), id, MediaKind.SERIES
+                firstText(item, "cover", "cover_big", "movie_image", "stream_icon"), id, MediaKind.SERIES,
+                // Series have no "added" of their own on this endpoint; panels report when the run
+                // last gained an episode instead, which is the same thing a viewer means by "new".
+                addedEpochSeconds = epochSeconds(item, "last_modified", "added")
             ))
         }
+    }
+
+    /**
+     * Reads a catalogue timestamp, in whichever of the two shapes panels use: epoch seconds as a
+     * string, or occasionally milliseconds. Anything outside a plausible range is discarded rather
+     * than trusted, so one panel's malformed field cannot park a title permanently at the top of
+     * "recently added".
+     */
+    private fun epochSeconds(item: JSONObject, vararg keys: String): Long? {
+        val raw = firstText(item, *keys)?.toLongOrNull() ?: return null
+        val seconds = if (raw > 100_000_000_000L) raw / 1000L else raw
+        return seconds.takeIf { it in 946_684_800L..4_102_444_800L }
     }
 
     private fun apiUrl(server: String, input: PlaylistInput, action: String?): String = buildString {

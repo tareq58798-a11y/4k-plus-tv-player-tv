@@ -302,4 +302,5 @@
     <string name="search_filter_all">Tümü</string>
     <string name="search_results_title">Arama sonuçları</string>
     <string name="search_results_count">%1$d sonuç</string>
+    <string name="landing_recently_added">Yeni eklenenler</string>
 </resources>

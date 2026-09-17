@@ -62,6 +62,28 @@ private fun rememberEntries(
     }
 }
 
+/**
+ * The newest titles on the provider's server, films and series together.
+ *
+ * Panels report when each title was added, and that is what this sorts on. Where a source reports
+ * nothing at all - plain M3U playlists, and the occasional panel that omits the field - it falls
+ * back to the end of the catalogue, since providers almost always append. That is a guess, so it
+ * is only ever used when there is no real answer to be had.
+ */
+@Composable
+private fun rememberRecentlyAdded(playlist: LoadedPlaylist?, limit: Int = 20): List<LandingEntry> =
+    remember(playlist) {
+        val onDemand = playlist?.items.orEmpty().filter { it.kind != MediaKind.LIVE }
+        if (onDemand.isEmpty()) return@remember emptyList()
+        val dated = onDemand.filter { it.addedEpochSeconds != null }
+        val newest = if (dated.isNotEmpty()) {
+            dated.sortedByDescending { it.addedEpochSeconds }.take(limit)
+        } else {
+            onDemand.takeLast(limit).asReversed()
+        }
+        newest.map { LandingEntry(it) }
+    }
+
 @Composable
 internal fun HomeLandingScreen(
     playlist: LoadedPlaylist?,
@@ -71,6 +93,7 @@ internal fun HomeLandingScreen(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     arrivedFromNavBar: Boolean,
+    loadBio: suspend (PlaylistItem) -> ItemBio?,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -109,9 +132,14 @@ internal fun HomeLandingScreen(
     }
 
     val favorites = rememberMixedFavorites(movieStore, seriesStore, liveStore)
+    val recentlyAdded = rememberRecentlyAdded(playlist)
     LandingScaffold(
         destination = NavDestination.HOME,
+        // What is new on the server leads, because that is the question Home is opened to answer.
+        // What you were part-way through stays underneath it rather than being dropped: losing the
+        // way back into a half-watched film would be a worse trade than any layout is worth.
         rows = listOf(
+            LandingRow("home_recent_added", stringResource(R.string.landing_recently_added), recentlyAdded),
             LandingRow("home_continue", stringResource(R.string.continue_watching_title), entries)
         ),
         tile = null,
@@ -124,6 +152,7 @@ internal fun HomeLandingScreen(
         onLanguage = onLanguage,
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
+        loadBio = loadBio,
         emptyMessage = stringResource(R.string.home_no_history),
         footer = { LandingDeviceStrip(playlist) }
     )
@@ -139,6 +168,7 @@ internal fun MoviesLandingScreen(
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
     arrivedFromNavBar: Boolean,
+    loadBio: suspend (PlaylistItem) -> ItemBio?,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -159,7 +189,7 @@ internal fun MoviesLandingScreen(
         destination = NavDestination.MOVIES,
         rows = listOf(
             LandingRow("movies_recent", stringResource(R.string.landing_recently_watched_movies), recent),
-            LandingRow("movies_favorites", stringResource(R.string.section_favorites), favoriteEntries)
+            LandingRow("movies_favorites", stringResource(R.string.section_favorites), favoriteEntries, placeholdersWhenEmpty = 5)
         ),
         tile = LandingTile(
             title = stringResource(R.string.landing_all_movie_categories),
@@ -175,6 +205,7 @@ internal fun MoviesLandingScreen(
         onLanguage = onLanguage,
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
+        loadBio = loadBio,
         emptyMessage = stringResource(R.string.landing_nothing_yet)
     )
 }
@@ -189,6 +220,7 @@ internal fun SeriesLandingScreen(
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
     arrivedFromNavBar: Boolean,
+    loadBio: suspend (PlaylistItem) -> ItemBio?,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -215,7 +247,7 @@ internal fun SeriesLandingScreen(
         destination = NavDestination.SERIES,
         rows = listOf(
             LandingRow("series_recent", stringResource(R.string.landing_recently_watched_series), recent),
-            LandingRow("series_favorites", stringResource(R.string.section_favorites), favoriteEntries)
+            LandingRow("series_favorites", stringResource(R.string.section_favorites), favoriteEntries, placeholdersWhenEmpty = 5)
         ),
         tile = LandingTile(
             title = stringResource(R.string.landing_all_series_categories),
@@ -231,6 +263,7 @@ internal fun SeriesLandingScreen(
         onLanguage = onLanguage,
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
+        loadBio = loadBio,
         emptyMessage = stringResource(R.string.landing_nothing_yet)
     )
 }
@@ -245,6 +278,7 @@ internal fun LiveLandingScreen(
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
     arrivedFromNavBar: Boolean,
+    loadBio: suspend (PlaylistItem) -> ItemBio?,
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -264,7 +298,7 @@ internal fun LiveLandingScreen(
         destination = NavDestination.LIVE,
         rows = listOf(
             LandingRow("live_recent", stringResource(R.string.landing_recently_watched_channels), recent),
-            LandingRow("live_favorites", stringResource(R.string.section_favorites), favoriteEntries)
+            LandingRow("live_favorites", stringResource(R.string.section_favorites), favoriteEntries, placeholdersWhenEmpty = 5)
         ),
         tile = LandingTile(
             title = stringResource(R.string.landing_all_channel_categories),
@@ -280,6 +314,7 @@ internal fun LiveLandingScreen(
         onLanguage = onLanguage,
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
+        loadBio = loadBio,
         emptyMessage = stringResource(R.string.home_no_history)
     )
 }

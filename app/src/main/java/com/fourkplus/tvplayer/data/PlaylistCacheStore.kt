@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer.data
+﻿package com.fourkplus.tvplayer.data
 
 import android.content.Context
 import java.io.BufferedOutputStream
@@ -102,6 +102,7 @@ internal class PlaylistCacheStore(context: Context) {
             val year = text.readNullable(this)
             val rating = text.readNullable(this)
             val duration = text.readNullable(this)
+            val addedEpochSeconds = readLong().takeIf { it > 0L }
             groups += group
             items += PlaylistItem(
                 name = itemName,
@@ -113,7 +114,8 @@ internal class PlaylistCacheStore(context: Context) {
                 description = description,
                 year = year,
                 rating = rating,
-                duration = duration
+                duration = duration,
+                addedEpochSeconds = addedEpochSeconds
             )
         }
     }
@@ -152,6 +154,8 @@ internal class PlaylistCacheStore(context: Context) {
                         output.writeNullableString(item.year)
                         output.writeNullableString(item.rating)
                         output.writeNullableString(item.duration)
+                        // 0 stands in for absent: a catalogue timestamp is never legitimately 0.
+                        output.writeLong(item.addedEpochSeconds ?: 0L)
                     }
                 }
             }
@@ -224,7 +228,9 @@ internal class PlaylistCacheStore(context: Context) {
     private companion object {
         /** Section order on disk. Live is deliberately first so it can be read and shown alone. */
         val SECTION_KINDS = listOf(MediaKind.LIVE, MediaKind.MOVIE, MediaKind.SERIES)
-        const val CACHE_VERSION = 5
+        // 6 adds each title's catalogue timestamp, which "recently added" sorts on. An older file is
+    // rejected by load()'s version check and simply re-fetched.
+    const val CACHE_VERSION = 6
         // Larger than the default 8KB: fewer read()/write() syscalls against the underlying
         // file for a cache that's routinely several MB (tens of thousands of items), which
         // matters more on the slower flash storage typical of budget TV boxes than it would

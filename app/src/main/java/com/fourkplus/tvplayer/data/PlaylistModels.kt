@@ -27,7 +27,13 @@ data class PlaylistItem(
     val description: String? = null,
     val year: String? = null,
     val rating: String? = null,
-    val duration: String? = null
+    val duration: String? = null,
+    /**
+     * When the provider added this title to their catalogue, in epoch seconds. Null for sources
+     * that do not report it (plain M3U playlists, and panels that omit the field) - those titles
+     * are simply absent from "recently added" rather than being guessed at a position.
+     */
+    val addedEpochSeconds: Long? = null
 ) {
     override fun toString() = "PlaylistItem(credentials=REDACTED)"
 }

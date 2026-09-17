@@ -375,6 +375,21 @@ private fun App() {
         screen = destination.toScreen()
     }
 
+    // The plot, year, rating and genre for whichever title the viewer has settled on. Catalogue
+    // listings carry almost none of this - series never carry any of it - so the landing pages ask
+    // for it the same way the details pages do, once per title and only after focus has settled.
+    val loadBio: suspend (PlaylistItem) -> ItemBio? = { item ->
+        when (item.kind) {
+            MediaKind.MOVIE -> playlistViewModel.movieDetails(item).getOrNull()?.let {
+                ItemBio(it.description, it.year, it.rating, it.duration, it.genre)
+            }
+            MediaKind.SERIES -> playlistViewModel.seriesDetails(item).getOrNull()?.let {
+                ItemBio(it.description, it.year, it.rating, null, it.genre)
+            }
+            MediaKind.LIVE -> null
+        }
+    }
+
     /** Hands an item to its own section's browser, which owns details, resume and playback. */
     fun openForPlayback(item: PlaylistItem, episodeId: String?) {
         travellingNavBar = false
@@ -501,6 +516,7 @@ private fun App() {
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
                     arrivedFromNavBar = travellingNavBar,
+                    loadBio = loadBio,
                     onPlay = ::openForPlayback
                 )
                 Screen.MOVIES -> MoviesLandingScreen(
@@ -512,6 +528,7 @@ private fun App() {
                     onSettings = { openOverlay(Screen.SETTINGS) },
                     onOpenAll = { travellingNavBar = false; screen = Screen.MOVIES_ALL },
                     arrivedFromNavBar = travellingNavBar,
+                    loadBio = loadBio,
                     onPlay = ::openForPlayback
                 )
                 Screen.SERIES -> SeriesLandingScreen(
@@ -523,6 +540,7 @@ private fun App() {
                     onSettings = { openOverlay(Screen.SETTINGS) },
                     onOpenAll = { travellingNavBar = false; screen = Screen.SERIES_ALL },
                     arrivedFromNavBar = travellingNavBar,
+                    loadBio = loadBio,
                     onPlay = ::openForPlayback
                 )
                 Screen.LIVE_TV -> LiveLandingScreen(
@@ -534,6 +552,7 @@ private fun App() {
                     onSettings = { openOverlay(Screen.SETTINGS) },
                     onOpenAll = { travellingNavBar = false; screen = Screen.LIVE_ALL },
                     arrivedFromNavBar = travellingNavBar,
+                    loadBio = loadBio,
                     onPlay = ::openForPlayback
                 )
                 Screen.LANGUAGE -> LanguageScreen(

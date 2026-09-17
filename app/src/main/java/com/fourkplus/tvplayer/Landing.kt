@@ -1,6 +1,8 @@
 ﻿package com.fourkplus.tvplayer
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fourkplus.tvplayer.data.LiveSnapshotCache
 import com.fourkplus.tvplayer.data.LoadedPlaylist
 import com.fourkplus.tvplayer.data.MediaKind
 import com.fourkplus.tvplayer.data.PlaylistItem
@@ -66,6 +70,7 @@ import com.fourkplus.tvplayer.ui.design.PreloadBackdrops
 import com.fourkplus.tvplayer.ui.design.SectionHeading
 import com.fourkplus.tvplayer.ui.design.Tone
 import com.fourkplus.tvplayer.ui.design.tvFocusable
+import kotlinx.coroutines.delay
 
 /**
  * The shared skeleton behind Home, Live TV, Movies and Series.
@@ -91,7 +96,26 @@ internal data class LandingEntry(
 internal data class LandingRow(
     val id: String,
     val title: String,
-    val entries: List<LandingEntry>
+    val entries: List<LandingEntry>,
+    /**
+     * Rows that are worth showing even with nothing in them yet - Favorites above all. An empty
+     * row that vanishes teaches the viewer it does not exist; an empty row with its slots drawn
+     * teaches them it is waiting to be filled.
+     */
+    val placeholdersWhenEmpty: Int = 0
+)
+
+/**
+ * Details fetched for whichever item is focused, for the lines the catalogue listing does not
+ * carry. Series never arrive with a plot or a year at list level, and many panels omit them for
+ * films too, so without this the information block is a title and a category and nothing else.
+ */
+internal data class ItemBio(
+    val description: String? = null,
+    val year: String? = null,
+    val rating: String? = null,
+    val duration: String? = null,
+    val genre: String? = null
 )
 
 /** The tile that opens a section's full category list, shown at the end of its first row. */
@@ -117,9 +141,22 @@ internal fun LandingScaffold(
     emptyMessage: String,
     /** True when this page was reached by moving along the top bar rather than by opening it. */
     arrivedFromNavBar: Boolean = false,
+    /** Fetches the plot and other details for the focused item. Null disables the lookup. */
+    loadBio: (suspend (PlaylistItem) -> ItemBio?)? = null,
     footer: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf<LandingEntry?>(null) }
+    // Keyed by item, so moving back onto something already looked up costs nothing.
+    val bios = remember { mutableStateMapOf<String, ItemBio>() }
+    // Keyed on the focused entry, so moving on cancels the wait before it ever becomes a request:
+    // running a row costs one lookup for the title you stop at, not one for every title you pass.
+    LaunchedEffect(focused, loadBio) {
+        val entry = focused ?: return@LaunchedEffect
+        val fetch = loadBio ?: return@LaunchedEffect
+        if (entry.item.kind == MediaKind.LIVE || bios.containsKey(entry.key)) return@LaunchedEffect
+        delay(400)
+        runCatching { fetch(entry.item) }.getOrNull()?.let { bios[entry.key] = it }
+    }
     val firstCard = remember { FocusRequester() }
     val labels = mapOf(
         NavDestination.HOME to stringResource(R.string.nav_home),
@@ -166,7 +203,8 @@ internal fun LandingScaffold(
         }
         rows.forEachIndexed { rowIndex, row ->
             val showTile = tile != null && rowIndex == 0
-            if (row.entries.isEmpty() && !showTile) return@forEachIndexed
+            val placeholders = if (row.entries.isEmpty()) row.placeholdersWhenEmpty else 0
+            if (row.entries.isEmpty() && !showTile && placeholders == 0) return@forEachIndexed
             SectionHeading(row.title, Modifier.padding(horizontal = Dims.SafeHorizontal))
             LazyRow(
                 Modifier.fillMaxWidth(),
@@ -184,6 +222,9 @@ internal fun LandingScaffold(
                         onFocused = { focused = entry },
                         onClick = { onSelect(entry) }
                     )
+                }
+                if (placeholders > 0) {
+                    items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
                 }
                 if (showTile && tile != null) {
                     item(key = "${row.id}_all_categories") { CategoryTile(tile) }
@@ -206,6 +247,7 @@ internal fun LandingScaffold(
                     } else {
                         FocusedItemInfo(
                             entry = current,
+                            bio = bios[current.key],
                             favorite = isFavorite(current.item),
                             onPlay = { onSelect(current) },
                             onToggleFavorite = { onToggleFavorite(current.item) }
@@ -228,6 +270,20 @@ private fun LandingCard(
     onClick: () -> Unit
 ) {
     val live = entry.item.kind == MediaKind.LIVE
+    // A channel shows what is actually on air rather than its station logo. The frame is pulled
+    // once and cached for ten minutes; captures are serialised app-wide, because most IPTV
+    // accounts cap concurrent streams and a row opening one per card would have them all refused.
+    var snapshot by remember(entry.key) { mutableStateOf(LiveSnapshotCache.get(entry.key)) }
+    var captureDone by remember(entry.key) { mutableStateOf(snapshot != null) }
+    if (live && !captureDone) {
+        LiveSnapshotEffect(entry.item.streamUrl) { bitmap ->
+            if (bitmap != null) {
+                LiveSnapshotCache.put(entry.key, bitmap)
+                snapshot = bitmap
+            }
+            captureDone = true
+        }
+    }
     ArtCard(
         imageUrl = entry.item.logoUrl,
         title = entry.item.name,
@@ -235,6 +291,7 @@ private fun LandingCard(
         modifier = modifier,
         progress = entry.progress,
         cornerBadge = entry.badge,
+        liveFrame = snapshot.takeIf { live },
         // Channel tiles keep a visible outline: their artwork is a logo on a flat plate, and a
         // 6% growth on a small mark is far less legible than it is on a full-bleed still.
         useFocusBorder = live,
@@ -247,6 +304,40 @@ private fun LandingCard(
             if (!live) backdrop.show(channelKey(entry.item), entry.item.logoUrl)
         }
     )
+}
+
+/**
+ * A drawn but empty card, exactly the size of a real one. Used to keep Favorites visible before
+ * anything has been added to it: the row then reads as a place things go, rather than as a heading
+ * with nothing underneath.
+ */
+@Composable
+private fun EmptySlot() {
+    Box(
+        Modifier
+            .width(Dims.CardWidth + Dims.CardBleed * 2)
+            .padding(Dims.CardBleed)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(Dims.CardWidth * 9 / 16)
+                .clip(RoundedCornerShape(Dims.RadiusCard))
+                .background(Color.White.copy(alpha = .04f))
+                .border(
+                    BorderStroke(1.dp, Color.White.copy(alpha = .10f)),
+                    RoundedCornerShape(Dims.RadiusCard)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.FavoriteBorder,
+                null,
+                tint = Color.White.copy(alpha = .16f),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
 }
 
 @Composable
@@ -266,22 +357,29 @@ private fun CategoryTile(tile: LandingTile) {
             radius = Dims.RadiusCard
         ) {
             Column(
-                Modifier.align(Alignment.Center).padding(horizontal = 14.dp),
+                Modifier.align(Alignment.Center).padding(horizontal = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(26.dp))
+                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(20.dp))
                 Text(
                     tile.title,
                     color = Tone.TextPrimary,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tile.caption, color = Tone.TextMuted, fontSize = 11.sp, maxLines = 2)
-                    Icon(Icons.Default.ChevronRight, null, tint = Tone.TextMuted, modifier = Modifier.size(14.dp))
+                    Text(
+                        tile.caption,
+                        color = Tone.TextMuted,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Icon(Icons.Default.ChevronRight, null, tint = Tone.TextMuted, modifier = Modifier.size(12.dp))
                 }
             }
         }
@@ -296,11 +394,20 @@ private fun CategoryTile(tile: LandingTile) {
 @Composable
 private fun FocusedItemInfo(
     entry: LandingEntry,
+    bio: ItemBio?,
     favorite: Boolean,
     onPlay: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
     val item = entry.item
+    // The catalogue listing wins where it has a value; the fetched details fill the gaps. Neither
+    // invents anything - a field both leave empty is simply left out of the line.
+    val year = item.year?.takeIf { it.isNotBlank() } ?: bio?.year?.takeIf { it.isNotBlank() }
+    val rating = validMovieRating(item.rating) ?: validMovieRating(bio?.rating)
+    val duration = readableMovieDuration(item.duration) ?: readableMovieDuration(bio?.duration)
+    val genre = bio?.genre?.takeIf { it.isNotBlank() }
+    val description = item.description?.takeIf { it.isNotBlank() }
+        ?: bio?.description?.takeIf { it.isNotBlank() }
     Column(verticalArrangement = Arrangement.spacedBy(Dims.GapS)) {
         Text(
             item.name,
@@ -319,20 +426,20 @@ private fun FocusedItemInfo(
                         MediaKind.SERIES -> stringResource(R.string.kind_series)
                     }
                 ),
-                item.year?.takeIf { it.isNotBlank() }?.let { MetaItem(it) },
-                validMovieRating(item.rating)?.let { MetaItem(it, star = true) },
-                readableMovieDuration(item.duration)?.let { MetaItem(it) },
-                item.group.takeIf { it.isNotBlank() }?.let { MetaItem(it) },
+                year?.let { MetaItem(it) },
+                rating?.let { MetaItem(it, star = true) },
+                duration?.let { MetaItem(it) },
+                (genre ?: item.group.takeIf { it.isNotBlank() })?.let { MetaItem(it) },
                 entry.badge?.let { MetaItem(it, accent = true) }
             )
         )
-        if (!item.description.isNullOrBlank()) {
+        if (description != null) {
             Text(
-                item.description.orEmpty(),
+                description,
                 color = Tone.TextSecondary,
                 fontSize = 13.sp,
                 lineHeight = 19.sp,
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(.55f)
             )

@@ -302,4 +302,5 @@
     <string name="search_filter_all">سب</string>
     <string name="search_results_title">تلاش کے نتائج</string>
     <string name="search_results_count">%1$d نتائج</string>
+    <string name="landing_recently_added">حال ہی میں شامل کیا گیا</string>
 </resources>

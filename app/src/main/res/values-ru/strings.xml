@@ -302,4 +302,5 @@
     <string name="search_filter_all">Все</string>
     <string name="search_results_title">Результаты поиска</string>
     <string name="search_results_count">Результатов: %1$d</string>
+    <string name="landing_recently_added">Недавно добавленное</string>
 </resources>
