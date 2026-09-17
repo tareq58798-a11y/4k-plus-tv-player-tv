@@ -4314,6 +4314,9 @@ internal fun RevealablePasswordField(
     modifier: Modifier = Modifier
 ) {
     var revealed by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val isTv = remember { context.isTvDevice() }
+    val revealFocusRequester = remember { FocusRequester() }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -4325,14 +4328,30 @@ internal fun RevealablePasswordField(
             PasswordVisualTransformation()
         },
         trailingIcon = {
-            AnimatedIconButton(onClick = { revealed = !revealed }) {
+            AnimatedIconButton(
+                onClick = { revealed = !revealed },
+                modifier = Modifier.focusRequester(revealFocusRequester)
+            ) {
                 Icon(
                     if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                     stringResource(if (revealed) R.string.hide_password else R.string.show_password)
                 )
             }
         },
-        modifier = modifier
+        modifier = modifier.then(
+            // The toggle sits inside the field as a trailing icon, which a D-pad cannot reach by
+            // ordinary focus search - so on TV, Right from the field steps onto it. Nothing is lost
+            // by taking Right here: while the field holds focus with the on-screen keyboard closed
+            // the D-pad is navigating between controls, not moving a cursor, and once the keyboard
+            // is open it consumes the D-pad itself.
+            if (isTv) {
+                Modifier.onPreviewKeyEvent { event ->
+                    if (event.isInitialKeyDown && event.key == Key.DirectionRight) {
+                        runCatching { revealFocusRequester.requestFocus() }.isSuccess
+                    } else false
+                }
+            } else Modifier
+        )
     )
 }
 
