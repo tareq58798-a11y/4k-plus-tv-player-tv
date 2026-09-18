@@ -2,6 +2,7 @@ package com.fourkplus.tvplayer
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
@@ -19,11 +20,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -38,6 +43,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,13 +60,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.fourkplus.tvplayer.data.DeviceIdentity
 import com.fourkplus.tvplayer.data.LoadedPlaylist
 import com.fourkplus.tvplayer.data.MediaKind
 import com.fourkplus.tvplayer.data.PlaylistItem
+import com.fourkplus.tvplayer.data.SeriesEpisode
 import com.fourkplus.tvplayer.ui.design.Tone
 import com.fourkplus.tvplayer.ui.theme.FourKPlusTheme
 import com.fourkplus.tvplayer.viewmodel.PlaylistViewModel
@@ -116,9 +129,19 @@ private fun PhoneApp() {
         when {
             state.bootstrapping -> Loading()
             playlist == null || playlist.items.isEmpty() -> NoPlaylist()
-            else -> Catalogue(playlist)
+            else -> Catalogue(playlist, viewModel)
         }
     }
+}
+
+/**
+ * What the phone is currently showing over the catalogue: nothing, a series' episode list, or the
+ * player. Kept as one value so only one of them can ever be up, and so Back always has a single
+ * obvious step to take.
+ */
+private sealed interface Overlay {
+    data class Episodes(val series: PlaylistItem) : Overlay
+    data class Playing(val title: String, val url: String) : Overlay
 }
 
 @Composable
@@ -190,9 +213,10 @@ private fun CodeRow(label: String, value: String) {
 }
 
 @Composable
-private fun Catalogue(playlist: LoadedPlaylist) {
+private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
     var tab by remember { mutableStateOf(PhoneTab.MOVIES) }
     var query by remember { mutableStateOf("") }
+    var overlay by remember { mutableStateOf<Overlay?>(null) }
 
     val items = remember(playlist, tab, query) {
         val ofKind = playlist.items.filter { it.kind == tab.kind }
@@ -254,16 +278,40 @@ private fun Catalogue(playlist: LoadedPlaylist) {
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(items, key = { "${it.kind}:${it.channelId ?: it.streamUrl}" }) { item ->
-                    PosterTile(item, portraitArt)
+                    PosterTile(item, portraitArt) {
+                        // A film or a channel is one stream and plays straight away. A series is a
+                        // list of episodes, so it opens that list first - there is nothing to play
+                        // until one of them has been picked.
+                        overlay = if (item.kind == MediaKind.SERIES) {
+                            Overlay.Episodes(item)
+                        } else {
+                            Overlay.Playing(item.name, item.streamUrl)
+                        }
+                    }
                 }
             }
         }
     }
+
+    when (val current = overlay) {
+        null -> Unit
+        is Overlay.Episodes -> EpisodeList(
+            series = current.series,
+            viewModel = viewModel,
+            onPlay = { title, url -> overlay = Overlay.Playing(title, url) },
+            onDismiss = { overlay = null }
+        )
+        is Overlay.Playing -> PhonePlayer(
+            title = current.title,
+            url = current.url,
+            onDismiss = { overlay = null }
+        )
+    }
 }
 
 @Composable
-private fun PosterTile(item: PlaylistItem, portraitArt: Boolean) {
-    Column(Modifier.clickable { /* playback arrives with the next phone step */ }) {
+private fun PosterTile(item: PlaylistItem, portraitArt: Boolean, onClick: () -> Unit) {
+    Column(Modifier.clickable(onClick = onClick)) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -291,5 +339,176 @@ private fun PosterTile(item: PlaylistItem, portraitArt: Boolean) {
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+/**
+ * A series' episodes, fetched on open. The catalogue listing carries no episodes - they arrive with
+ * the details call, the same one the television build makes.
+ */
+@Composable
+private fun EpisodeList(
+    series: PlaylistItem,
+    viewModel: PlaylistViewModel,
+    onPlay: (String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var episodes by remember(series) { mutableStateOf<List<SeriesEpisode>?>(null) }
+    var failed by remember(series) { mutableStateOf(false) }
+
+    LaunchedEffect(series) {
+        viewModel.seriesDetails(series)
+            .onSuccess { episodes = it.episodes }
+            .onFailure { failed = true }
+    }
+
+    BackHandler(onBack = onDismiss)
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0xF2050B16))
+            .systemBarsPadding()
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.ArrowBack, "Back", tint = Tone.TextPrimary)
+            }
+            Text(
+                series.name,
+                color = Tone.TextPrimary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        when {
+            failed -> Text(
+                "This series' episodes could not be loaded.",
+                color = Tone.TextSecondary,
+                modifier = Modifier.padding(24.dp)
+            )
+            episodes == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Tone.Accent)
+            }
+            episodes!!.isEmpty() -> Text(
+                "This series has no episodes listed.",
+                color = Tone.TextSecondary,
+                modifier = Modifier.padding(24.dp)
+            )
+            else -> LazyColumn(Modifier.fillMaxSize()) {
+                items(episodes!!, key = { it.id }) { episode ->
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPlay("${series.name} • S${episode.seasonNumber} E${episode.episodeNumber}", episode.streamUrl) }
+                            .padding(horizontal = 20.dp, vertical = 14.dp)
+                    ) {
+                        Text(
+                            "S${episode.seasonNumber} E${episode.episodeNumber}  ${episode.title}",
+                            color = Tone.TextPrimary,
+                            fontSize = 15.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        episode.duration?.takeIf(String::isNotBlank)?.let {
+                            Text(it, color = Tone.TextMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Full-screen playback.
+ *
+ * The player itself comes from the shared engine - same HTTP clients, buffering and decoder
+ * fallback as the television build - so a stream that plays on one plays on the other. Only the
+ * controls differ: media3's own touch controls, rather than the focus-driven overlay a remote needs.
+ */
+@Composable
+private fun PhonePlayer(title: String, url: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val player = remember(url) {
+        buildFourKPlusExoPlayer(context, skipSeconds = 10, muted = false).apply {
+            setMediaItem(MediaItem.fromUri(url))
+            prepare()
+            playWhenReady = true
+        }
+    }
+    var failure by remember(url) { mutableStateOf<String?>(null) }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                failure = "Playback failed: ${error.errorCodeName} (code ${error.errorCode})."
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+
+    // Playback is the one thing on a phone worth keeping the screen awake for.
+    val view = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(player, view) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { view.keepScreenOn = isPlaying }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            view.keepScreenOn = false
+        }
+    }
+
+    BackHandler(onBack = onDismiss)
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(
+            factory = {
+                PlayerView(it).apply {
+                    this.player = player
+                    useController = true
+                    setShowPreviousButton(false)
+                    setShowNextButton(false)
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        Row(
+            Modifier.fillMaxWidth().systemBarsPadding().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+            }
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        failure?.let {
+            Text(
+                it,
+                color = Color.White,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color(0xCC000000), RoundedCornerShape(10.dp))
+                    .padding(16.dp)
+            )
+        }
     }
 }
