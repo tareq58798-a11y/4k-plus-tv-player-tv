@@ -458,7 +458,10 @@ private fun App() {
             // content is live and focusable from the first frame, so it never delays the remote.
             ScreenEnter(screen) {
             when (screen) {
-                Screen.LOADING -> PremiumBackground {
+                // No backdrop of its own: the app-wide one is already behind this, so the wait for
+                // a playlist happens on the same picture the welcome screen shows rather than on a
+                // separate plate drawn over it.
+                Screen.LOADING -> Box(Modifier.fillMaxSize()) {
                     Column(
                         Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally,

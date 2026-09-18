@@ -276,7 +276,12 @@ internal fun LandingScaffold(
     // Only claim focus for the content when the viewer actually opened this page. If they are
     // still moving along the top bar, pulling focus down would end their journey along it after
     // one step - the bar keeps focus and the page just changes underneath.
-    LaunchedEffect(hasContent, arrivedFromNavBar, returningFromCategories) {
+    // Keyed on firstCard as well as on having content. The catalogue arrives in stages - Live
+    // first, then films and series - so the top row is rebuilt as it fills and its cards are
+    // handed new focus handles. Without that key the claim was made once against a handle whose
+    // card no longer existed, and the page ended up with nothing focused at all: on a cold start,
+    // and again whenever the playlist reloaded.
+    LaunchedEffect(hasContent, arrivedFromNavBar, returningFromCategories, firstCard) {
         when {
             // Coming back out of the full browser puts focus on the door you came through, rather
             // than on the start of the row - you leave a place standing where you were standing.
