@@ -591,6 +591,12 @@ internal fun MoviePlayer(
         when {
             confirmExit -> cancelExit()
             relatedStripExpanded -> relatedStripExpanded = false
+            // Back closes the controls before it closes the film, wherever focus happens to be
+            // sitting inside them. PlayerView.dispatchKeyEvent below already covers media3's own
+            // native buttons, but the options row along the top and the settings button in the
+            // corner are Compose nodes - their Back presses never reach that view at all, so
+            // without this branch pressing Back on either one asked to leave the film instead.
+            controllerVisible -> runCatching { playerViewRef?.hideController() }
             else -> requestExit()
         }
     }
@@ -803,7 +809,8 @@ internal fun MoviePlayer(
                 // should reset to the real default (set in Settings) for the next thing watched,
                 // not silently carry a stretch/zoom choice over into a different movie or into
                 // Live TV/Series.
-                onVideoModeChange = { videoMode = it }
+                onVideoModeChange = { videoMode = it },
+                onBackPress = { runCatching { playerViewRef?.hideController() } }
             )
             error?.let {
                 Surface(Modifier.align(Alignment.Center).padding(20.dp), RoundedCornerShape(12.dp), color = Color.Black.copy(alpha = .84f)) {
@@ -1169,7 +1176,10 @@ private fun PlaybackOptionsOverlay(
     // Fired on every key press in this row. These are Compose nodes, so their presses never reach
     // the native PlayerView and cannot restart its auto-hide timer by themselves - the host uses
     // this to keep the controls up while the viewer is still working along the row.
-    onUserInteraction: (() -> Unit)? = null
+    onUserInteraction: (() -> Unit)? = null,
+    // Back, pressed anywhere in this row, puts the controls away rather than leaving what is
+    // playing. See the preview key handler below for why the row answers this itself.
+    onBackPress: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var subtitleMenu by remember { mutableStateOf(false) }
@@ -1196,12 +1206,24 @@ private fun PlaybackOptionsOverlay(
                 } else Modifier
             )
             .then(
-                if (onExitDown != null || onUserInteraction != null) {
+                if (onExitDown != null || onUserInteraction != null || onBackPress != null) {
                     Modifier.onPreviewKeyEvent { event ->
                         if (event.isInitialKeyDown) onUserInteraction?.invoke()
-                        if (onExitDown != null && event.isInitialKeyDown && event.key == Key.DirectionDown) {
-                            onExitDown(); true
-                        } else false
+                        when {
+                            onExitDown != null && event.isInitialKeyDown && event.key == Key.DirectionDown -> {
+                                onExitDown(); true
+                            }
+                            // Back closes the controls from anywhere in this row. It is handled
+                            // here rather than left to a BackHandler because these buttons are
+                            // focused Compose nodes: with one of them focused the first Back press
+                            // is spent inside the focus system and never reaches a back dispatcher,
+                            // so the viewer had to press Back twice to put the row away. A preview
+                            // handler on the row itself sees the press before its own buttons do.
+                            onBackPress != null && event.isInitialKeyDown && event.key == Key.Back -> {
+                                onBackPress(); true
+                            }
+                            else -> false
+                        }
                     }
                 } else Modifier
             ),
@@ -1746,12 +1768,15 @@ internal fun LiveChannelPreview(
                     factory = {
                         PlayerView(it).apply {
                             useController = false
-                            // Switching channels re-prepares the same player, which blanks the
-                            // surface to the shutter colour until the new stream renders its first
-                            // frame. Holding the last frame through that gap turns a black flash
-                            // between every channel into a brief freeze.
-                            setKeepContentOnPlayerReset(true)
-                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            // Switching channels re-prepares the same player, which takes as long as
+                            // opening the new stream takes. This used to hold the previous
+                            // channel's last frame across that gap, which read as the picture
+                            // having frozen on the channel you had just left. Blanking to black
+                            // instead says plainly that a switch is in progress - the channel name
+                            // and logo are drawn over it (see channelSwitchFeedback) so the black
+                            // is never bare.
+                            setKeepContentOnPlayerReset(false)
+                            setShutterBackgroundColor(android.graphics.Color.BLACK)
                             resizeMode = videoResizeMode
                             applySubtitleBackground(this, subtitleBackground)
                             this.player = player
@@ -1930,7 +1955,8 @@ internal fun LiveChannelPreview(
                     // (set in Settings) again.
                     onVideoModeChange = { videoMode = it },
                     autoFocusFirstOnDpad = hostedFullscreen,
-                    onCollapseOnDpad = { controllerVisible = false }
+                    onCollapseOnDpad = { controllerVisible = false },
+                    onBackPress = { controllerVisible = false }
                 )
                 if (playbackError != null) {
                     Surface(

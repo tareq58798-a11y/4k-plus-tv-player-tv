@@ -3091,10 +3091,20 @@ private fun LiveTvScreen(
                     PictureInPictureCoordinator.aspectRatio = 16f / 9f
                     onDispose { if (immersiveFullscreen) PictureInPictureCoordinator.eligible = false }
                 }
-                // Live TV's TV fullscreen has no on-screen controls (see PlaybackOptionsOverlay in
-                // LiveChannelPreview), so Back always exits it directly — no "hide controls first"
-                // stage needed the way movies/series playback has.
-                if (immersiveFullscreen) BackHandler { exitFullscreen() }
+                // Shared with LiveChannelPreview so the Back handler below and the player agree on
+                // whether the options bar is up.
+                val fullscreenControlsVisible = remember { mutableStateOf(false) }
+                // Right opens an options bar in TV fullscreen, so Back has two jobs here and they
+                // have to be decided in one handler: two BackHandlers on the same Activity-level
+                // dispatcher do not reliably prioritise the inner one, which is why
+                // LiveChannelPreview hoists this state out rather than resolving it itself. The
+                // bar closes first; only once it is gone does Back leave fullscreen.
+                if (immersiveFullscreen) {
+                    BackHandler {
+                        if (fullscreenControlsVisible.value) fullscreenControlsVisible.value = false
+                        else exitFullscreen()
+                    }
+                }
                 // Mirrors selectedChannels below: when browsing Recently watched/Favorites,
                 // Up/Down in fullscreen must cycle through that same list, not the channel's own
                 // (real) category - which is what filtering by previewChannel.group would do.
@@ -3125,6 +3135,7 @@ private fun LiveTvScreen(
                         onFullscreenDoubleTap = if (immersiveFullscreen) (::exitFullscreen) else null,
                         onRequestFullscreen = if (!immersiveFullscreen) (::enterFullscreen) else null,
                         onExitFullscreen = if (immersiveFullscreen) (::exitFullscreen) else null,
+                        controllerVisibleState = fullscreenControlsVisible,
                         loadEpg = loadEpg
                     )
                     if (!immersiveFullscreen) {

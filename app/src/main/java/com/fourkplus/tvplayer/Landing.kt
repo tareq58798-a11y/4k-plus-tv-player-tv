@@ -278,6 +278,13 @@ internal fun LandingScaffold(
     val tileFocus = remember { FocusRequester() }
     /** Where the page begins: its first card, or the tile when nothing has been watched yet. */
     val firstCard = if (topEntries.isNotEmpty()) topRowFocus.first() else tileFocus
+    /**
+     * The first box on the page, which is the categories box on a section page and the first card
+     * on Home, where there is no box. This is where OK on the navigation bar lands: the tab is
+     * already open by the time OK is pressed, so the press means "into this page", starting at the
+     * beginning of it.
+     */
+    val pageStart = if (rows.firstOrNull()?.tile != null) tileFocus else firstCard
     // Up from anything in the page goes to the tab of the page it is on, and stays there: Home to
     // Home, Series to Series, and so on. Up is how you get back to the navigation, so it always
     // does the same thing wherever it is pressed - it never changes section under the viewer.
@@ -344,7 +351,8 @@ internal fun LandingScaffold(
                 onSettings = onSettings,
                 keepFocus = arrivedFromNavBar,
                 tabFocus = tabFocus,
-                downTarget = firstCard
+                downTarget = firstCard,
+                enterTarget = pageStart
             )
         }
         if (!hasContent && rows.none { it.tile != null }) {

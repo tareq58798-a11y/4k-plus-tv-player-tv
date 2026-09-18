@@ -103,7 +103,13 @@ fun AppTopBar(
      * down from Series landed you in the middle of a row while coming down from Home landed you at
      * its start. Content begins at the beginning, wherever you stepped off the bar.
      */
-    downTarget: FocusRequester? = null
+    downTarget: FocusRequester? = null,
+    /**
+     * Where OK on a tab goes: the first box inside that section's page. Moving onto a tab already
+     * opens its page (see [NavTab] below), so OK has nothing left to select - it means "take me
+     * into what I am looking at", and lands on the box the page starts with.
+     */
+    enterTarget: FocusRequester? = null
 ) {
     val ownTabFocus = remember { NavDestination.entries.associateWith { FocusRequester() } }
     val tabs = tabFocus ?: ownTabFocus
@@ -170,7 +176,12 @@ fun AppTopBar(
                     // requiring OK as well would mean two presses to do what the movement already
                     // said - and the viewer can see the page they are choosing while they choose.
                     onFocused = { onSelect(destination) },
-                    onClick = { onSelect(destination) }
+                    // Moving here already opened the page, so OK steps into it rather than
+                    // selecting the section a second time.
+                    onClick = {
+                        onSelect(destination)
+                        enterTarget?.let { runCatching { it.requestFocus() } }
+                    }
                 )
             }
         }
