@@ -1439,7 +1439,13 @@ internal fun LiveChannelPreview(
     val settings = remember { context.getSharedPreferences("playback_settings", android.content.Context.MODE_PRIVATE) }
     val subtitleLanguages = settings.getString("subtitle_language", "ar,en").orEmpty()
         .split(',').map(String::trim).filter(String::isNotBlank)
-    var videoMode by remember { mutableStateOf(settings.getString("video_mode", "fit") ?: "fit") }
+    // Keyed on the channel, so a stretch or zoom belongs to the channel it was chosen for and the
+    // next one starts from the real default again. A 4:3 channel is worth zooming; the HD channel
+    // after it is not, and carrying the choice across meant every later channel arrived cropped
+    // until the viewer noticed and undid it by hand.
+    var videoMode by remember(channel?.streamUrl) {
+        mutableStateOf(settings.getString("video_mode", "fit") ?: "fit")
+    }
     val videoResizeMode = when (videoMode) {
         "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
         "stretch" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -1949,10 +1955,10 @@ internal fun LiveChannelPreview(
                     },
                     showSkipInterval = false,
                     videoMode = videoMode,
-                    // Deliberately not persisted - see the matching comment in MoviePlayer. A
-                    // stretch/zoom choice made while watching one channel shouldn't carry into a
-                    // different channel or into Movies/Series; each starts from the real default
-                    // (set in Settings) again.
+                    // Neither persisted to disk nor carried across a channel change - the state
+                    // itself is keyed on the channel, see where it is declared. A stretch/zoom
+                    // belongs to the channel it was picked for; every other channel, and Movies and
+                    // Series, start from the real default (set in Settings) again.
                     onVideoModeChange = { videoMode = it },
                     autoFocusFirstOnDpad = hostedFullscreen,
                     onCollapseOnDpad = { controllerVisible = false },
