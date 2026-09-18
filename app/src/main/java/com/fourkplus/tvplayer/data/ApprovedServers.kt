@@ -7,10 +7,10 @@ object ApprovedServers {
     // by position, so changing the order changes which number a viewer is told to pick.
     val addresses = listOf(
         "http://bag41135.wd.4kplus-tv-za.xyz/",
-        "http://d4kip.com:80"
+        "http://dtamadeus.com/"
     )
 
-    private val approvedHosts = setOf("bag41135.wd.4kplus-tv-za.xyz", "d4kip.com")
+    private val approvedHosts = setOf("bag41135.wd.4kplus-tv-za.xyz", "dtamadeus.com")
 
     fun allows(input: PlaylistInput): Boolean = runCatching {
         val uri = URI(input.address.trim())

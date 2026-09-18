@@ -43,8 +43,8 @@ android {
         //
         // versionCode is what Android compares to decide whether something is an update. It must
         // only ever increase, and is deliberately not reset to match versionName.
-        versionCode = 113
-        versionName = "6.2"
+        versionCode = 114
+        versionName = "6.3"
     }
 
     // Two builds from one source tree, and never one build pretending to be both. They carry
