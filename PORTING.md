@@ -42,6 +42,29 @@ Does not carry over:
 
 ## Per platform
 
+## Keeping the builds apart
+
+Every target ships as its own app. Nothing done for one may change what another ships.
+
+Within codebase A that is enforced by product flavours: `tv` and `phone` build separate
+APKs with separate application ids (`…tvplayer.tv`, `…tvplayer.phone`), and each takes
+its form-factor manifest from `src/tv` or `src/phone`. The TV app's manifest is not in
+the shared file at all, so phone work cannot reach it.
+
+The **source** is shared on purpose. The D-pad rules, the provider client and all eight
+translations are one programme; keeping two copies would mean fixing everything twice.
+What differs between a remote and a fingertip is decided at runtime.
+
+Build and test them independently:
+
+```
+gradlew assembleTvDebug        -> app/build/outputs/apk/tv/debug/app-tv-debug.apk
+gradlew assemblePhoneDebug     -> app/build/outputs/apk/phone/debug/app-phone-debug.apk
+```
+
+The released TV APK comes from the `tv` flavour only. Both can sit on one device at once,
+which is what makes side-by-side testing possible.
+
 ### 1. Android phones — same codebase
 
 The only target already sitting in this repo. Two manifest lines currently block it:

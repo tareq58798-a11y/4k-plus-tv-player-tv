@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The television build. Everything here is what the TV app has always declared; it lives in this
+  source set rather than the shared one so that work on the phone build cannot reach it.
+
+  Merged with src/main/AndroidManifest.xml. The result is identical to the manifest the TV app
+  shipped with before the phone build existed.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Marks this as a proper TV app (shows in the Leanback launcher's app row, gets listed
+         under "Android TV" on the Play Store) rather than a phone app side-loaded onto a TV. -->
+    <uses-feature android:name="android.software.leanback" android:required="true" />
+
+    <application>
+        <!-- A television is fixed landscape. Declaring it keeps the TV build behaving exactly as
+             it always has, whatever the phone build does. -->
+        <activity
+            android:name=".MainActivity"
+            android:screenOrientation="landscape" />
+    </application>
+</manifest>

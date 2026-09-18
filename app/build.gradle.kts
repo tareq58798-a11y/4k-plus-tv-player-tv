@@ -47,6 +47,28 @@ android {
         versionName = "6.0"
     }
 
+    // Two builds from one source tree, and never one build pretending to be both. They carry
+    // different application ids, so a television and a phone are separate apps with separate Play
+    // listings and can sit on the same device at once; and they take their form-factor manifests
+    // from src/tv and src/phone, so phone work cannot alter what the TV app declares.
+    //
+    // The source itself is deliberately shared. Every D-pad rule, every provider call and all eight
+    // translations are the same programme, and splitting them into two copies would mean fixing
+    // everything twice. What differs between a remote and a fingertip is decided at runtime, from
+    // isTvDevice() and the size of the screen.
+    flavorDimensions += "formFactor"
+    productFlavors {
+        create("tv") {
+            dimension = "formFactor"
+            // Unchanged: this is the id the published TV app already uses and must keep.
+            applicationId = "com.fourkplus.tvplayer.tv"
+        }
+        create("phone") {
+            dimension = "formFactor"
+            applicationId = "com.fourkplus.tvplayer.phone"
+        }
+    }
+
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {
