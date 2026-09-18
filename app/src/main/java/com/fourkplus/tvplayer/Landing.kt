@@ -390,7 +390,11 @@ internal fun LandingScaffold(
                             upTarget = if (rowIndex == 0) ownTab else tileFocus,
                             modifier = Modifier
                                 .then(if (rowIndex == 0) Modifier.focusRequester(tileFocus) else Modifier)
-                                .padding(start = Dims.SafeHorizontal - Dims.CardBleed)
+                                .padding(start = Dims.SafeHorizontal - Dims.CardBleed),
+                            // The information block belongs to the card the remote is on. Stepping
+                            // onto this box leaves no card focused, so the block and its buttons
+                            // fold away rather than describing something the viewer has left.
+                            onFocused = { focused = null }
                         )
                     }
                     LazyRow(
@@ -587,7 +591,10 @@ private fun EmptySlot() {
 private fun CategoryTile(
     tile: LandingTile,
     upTarget: FocusRequester?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Fired when the remote lands here, so the page can put away the block of information that
+    // belongs to whichever card was focused before.
+    onFocused: () -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
@@ -608,7 +615,13 @@ private fun CategoryTile(
             Modifier
                 .fillMaxWidth()
                 .height(Dims.CardWidth * 9 / 16)
-                .tvFocusable(onFocusChanged = { focused = it }, onClick = tile.onClick),
+                .tvFocusable(
+                    onFocusChanged = {
+                        focused = it
+                        if (it) onFocused()
+                    },
+                    onClick = tile.onClick
+                ),
             focused = focused,
             radius = Dims.RadiusCard
         ) {

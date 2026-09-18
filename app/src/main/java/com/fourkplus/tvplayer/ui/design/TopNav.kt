@@ -37,6 +37,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -114,10 +115,12 @@ fun AppTopBar(
     val ownTabFocus = remember { NavDestination.entries.associateWith { FocusRequester() } }
     val tabs = tabFocus ?: ownTabFocus
     val selectedTab = tabs.getValue(selected)
-    // While the remote is on search, language or settings, the section's own ring is put out. Two
-    // rings on screen at once is two answers to "where am I", and the one the viewer can move is
-    // the one that should be lit. It comes back the moment they step back onto the bar.
-    var globalControlFocused by remember { mutableStateOf(false) }
+    // The section's ring is lit only while the remote is actually on the bar. Two rings on screen
+    // at once is two answers to "where am I", and the one the viewer can move is the one that
+    // should be lit - so stepping off the bar, whether into the page below or across to search,
+    // language or settings, puts the section's ring out. It comes back the moment they step back
+    // on, which is what Up is for.
+    var tabsFocused by remember { mutableStateOf(false) }
     LaunchedEffect(selected, keepFocus) {
         if (keepFocus) runCatching { selectedTab.requestFocus() }
     }
@@ -149,7 +152,9 @@ fun AppTopBar(
         Row(
             // Down off a section goes to the start of its first row, not to whichever card happens
             // to sit under that particular tab.
-            Modifier.then(
+            Modifier
+                .onFocusChanged { tabsFocused = it.hasFocus }
+                .then(
                 if (downTarget != null) {
                     Modifier.onPreviewKeyEvent { event ->
                         if (event.isInitialDown && event.key == Key.DirectionDown) {
@@ -170,7 +175,7 @@ fun AppTopBar(
             NavDestination.entries.forEach { destination ->
                 NavTab(
                     label = labels[destination].orEmpty(),
-                    selected = destination == selected && !globalControlFocused,
+                    selected = destination == selected && tabsFocused,
                     modifier = Modifier.focusRequester(tabs.getValue(destination)),
                     // Reaching a section is enough to open it. On a remote there is no hover, so
                     // requiring OK as well would mean two presses to do what the movement already
@@ -196,15 +201,16 @@ fun AppTopBar(
             horizontalArrangement = Arrangement.spacedBy(Dims.GapS),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val reportFocus: (Boolean) -> Unit = { globalControlFocused = it }
+            // These no longer have to report their focus back: the section's ring is driven by
+            // whether the tabs row itself holds focus, and it does not while one of these does.
             if (onSearch != null) {
-                GlobalIconButton(Icons.Default.Search, "Search", onSearch, reportFocus)
+                GlobalIconButton(Icons.Default.Search, "Search", onSearch)
             }
             if (onLanguage != null) {
-                GlobalIconButton(Icons.Default.Language, "Language", onLanguage, reportFocus)
+                GlobalIconButton(Icons.Default.Language, "Language", onLanguage)
             }
             if (onSettings != null) {
-                GlobalIconButton(Icons.Default.Settings, "Settings", onSettings, reportFocus)
+                GlobalIconButton(Icons.Default.Settings, "Settings", onSettings)
             }
             // Separates the controls you can act on from the clock, which you cannot.
             Box(
@@ -273,8 +279,7 @@ private fun NavTab(
 fun GlobalIconButton(
     icon: ImageVector,
     description: String,
-    onClick: () -> Unit,
-    onFocusChanged: (Boolean) -> Unit = {}
+    onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -293,13 +298,7 @@ fun GlobalIconButton(
             .size(34.dp)
             .clip(RoundedCornerShape(18.dp))
             .border(BorderStroke(2.dp, border), RoundedCornerShape(18.dp))
-            .tvFocusable(
-                onFocusChanged = {
-                    focused = it
-                    onFocusChanged(it)
-                },
-                onClick = onClick
-            ),
+            .tvFocusable(onFocusChanged = { focused = it }, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, description, tint = Tone.TextPrimary, modifier = Modifier.size(20.dp))
