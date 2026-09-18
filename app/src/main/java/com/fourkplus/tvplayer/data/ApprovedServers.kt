@@ -7,7 +7,7 @@ object ApprovedServers {
     // by position, so changing the order changes which number a viewer is told to pick.
     val addresses = listOf(
         "http://bag41135.wd.4kplus-tv-za.xyz/",
-        "http://dtamadeus.com/"
+        "http://dtamadeus.com:80"
     )
 
     private val approvedHosts = setOf("bag41135.wd.4kplus-tv-za.xyz", "dtamadeus.com")
