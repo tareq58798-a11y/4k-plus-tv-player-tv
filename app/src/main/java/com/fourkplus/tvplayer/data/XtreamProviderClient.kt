@@ -182,7 +182,15 @@ internal class XtreamProviderClient {
                             val id = episode.optString("id")
                             if (id.isBlank()) continue
                             val episodeInfo = episode.optJSONObject("info") ?: JSONObject()
-                            val extension = episode.optText("container_extension") ?: "mp4"
+                            // Panels report the container in one of two places: on the episode
+                            // itself, or nested inside its info block. Reading only the first and
+                            // falling back to "mp4" meant a panel that reports it the second way
+                            // had every episode requested as the wrong file - the server answers
+                            // with an error page, and the player reports it as an unsupported
+                            // container (ExoPlayer 3003) because that is what it was handed.
+                            val extension = episode.optText("container_extension")
+                                ?: episodeInfo.optText("container_extension")
+                                ?: "mp4"
                             val episodeNumber = episode.optInt("episode_num", index + 1)
                             add(
                                 SeriesEpisode(

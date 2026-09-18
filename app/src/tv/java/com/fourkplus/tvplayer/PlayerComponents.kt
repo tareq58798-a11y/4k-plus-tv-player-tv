@@ -508,6 +508,11 @@ internal fun MoviePlayer(
     }
     var error by remember(movie) { mutableStateOf<String?>(null) }
     var resolutionLabel by remember(movie) { mutableStateOf<String?>(null) }
+    // What is actually being asked for, which starts as the catalogue's URL but can be re-pointed at
+    // the same title in a different container - see the unsupported-container branch in
+    // onPlayerError below, and [alternateContainerUrl].
+    var playUrl by remember(movie) { mutableStateOf(movie.streamUrl) }
+    var triedContainers by remember(movie) { mutableStateOf(emptySet<String>()) }
     DisposableEffect(Unit) {
         PictureInPictureCoordinator.eligible = true
         PictureInPictureCoordinator.aspectRatio = 16f / 9f
@@ -602,10 +607,10 @@ internal fun MoviePlayer(
             else -> requestExit()
         }
     }
-    LaunchedEffect(player, movie.streamUrl, externalSubtitle) {
+    LaunchedEffect(player, playUrl, externalSubtitle) {
         error = null
         val resumeAt = player.currentPosition.takeIf { it > 0L } ?: startPosition
-        player.setMediaItem(mediaItemWithSubtitle(context, movie.streamUrl, externalSubtitle))
+        player.setMediaItem(mediaItemWithSubtitle(context, playUrl, externalSubtitle))
         if (resumeAt > 0L) player.seekTo(resumeAt)
         player.prepare()
         player.playWhenReady = true
@@ -623,7 +628,22 @@ internal fun MoviePlayer(
     }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onPlayerError(playbackException: PlaybackException) { error = playbackFailureMessage(playbackException) }
+            override fun onPlayerError(playbackException: PlaybackException) {
+                // A panel that does not report the container leaves the catalogue guessing, and a
+                // request for the wrong file is answered with an error page rather than video -
+                // which arrives here as "unsupported container", because that is what the player
+                // was handed. Try the other containers these panels use before saying so.
+                if (playbackException.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED) {
+                    val tried = triedContainers + playUrl.substringAfterLast('.', "").lowercase()
+                    val next = alternateContainerUrl(playUrl, tried)
+                    if (next != null) {
+                        triedContainers = tried
+                        playUrl = next
+                        return
+                    }
+                }
+                error = playbackFailureMessage(playbackException)
+            }
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
                     resolutionLabel = "${videoSize.width} x ${videoSize.height}"
@@ -2080,6 +2100,28 @@ internal fun LiveChannelPreview(
 }
 
 /** Only expose structured codes; exception messages may contain account URLs. */
+/**
+ * The containers these panels actually store films and episodes in, in the order worth trying.
+ * mkv first because it is both the commonest and the one most often left unreported.
+ */
+private val containerCandidates = listOf("mkv", "mp4", "ts", "avi", "m3u8")
+
+/**
+ * The same title asked for in a different container, or null when there is nothing left to try.
+ *
+ * Only ever rewrites an extension this list knows: a URL ending in something else is one the panel
+ * was specific about, and guessing over the top of that would turn a clear failure into a slower,
+ * stranger one.
+ */
+private fun alternateContainerUrl(url: String, alreadyTried: Set<String>): String? {
+    val dot = url.lastIndexOf('.')
+    if (dot <= url.lastIndexOf('/')) return null
+    val current = url.substring(dot + 1).lowercase()
+    if (current !in containerCandidates) return null
+    val next = containerCandidates.firstOrNull { it != current && it !in alreadyTried } ?: return null
+    return url.substring(0, dot + 1) + next
+}
+
 private fun playbackFailureMessage(error: PlaybackException): String {
     var cause: Throwable? = error
     repeat(12) {
