@@ -307,4 +307,5 @@
     <string name="landing_hint_favorites_channels">Añade canales a tus favoritos para tenerlos a un solo clic.</string>
     <string name="landing_hint_favorites_movies">Añade películas a tus favoritos para tenerlas a un solo clic.</string>
     <string name="landing_hint_favorites_series">Añade series a tus favoritos para tenerlas a un solo clic.</string>
+    <string name="landing_open_favorites">Abrir tus favoritos</string>
 </resources>

@@ -318,4 +318,5 @@
     <string name="landing_hint_favorites_channels">أضف القنوات إلى المفضلة لتبقى على بعد ضغطة واحدة.</string>
     <string name="landing_hint_favorites_movies">أضف الأفلام إلى المفضلة لتبقى على بعد ضغطة واحدة.</string>
     <string name="landing_hint_favorites_series">أضف المسلسلات إلى المفضلة لتبقى على بعد ضغطة واحدة.</string>
+    <string name="landing_open_favorites">افتح المفضلة</string>
 </resources>

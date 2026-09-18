@@ -1,4 +1,4 @@
-package com.fourkplus.tvplayer
+﻿package com.fourkplus.tvplayer
 
 import android.content.Context
 import android.content.res.Configuration
@@ -72,7 +72,10 @@ internal fun SeriesScreen(
     onBack: () -> Unit,
     requirePin: (() -> Unit) -> Unit,
     resumeRequest: ResumeRequest? = null,
-    onResumeHandled: () -> Unit = {}
+    onResumeHandled: () -> Unit = {},
+    /** A category to open straight into, such as Favorites, instead of the browse view. */
+    openCategory: String? = null,
+    onOpenCategoryHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val parental = remember { context.getSharedPreferences("parental_settings", Context.MODE_PRIVATE) }
@@ -122,6 +125,16 @@ internal fun SeriesScreen(
     }
     var watchedEpisodeIds by remember {
         mutableStateOf(store.getStringSet("watched_episodes", emptySet()).orEmpty().toSet())
+    }
+
+    // Opened straight into a named category - the Favorites tile on the landing page uses
+    // this - instead of landing on the browse view and making the viewer find it again.
+    LaunchedEffect(openCategory) {
+        val target = openCategory ?: return@LaunchedEffect
+        selectedCategory = target
+        search = ""
+        view = SeriesView.CATEGORY
+        onOpenCategoryHandled()
     }
 
     val byId = remember(seriesItems) { seriesItems.associateBy(::channelKey) }

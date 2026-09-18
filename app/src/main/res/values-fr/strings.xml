@@ -307,4 +307,5 @@
     <string name="landing_hint_favorites_channels">Ajoutez des chaînes à vos favoris pour les garder à portée d\'une touche.</string>
     <string name="landing_hint_favorites_movies">Ajoutez des films à vos favoris pour les garder à portée d\'une touche.</string>
     <string name="landing_hint_favorites_series">Ajoutez des séries à vos favoris pour les garder à portée d\'une touche.</string>
+    <string name="landing_open_favorites">Ouvrir vos favoris</string>
 </resources>

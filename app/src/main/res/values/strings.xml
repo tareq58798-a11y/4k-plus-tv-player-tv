@@ -331,4 +331,5 @@
     <string name="landing_hint_favorites_channels">Add channels to your favorites to keep them one press away.</string>
     <string name="landing_hint_favorites_movies">Add movies to your favorites to keep them one press away.</string>
     <string name="landing_hint_favorites_series">Add series to your favorites to keep them one press away.</string>
+    <string name="landing_open_favorites">Open your favorites</string>
 </resources>

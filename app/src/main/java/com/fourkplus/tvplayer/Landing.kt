@@ -106,6 +106,13 @@ internal data class LandingEntry(
     val key: String get() = channelKey(item)
 }
 
+/** A box parked at the end of a row: the way into a fuller list of the same thing. */
+internal data class LandingTile(
+    val title: String,
+    val caption: String,
+    val onClick: () -> Unit
+)
+
 internal data class LandingRow(
     val id: String,
     val title: String,
@@ -121,7 +128,12 @@ internal data class LandingRow(
      * One line saying what the row is for, shown only while it still has empty places. Once the
      * row fills up it explains itself and the line disappears rather than becoming furniture.
      */
-    val hint: String? = null
+    val hint: String? = null,
+    /**
+     * The box parked in this row's last place, outside the scrolling part so it never moves. The
+     * first row uses it for the full category list, Favorites for its own.
+     */
+    val tile: LandingTile? = null
 )
 
 /**
@@ -143,18 +155,10 @@ internal data class ItemBio(
     val backdropUrl: String? = null
 )
 
-/** The tile that opens a section's full category list, shown at the end of its first row. */
-internal data class LandingTile(
-    val title: String,
-    val caption: String,
-    val onClick: () -> Unit
-)
-
 @Composable
 internal fun LandingScaffold(
     destination: NavDestination,
     rows: List<LandingRow>,
-    tile: LandingTile?,
     backdrop: BackdropState,
     onSelect: (LandingEntry) -> Unit,
     isFavorite: (PlaylistItem) -> Boolean,
@@ -287,7 +291,7 @@ internal fun LandingScaffold(
         when {
             // Coming back out of the full browser puts focus on the door you came through, rather
             // than on the start of the row - you leave a place standing where you were standing.
-            returningFromCategories && tile != null -> {
+            returningFromCategories && rows.firstOrNull()?.tile != null -> {
                 runCatching { tileFocus.requestFocus() }
                 onReturnHandled()
             }
@@ -314,18 +318,18 @@ internal fun LandingScaffold(
                 downTarget = firstCard
             )
         }
-        if (!hasContent && tile == null) {
+        if (!hasContent && rows.none { it.tile != null }) {
             RevealOnAppear(delayMs = Motion.StaggerMs) {
                 EmptyState(emptyMessage, Modifier.fillMaxWidth().padding(Dims.SafeHorizontal))
             }
         }
         rows.forEachIndexed { rowIndex, row ->
-            val showTile = tile != null && rowIndex == 0
+            val rowTile = row.tile
             // The tile occupies the last of the row's places, so the scrolling part of the row
             // sets one fewer: four cards beside a fifth that never moves.
             val placeholders =
-                (row.minSlots - row.entries.size - (if (showTile) 1 else 0)).coerceAtLeast(0)
-            if (row.entries.isEmpty() && !showTile && placeholders == 0) return@forEachIndexed
+                (row.minSlots - row.entries.size - (if (rowTile != null) 1 else 0)).coerceAtLeast(0)
+            if (row.entries.isEmpty() && rowTile == null && placeholders == 0) return@forEachIndexed
             // Each band starts a little after the one above it, so the page assembles top to
             // bottom instead of appearing all at once.
             RevealOnAppear(
@@ -339,10 +343,10 @@ internal fun LandingScaffold(
                     // beside it are scrolled - the row runs in the four places to its left.
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     LazyRow(
-                        if (showTile) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+                        if (rowTile != null) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
                             start = Dims.SafeHorizontal - Dims.CardBleed,
-                            end = if (showTile) 0.dp else Dims.SafeHorizontal - Dims.CardBleed
+                            end = if (rowTile != null) 0.dp else Dims.SafeHorizontal - Dims.CardBleed
                         ),
                         horizontalArrangement = Arrangement.spacedBy(Dims.GapXs)
                     ) {
@@ -385,12 +389,14 @@ internal fun LandingScaffold(
                     // Up from the tile goes to this page's tab; without an answer of its own it
                     // was the one focusable with none, which on Live TV - where it can be the only
                     // thing in the row - left Up doing nothing at all.
-                    if (showTile && tile != null) {
+                    if (rowTile != null) {
                         CategoryTile(
-                            tile,
-                            upTarget = ownTab,
+                            rowTile,
+                            // The first row's box answers Up with the navigation; one further down
+                            // answers with the box above it, which is what sits there.
+                            upTarget = if (rowIndex == 0) ownTab else tileFocus,
                             modifier = Modifier
-                                .focusRequester(tileFocus)
+                                .then(if (rowIndex == 0) Modifier.focusRequester(tileFocus) else Modifier)
                                 .padding(end = Dims.SafeHorizontal - Dims.CardBleed)
                         )
                     }
@@ -569,19 +575,21 @@ private fun CategoryTile(
             focused = focused,
             radius = Dims.RadiusCard
         ) {
-            // Sized to fit inside a card-height box with the title on two lines. Left at the
-            // previous scale the caption was pushed past the bottom edge and clipped.
+            // Everything here has to fit a card-height box in eight languages, so the type is set
+            // small and the title is given two lines to use. German and Arabic run considerably
+            // longer than the English these were measured in, and a label that spills out of its
+            // own box reads as broken rather than as full.
             Column(
-                Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
+                Modifier.align(Alignment.Center).padding(horizontal = 6.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(17.dp))
+                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(16.dp))
                 Text(
                     tile.title,
                     color = Tone.TextPrimary,
-                    fontSize = 12.sp,
-                    lineHeight = 14.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -591,12 +599,14 @@ private fun CategoryTile(
                     Text(
                         tile.caption,
                         color = Tone.TextMuted,
-                        fontSize = 9.sp,
+                        fontSize = 8.sp,
+                        lineHeight = 10.sp,
                         maxLines = 1,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    Icon(Icons.Default.ChevronRight, null, tint = Tone.TextMuted, modifier = Modifier.size(12.dp))
+                    Icon(Icons.Default.ChevronRight, null, tint = Tone.TextMuted, modifier = Modifier.size(10.dp))
                 }
             }
         }

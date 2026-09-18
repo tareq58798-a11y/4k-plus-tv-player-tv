@@ -246,6 +246,9 @@ private enum class Screen {
 }
 internal enum class ThemeChoice { SYSTEM, LIGHT, DARK }
 
+/** The pseudo-category the browsers use for favourites, and the one the Favorites box opens. */
+internal const val FAVORITES_CATEGORY = "Favorites"
+
 /** The top navigation speaks in destinations; the app routes in screens. */
 private fun NavDestination.toScreen(): Screen = when (this) {
     NavDestination.HOME -> Screen.HOME
@@ -374,6 +377,8 @@ private fun App() {
     // Set as the viewer steps back out of a full category browser, so the landing page puts focus
     // on the tile they came through rather than on the start of its first row.
     var returningFromCategories by remember { mutableStateOf(false) }
+    // The category a browser should open straight into, set by the Favorites box on a landing page.
+    var pendingCategory by remember { mutableStateOf<String?>(null) }
     val openSection: (NavDestination) -> Unit = { destination ->
         travellingNavBar = true
         screen = destination.toScreen()
@@ -548,7 +553,8 @@ private fun App() {
                     onSearch = { openOverlay(Screen.SEARCH) },
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
-                    onOpenAll = { travellingNavBar = false; screen = Screen.MOVIES_ALL },
+                    onOpenAll = { travellingNavBar = false; pendingCategory = null; screen = Screen.MOVIES_ALL },
+                    onOpenFavorites = { travellingNavBar = false; pendingCategory = FAVORITES_CATEGORY; screen = Screen.MOVIES_ALL },
                     arrivedFromNavBar = travellingNavBar,
                     loadBio = loadBio,
                     returningFromCategories = returningFromCategories,
@@ -562,7 +568,8 @@ private fun App() {
                     onSearch = { openOverlay(Screen.SEARCH) },
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
-                    onOpenAll = { travellingNavBar = false; screen = Screen.SERIES_ALL },
+                    onOpenAll = { travellingNavBar = false; pendingCategory = null; screen = Screen.SERIES_ALL },
+                    onOpenFavorites = { travellingNavBar = false; pendingCategory = FAVORITES_CATEGORY; screen = Screen.SERIES_ALL },
                     arrivedFromNavBar = travellingNavBar,
                     loadBio = loadBio,
                     returningFromCategories = returningFromCategories,
@@ -576,7 +583,8 @@ private fun App() {
                     onSearch = { openOverlay(Screen.SEARCH) },
                     onLanguage = { openOverlay(Screen.LANGUAGE) },
                     onSettings = { openOverlay(Screen.SETTINGS) },
-                    onOpenAll = { travellingNavBar = false; screen = Screen.LIVE_ALL },
+                    onOpenAll = { travellingNavBar = false; pendingCategory = null; screen = Screen.LIVE_ALL },
+                    onOpenFavorites = { travellingNavBar = false; pendingCategory = FAVORITES_CATEGORY; screen = Screen.LIVE_ALL },
                     arrivedFromNavBar = travellingNavBar,
                     loadBio = loadBio,
                     returningFromCategories = returningFromCategories,
@@ -613,7 +621,9 @@ private fun App() {
                     loadEpg = playlistViewModel::shortEpg,
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
-                    onResumeHandled = { resumeRequest = null }
+                    onResumeHandled = { resumeRequest = null },
+                    openCategory = pendingCategory,
+                    onOpenCategoryHandled = { pendingCategory = null }
                 )
                 Screen.MOVIES_ALL -> MoviesScreen(
                     playlist = playlistUiState.loadedPlaylist,
@@ -621,7 +631,9 @@ private fun App() {
                     onBack = { travellingNavBar = false; returningFromCategories = true; screen = Screen.MOVIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
-                    onResumeHandled = { resumeRequest = null }
+                    onResumeHandled = { resumeRequest = null },
+                    openCategory = pendingCategory,
+                    onOpenCategoryHandled = { pendingCategory = null }
                 )
                 Screen.SERIES_ALL -> SeriesScreen(
                     playlist = playlistUiState.loadedPlaylist,
@@ -630,7 +642,9 @@ private fun App() {
                     onBack = { travellingNavBar = false; returningFromCategories = true; screen = Screen.SERIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
-                    onResumeHandled = { resumeRequest = null }
+                    onResumeHandled = { resumeRequest = null },
+                    openCategory = pendingCategory,
+                    onOpenCategoryHandled = { pendingCategory = null }
                 )
                 Screen.SETTINGS -> SettingsScreen(
                     playlist = playlistUiState.loadedPlaylist,
@@ -1636,7 +1650,10 @@ private fun MoviesScreen(
     onBack: () -> Unit,
     requirePin: (() -> Unit) -> Unit,
     resumeRequest: ResumeRequest? = null,
-    onResumeHandled: () -> Unit = {}
+    onResumeHandled: () -> Unit = {},
+    /** A category to open straight into, such as Favorites, instead of the browse view. */
+    openCategory: String? = null,
+    onOpenCategoryHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val parental = remember { context.getSharedPreferences("parental_settings", android.content.Context.MODE_PRIVATE) }
@@ -1675,6 +1692,16 @@ private fun MoviesScreen(
             }.toMap()
         )
     }
+    // Opened straight into a named category - the Favorites tile on the landing page uses
+    // this - instead of landing on the browse view and making the viewer find it again.
+    LaunchedEffect(openCategory) {
+        val target = openCategory ?: return@LaunchedEffect
+        selectedCategory = target
+        search = ""
+        view = MovieView.CATEGORY
+        onOpenCategoryHandled()
+    }
+
     val byId = remember(movies) { movies.associateBy(::channelKey) }
     val favorites = remember(movies, favoriteIds) { movies.filter { channelKey(it) in favoriteIds } }
     val recent = remember(byId, recentIds) { recentIds.mapNotNull(byId::get) }
@@ -2833,7 +2860,10 @@ private fun LiveTvScreen(
     loadEpg: suspend (PlaylistItem) -> Result<EpgNowNext>,
     requirePin: (() -> Unit) -> Unit,
     resumeRequest: ResumeRequest? = null,
-    onResumeHandled: () -> Unit = {}
+    onResumeHandled: () -> Unit = {},
+    /** A category to open straight into, such as Favorites, instead of the browse view. */
+    openCategory: String? = null,
+    onOpenCategoryHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val parental = remember { context.getSharedPreferences("parental_settings", android.content.Context.MODE_PRIVATE) }
@@ -2870,6 +2900,15 @@ private fun LiveTvScreen(
     // highlighted at whatever position it happens to occupy in whichever category is open,
     // typically somewhere meaningless like the bottom of Recently watched.
     var hasChosenChannel by remember(channels) { mutableStateOf(false) }
+    // Opened straight into a named category - the Favorites tile on the landing page uses this -
+    // instead of landing on the browse view and making the viewer find it again.
+    LaunchedEffect(openCategory) {
+        val target = openCategory ?: return@LaunchedEffect
+        selectedCategory = target
+        channelQuery = ""
+        view = LiveView.CATEGORY
+        onOpenCategoryHandled()
+    }
     val store = remember { context.getSharedPreferences("favorite_channels", android.content.Context.MODE_PRIVATE) }
     var favoriteIds by remember { mutableStateOf(store.getStringSet("ids", emptySet()).orEmpty().toSet()) }
     var recentIds by remember {

@@ -43,8 +43,8 @@ android {
         //
         // versionCode is what Android compares to decide whether something is an update. It must
         // only ever increase, and is deliberately not reset to match versionName.
-        versionCode = 98
-        versionName = "4.7"
+        versionCode = 99
+        versionName = "4.8"
     }
 
     signingConfigs {

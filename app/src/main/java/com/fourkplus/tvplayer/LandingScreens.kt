@@ -144,7 +144,6 @@ internal fun HomeLandingScreen(
             LandingRow("home_recent_added", stringResource(R.string.landing_recently_added), recentlyAdded),
             LandingRow("home_continue", stringResource(R.string.continue_watching_title), entries)
         ),
-        tile = null,
         backdrop = backdrop,
         onSelect = { onPlay(it.item, it.episodeId) },
         isFavorite = { favorites.contains(it) },
@@ -171,6 +170,7 @@ internal fun MoviesLandingScreen(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
+    onOpenFavorites: () -> Unit,
     arrivedFromNavBar: Boolean,
     loadBio: suspend (PlaylistItem) -> ItemBio?,
     returningFromCategories: Boolean = false,
@@ -199,20 +199,25 @@ internal fun MoviesLandingScreen(
                 stringResource(R.string.landing_recently_watched_movies),
                 recent,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_recent)
+                hint = stringResource(R.string.landing_hint_recent),
+                tile = LandingTile(
+                    title = stringResource(R.string.landing_all_movie_categories),
+                    caption = stringResource(R.string.landing_browse_library),
+                    onClick = onOpenAll
+                )
             ),
             LandingRow(
                 "movies_favorites",
                 stringResource(R.string.section_favorites),
                 favoriteEntries,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_favorites_movies)
+                hint = stringResource(R.string.landing_hint_favorites_movies),
+                tile = LandingTile(
+                    title = stringResource(R.string.section_favorites),
+                    caption = stringResource(R.string.landing_open_favorites),
+                    onClick = onOpenFavorites
+                )
             )
-        ),
-        tile = LandingTile(
-            title = stringResource(R.string.landing_all_movie_categories),
-            caption = stringResource(R.string.landing_browse_library),
-            onClick = onOpenAll
         ),
         backdrop = backdrop,
         onSelect = { onPlay(it.item, null) },
@@ -239,6 +244,7 @@ internal fun SeriesLandingScreen(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
+    onOpenFavorites: () -> Unit,
     arrivedFromNavBar: Boolean,
     loadBio: suspend (PlaylistItem) -> ItemBio?,
     returningFromCategories: Boolean = false,
@@ -273,20 +279,25 @@ internal fun SeriesLandingScreen(
                 stringResource(R.string.landing_recently_watched_series),
                 recent,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_recent)
+                hint = stringResource(R.string.landing_hint_recent),
+                tile = LandingTile(
+                    title = stringResource(R.string.landing_all_series_categories),
+                    caption = stringResource(R.string.landing_browse_library),
+                    onClick = onOpenAll
+                )
             ),
             LandingRow(
                 "series_favorites",
                 stringResource(R.string.section_favorites),
                 favoriteEntries,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_favorites_series)
+                hint = stringResource(R.string.landing_hint_favorites_series),
+                tile = LandingTile(
+                    title = stringResource(R.string.section_favorites),
+                    caption = stringResource(R.string.landing_open_favorites),
+                    onClick = onOpenFavorites
+                )
             )
-        ),
-        tile = LandingTile(
-            title = stringResource(R.string.landing_all_series_categories),
-            caption = stringResource(R.string.landing_browse_library),
-            onClick = onOpenAll
         ),
         backdrop = backdrop,
         onSelect = { onPlay(it.item, it.episodeId) },
@@ -313,6 +324,7 @@ internal fun LiveLandingScreen(
     onLanguage: () -> Unit,
     onSettings: () -> Unit,
     onOpenAll: () -> Unit,
+    onOpenFavorites: () -> Unit,
     arrivedFromNavBar: Boolean,
     loadBio: suspend (PlaylistItem) -> ItemBio?,
     returningFromCategories: Boolean = false,
@@ -340,20 +352,25 @@ internal fun LiveLandingScreen(
                 stringResource(R.string.landing_recently_watched_channels),
                 recent,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_recent)
+                hint = stringResource(R.string.landing_hint_recent),
+                tile = LandingTile(
+                    title = stringResource(R.string.landing_all_channel_categories),
+                    caption = stringResource(R.string.landing_browse_channels),
+                    onClick = onOpenAll
+                )
             ),
             LandingRow(
                 "live_favorites",
                 stringResource(R.string.section_favorites),
                 favoriteEntries,
                 minSlots = 5,
-                hint = stringResource(R.string.landing_hint_favorites_channels)
+                hint = stringResource(R.string.landing_hint_favorites_channels),
+                tile = LandingTile(
+                    title = stringResource(R.string.section_favorites),
+                    caption = stringResource(R.string.landing_open_favorites),
+                    onClick = onOpenFavorites
+                )
             )
-        ),
-        tile = LandingTile(
-            title = stringResource(R.string.landing_all_channel_categories),
-            caption = stringResource(R.string.landing_browse_channels),
-            onClick = onOpenAll
         ),
         backdrop = backdrop,
         onSelect = { onPlay(it.item, null) },
