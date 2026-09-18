@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer
+package com.fourkplus.tvplayer
 
 import android.content.Context
 import android.content.res.Configuration
@@ -60,6 +60,9 @@ import com.fourkplus.tvplayer.data.PlaylistKind
 import com.fourkplus.tvplayer.data.SeriesDetailsInfo
 import com.fourkplus.tvplayer.data.SeriesEpisode
 import com.fourkplus.tvplayer.ui.theme.*
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import com.fourkplus.tvplayer.ui.design.BackdropState
 
 private enum class SeriesView { BROWSE, CATEGORY, DETAILS, PLAYER }
 private val seasonEpisodePattern = Regex("s(\\d{1,2})[\\s._-]*e(\\d{1,3})", RegexOption.IGNORE_CASE)
@@ -75,7 +78,11 @@ internal fun SeriesScreen(
     onResumeHandled: () -> Unit = {},
     /** A category to open straight into, such as Favorites, instead of the browse view. */
     openCategory: String? = null,
-    onOpenCategoryHandled: () -> Unit = {}
+    onOpenCategoryHandled: () -> Unit = {},
+    // The app-wide background, and the details fetch that supplies a title's landscape artwork, so
+    // the browser's grid can drive the background the way the landing pages do.
+    backdrop: BackdropState? = null,
+    loadBio: (suspend (PlaylistItem) -> ItemBio?)? = null
 ) {
     val context = LocalContext.current
     val parental = remember { context.getSharedPreferences("parental_settings", Context.MODE_PRIVATE) }
@@ -392,7 +399,9 @@ internal fun SeriesScreen(
                 onCategoriesReordered = { categoryOrderVersion++ },
                 onBack = {
                     if (view == SeriesView.CATEGORY) view = SeriesView.BROWSE else onBack()
-                }
+                },
+                backdrop = backdrop,
+                loadBio = loadBio
             )
             return@BoxWithConstraints
         }
@@ -550,7 +559,11 @@ private fun LandscapeSeriesBrowser(
     onFavorite: (PlaylistItem) -> Unit,
     onSeries: (PlaylistItem) -> Unit,
     onCategoriesReordered: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    // Drives the app-wide background from whichever poster the remote is on - see
+    // [BackdropFollowsFocus]. Null leaves whatever artwork is already up alone.
+    backdrop: BackdropState? = null,
+    loadBio: (suspend (PlaylistItem) -> ItemBio?)? = null
 ) {
     val special = listOf("Continue watching", "Recently watched", "Favorites")
     val allCategories = special + categories
@@ -601,6 +614,9 @@ private fun LandscapeSeriesBrowser(
     LaunchedEffect(categorySelectionTick) {
         if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
     }
+    // The poster the remote is on, which the app-wide background follows.
+    var focusedItem by remember { mutableStateOf<PlaylistItem?>(null) }
+    BackdropFollowsFocus(backdrop, focusedItem, loadBio)
     BoxWithConstraints(Modifier.fillMaxSize()) {
     // See COMPACT_TV_WIDTH: matches the Movies browser so both catalogues behave identically.
     val compact = maxWidth < COMPACT_TV_WIDTH
@@ -661,7 +677,8 @@ private fun LandscapeSeriesBrowser(
             SeriesGrid(
                 displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true,
                 firstItemFocusRequester, restoreFocusKey, onRestoreHandled,
-                onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null
+                onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null,
+                onItemFocused = if (backdrop != null) ({ focusedItem = it }) else null
             )
         }
     }
@@ -797,8 +814,12 @@ private fun SeriesGrid(
     // Set once, on the way back from a series' details page: the poster to scroll to and focus.
     restoreFocusKey: String? = null,
     onRestoreHandled: () -> Unit = {},
-    // Left from the grid's first column, where there is nothing further left inside the grid.
-    onExitLeft: (() -> Unit)? = null
+    // The outward key from the grid's outermost column, where there is nothing further that way
+    // inside the grid. Which key that is depends on the language's direction - see `outward` below.
+    onExitLeft: (() -> Unit)? = null,
+    // Reports the poster the remote has landed on, so the caller can put its artwork up behind the
+    // browser. Null wherever that background is not wanted.
+    onItemFocused: ((PlaylistItem) -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
     val restoreFocusRequester = remember { FocusRequester() }
@@ -822,6 +843,15 @@ private fun SeriesGrid(
         }
     } else BoxWithConstraints(modifier) {
         val columns = posterGridColumns(maxWidth, landscape)
+        // The grid fills in reading order, so `index % columns == 0` is the column nearest the
+        // category list whichever way the language runs - left in English, right in Arabic, because
+        // the whole row mirrors. The key that leaves the grid mirrors with it; hard-coded to Left it
+        // both swallowed Arabic's ordinary movement between posters and jumped to the wrong side.
+        val outward = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
+            Key.DirectionRight
+        } else {
+            Key.DirectionLeft
+        }
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(),
@@ -843,11 +873,16 @@ private fun SeriesGrid(
                     modifier = Modifier
                         .then(if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
                         .then(if (index == restoreIndex) Modifier.focusRequester(restoreFocusRequester) else Modifier)
-                        // Only the first column: elsewhere Left is ordinary movement between posters.
+                        .then(
+                            if (onItemFocused != null) {
+                                Modifier.onFocusChanged { if (it.hasFocus) onItemFocused(series) }
+                            } else Modifier
+                        )
+                        // Only the outward column: elsewhere this key is ordinary movement between posters.
                         .then(
                             if (onExitLeft != null && index % columns == 0) {
                                 Modifier.onPreviewKeyEvent { event ->
-                                    if (event.isInitialKeyDown && event.key == Key.DirectionLeft) {
+                                    if (event.isInitialKeyDown && event.key == outward) {
                                         onExitLeft(); true
                                     } else false
                                 }

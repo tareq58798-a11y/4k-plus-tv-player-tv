@@ -155,6 +155,35 @@ internal data class ItemBio(
     val backdropUrl: String? = null
 )
 
+/**
+ * Keeps the app's background on whatever the viewer has settled on inside a browser grid, the same
+ * way the landing pages do.
+ *
+ * The artwork comes from the details fetch rather than the catalogue listing, because the listing
+ * only carries the tall poster - see [ItemBio.backdropUrl]. Focus is debounced first, so running the
+ * remote along a row of posters costs one request at the end rather than one per poster, and the
+ * background is only asked to change once per title: showing the poster and then replacing it a
+ * moment later is two transitions where the viewer sees one title.
+ *
+ * A title whose details cannot be fetched falls back to its own listing artwork, and one with no
+ * artwork at all leaves the previous background alone rather than flashing back to the default.
+ */
+@Composable
+internal fun BackdropFollowsFocus(
+    backdrop: BackdropState?,
+    focused: PlaylistItem?,
+    loadBio: (suspend (PlaylistItem) -> ItemBio?)?
+) {
+    if (backdrop == null) return
+    LaunchedEffect(focused, loadBio) {
+        val item = focused ?: return@LaunchedEffect
+        delay(Motion.BackdropDebounceMs)
+        val art = loadBio?.let { runCatching { it(item) }.getOrNull() }
+            ?.backdropUrl?.takeIf(String::isNotBlank)
+        backdrop.show(channelKey(item), art ?: item.logoUrl)
+    }
+}
+
 @Composable
 internal fun LandingScaffold(
     destination: NavDestination,

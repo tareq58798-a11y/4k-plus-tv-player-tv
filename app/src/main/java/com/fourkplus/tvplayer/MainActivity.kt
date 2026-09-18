@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer
+package com.fourkplus.tvplayer
 
 import android.app.Activity
 import android.content.Context
@@ -128,6 +128,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
 import coil.compose.AsyncImage
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import com.fourkplus.tvplayer.ui.design.BackdropState
 
 /** Bridges Compose's "is a video currently showing" state to the Activity's picture-in-picture
  *  callbacks, which live outside Compose. A player composable marks itself [eligible] while
@@ -633,7 +636,9 @@ private fun App() {
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null },
                     openCategory = pendingCategory,
-                    onOpenCategoryHandled = { pendingCategory = null }
+                    onOpenCategoryHandled = { pendingCategory = null },
+                    backdrop = backdrop,
+                    loadBio = loadBio
                 )
                 Screen.SERIES_ALL -> SeriesScreen(
                     playlist = playlistUiState.loadedPlaylist,
@@ -644,7 +649,9 @@ private fun App() {
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null },
                     openCategory = pendingCategory,
-                    onOpenCategoryHandled = { pendingCategory = null }
+                    onOpenCategoryHandled = { pendingCategory = null },
+                    backdrop = backdrop,
+                    loadBio = loadBio
                 )
                 Screen.SETTINGS -> SettingsScreen(
                     playlist = playlistUiState.loadedPlaylist,
@@ -1653,7 +1660,11 @@ private fun MoviesScreen(
     onResumeHandled: () -> Unit = {},
     /** A category to open straight into, such as Favorites, instead of the browse view. */
     openCategory: String? = null,
-    onOpenCategoryHandled: () -> Unit = {}
+    onOpenCategoryHandled: () -> Unit = {},
+    // The app-wide background, and the details fetch that supplies a title's landscape artwork, so
+    // the browser's grid can drive the background the way the landing pages do.
+    backdrop: BackdropState? = null,
+    loadBio: (suspend (PlaylistItem) -> ItemBio?)? = null
 ) {
     val context = LocalContext.current
     val parental = remember { context.getSharedPreferences("parental_settings", android.content.Context.MODE_PRIVATE) }
@@ -1844,7 +1855,9 @@ private fun MoviesScreen(
                     onCategoriesReordered = { categoryOrderVersion++ },
                     onBack = {
                         if (view == MovieView.CATEGORY) view = MovieView.BROWSE else onBack()
-                    }
+                    },
+                    backdrop = backdrop,
+                    loadBio = loadBio
                 )
                 return@BoxWithConstraints
             }
@@ -1989,7 +2002,11 @@ private fun LandscapeMovieBrowser(
     onMovie: (PlaylistItem) -> Unit,
     onCategoriesReordered: () -> Unit,
     onBack: () -> Unit,
-    progress: Map<String, Long> = emptyMap()
+    progress: Map<String, Long> = emptyMap(),
+    // Drives the app-wide background from whichever poster the remote is on - see
+    // [BackdropFollowsFocus]. Null leaves whatever artwork is already up alone.
+    backdrop: BackdropState? = null,
+    loadBio: (suspend (PlaylistItem) -> ItemBio?)? = null
 ) {
     val special = listOf("Continue watching", "Recently watched", "Favorites")
     val allCategories = special + categories
@@ -2041,6 +2058,9 @@ private fun LandscapeMovieBrowser(
     LaunchedEffect(categorySelectionTick) {
         if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
     }
+    // The poster the remote is on, which the app-wide background follows.
+    var focusedItem by remember { mutableStateOf<PlaylistItem?>(null) }
+    BackdropFollowsFocus(backdrop, focusedItem, loadBio)
     BoxWithConstraints(Modifier.fillMaxSize()) {
     // See COMPACT_TV_WIDTH: a narrow panel gets a slimmer sidebar and tighter margins so the poster
     // grid beside it keeps enough room to stay readable.
@@ -2102,7 +2122,8 @@ private fun LandscapeMovieBrowser(
             MovieGrid(
                 displayed, favoriteIds, onFavorite, onMovie, Modifier.weight(1f), true, progress,
                 firstItemFocusRequester, restoreFocusKey, onRestoreHandled,
-                onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null
+                onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null,
+                onItemFocused = if (backdrop != null) ({ focusedItem = it }) else null
             )
         }
     }
@@ -2142,6 +2163,14 @@ private fun LandscapeLiveBrowser(
     }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
+    // The key that leaves the channel list for the category column beside it. The whole Row mirrors
+    // in a right-to-left language, so the column that sits on the left in English sits on the right
+    // in Arabic, and the key has to follow it.
+    val outwardKey = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
+        Key.DirectionRight
+    } else {
+        Key.DirectionLeft
+    }
     // `categories` has "Recently watched"/"Favorites" prepended by the caller - those aren't
     // real playlist categories, so they're excluded from the reorderable list and its bounds.
     val reorderableCategories = remember(categories) { categories.filterNot { it in setOf("Recently watched", "Favorites") } }
@@ -2316,12 +2345,14 @@ private fun LandscapeLiveBrowser(
                             modifier = Modifier.fillMaxWidth()
                                 .then(if (index == 0) Modifier.focusRequester(firstChannelFocusRequester) else Modifier)
                                 .then(if (selected) Modifier.focusRequester(selectedChannelFocusRequester) else Modifier)
-                                // This is a single column, so Left always means "back to the
-                                // categories" - and specifically to the one being browsed. Left to
-                                // Compose's own focus search it would instead pick whichever
-                                // category happens to sit at the same height on screen.
+                                // This is a single column, so the outward key always means "back to
+                                // the categories" - and specifically to the one being browsed. Left
+                                // to Compose's own focus search it would instead pick whichever
+                                // category happens to sit at the same height on screen. Which key
+                                // points outward mirrors with the language: the category column is
+                                // on the left in English and on the right in Arabic.
                                 .onPreviewKeyEvent { event ->
-                                    if (isTv && event.isInitialKeyDown && event.key == Key.DirectionLeft) {
+                                    if (isTv && event.isInitialKeyDown && event.key == outwardKey) {
                                         focusSelectedCategory(); true
                                     } else false
                                 }
@@ -2466,9 +2497,13 @@ private fun MovieGrid(
     // Set once, on the way back from a movie's details page: the poster to scroll to and focus.
     restoreFocusKey: String? = null,
     onRestoreHandled: () -> Unit = {},
-    // Invoked when Left is pressed from the grid's first column, where there is nothing further to
-    // the left inside the grid itself. Null on touch devices, which have no directional focus.
-    onExitLeft: (() -> Unit)? = null
+    // Invoked when the outward key is pressed from the grid's outermost column, where there is
+    // nothing further that way inside the grid itself. Which key that is depends on the language's
+    // direction - see `outward` below. Null on touch devices, which have no directional focus.
+    onExitLeft: (() -> Unit)? = null,
+    // Reports the poster the remote has landed on, so the caller can put its artwork up behind the
+    // browser. Null wherever that background is not wanted.
+    onItemFocused: ((PlaylistItem) -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
     val restoreFocusRequester = remember { FocusRequester() }
@@ -2490,6 +2525,16 @@ private fun MovieGrid(
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_movies_match), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     } else BoxWithConstraints(modifier) {
         val columns = posterGridColumns(maxWidth, landscape)
+        // The grid fills in reading order, so `index % columns == 0` is the column sitting nearest
+        // the category list whichever way the language runs - on the left in English, on the right
+        // in Arabic, because the whole row mirrors. The key that leaves the grid has to mirror with
+        // it. Left it hard-coded, Arabic got the worst of both: Left could not move between posters
+        // because this swallowed it, and it threw focus across to the far side of the screen.
+        val outward = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
+            Key.DirectionRight
+        } else {
+            Key.DirectionLeft
+        }
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(), state = gridState,
@@ -2506,12 +2551,17 @@ private fun MovieGrid(
                     modifier = Modifier
                         .then(if (index == 0 && firstItemFocusRequester != null) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
                         .then(if (index == restoreIndex) Modifier.focusRequester(restoreFocusRequester) else Modifier)
-                        // Only the first column: everywhere else Left is ordinary movement between
-                        // posters and must not be intercepted.
+                        .then(
+                            if (onItemFocused != null) {
+                                Modifier.onFocusChanged { if (it.hasFocus) onItemFocused(movie) }
+                            } else Modifier
+                        )
+                        // Only the outward column: everywhere else this key is ordinary movement
+                        // between posters and must not be intercepted.
                         .then(
                             if (onExitLeft != null && index % columns == 0) {
                                 Modifier.onPreviewKeyEvent { event ->
-                                    if (event.isInitialKeyDown && event.key == Key.DirectionLeft) {
+                                    if (event.isInitialKeyDown && event.key == outward) {
                                         onExitLeft(); true
                                     } else false
                                 }
