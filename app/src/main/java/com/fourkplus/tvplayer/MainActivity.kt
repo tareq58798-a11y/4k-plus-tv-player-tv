@@ -330,10 +330,10 @@ private fun App() {
     val playlistUiState by playlistViewModel.uiState.collectAsStateWithLifecycle()
     val message: (String) -> Unit = { scope.launch { snackbar.showSnackbar(it) } }
 
-    // Home has no "back" destination of its own — every other screen's own BackHandler
-    // navigates back to it. Pressing back here would otherwise fall through to the system
-    // default (exit the app) with no confirmation, unlike the Home screen of a launcher-adjacent
-    // app users expect a prompt from.
+    // Home has no "back" destination of its own, so this is where the app asks. Falling through to
+    // the system default here would close the app with no confirmation, which is not what people
+    // expect of a screen they reach by pressing Back. The section landings get their own handler
+    // further down, once the state it needs exists.
     BackHandler(enabled = screen == Screen.HOME) { showExitConfirm = true }
     if (showExitConfirm) {
         AlertDialog(
@@ -386,6 +386,17 @@ private fun App() {
     val openSection: (NavDestination) -> Unit = { destination ->
         travellingNavBar = true
         screen = destination.toScreen()
+    }
+
+    // Back walks towards Home and only asks about leaving once it is there. The section landings
+    // had no handler of their own, which is not the same as having nothing to go back to: the
+    // press fell through to the system and closed the app outright, from the middle of it and with
+    // no warning. The browsers and the overlays already step back a level, so this completes the
+    // chain - browser to landing, landing to Home, Home to the question. Focus is handed to the
+    // content rather than the navigation, because arriving by Back is not travelling along the bar.
+    BackHandler(enabled = screen in setOf(Screen.LIVE_TV, Screen.MOVIES, Screen.SERIES)) {
+        travellingNavBar = false
+        screen = Screen.HOME
     }
 
     // The plot, year, rating and genre for whichever title the viewer has settled on. Catalogue
