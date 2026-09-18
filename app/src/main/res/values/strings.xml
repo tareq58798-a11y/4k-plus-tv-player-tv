@@ -334,4 +334,10 @@
     <string name="landing_open_favorites">Open your favorites</string>
     <string name="subtitle_background_hide">Hide subtitle background</string>
     <string name="subtitle_background_show">Show subtitle background</string>
+    <string name="check_device_playlist">Check for a playlist</string>
+    <string name="check_device_playlist_desc">Ask whether a playlist has been assigned to this device</string>
+    <string name="check_device_playlist_checking">Checking with the activation service…</string>
+    <string name="check_device_playlist_found">A playlist was assigned to this device</string>
+    <string name="check_device_playlist_none">No playlist has been assigned to this device yet</string>
+    <string name="check_device_playlist_failed">The activation service could not be reached</string>
 </resources>

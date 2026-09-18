@@ -310,4 +310,10 @@
     <string name="landing_open_favorites">Ouvrir vos favoris</string>
     <string name="subtitle_background_hide">Masquer le fond des sous-titres</string>
     <string name="subtitle_background_show">Afficher le fond des sous-titres</string>
+    <string name="check_device_playlist">Rechercher une playlist</string>
+    <string name="check_device_playlist_desc">Vérifie si une playlist a été attribuée à cet appareil</string>
+    <string name="check_device_playlist_checking">Vérification auprès du service d\'activation…</string>
+    <string name="check_device_playlist_found">Une playlist a été attribuée à cet appareil</string>
+    <string name="check_device_playlist_none">Aucune playlist n\'a encore été attribuée à cet appareil</string>
+    <string name="check_device_playlist_failed">Le service d\'activation est injoignable</string>
 </resources>

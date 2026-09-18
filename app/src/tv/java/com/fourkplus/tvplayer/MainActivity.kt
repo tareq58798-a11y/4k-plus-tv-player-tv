@@ -383,6 +383,13 @@ private fun App() {
     var returningFromCategories by remember { mutableStateOf(false) }
     // The category a browser should open straight into, set by the Favorites box on a landing page.
     var pendingCategory by remember { mutableStateOf<String?>(null) }
+    // True while Settings is asking the activation service about this device, so the row can say so
+    // and a second press cannot stack another request behind the first.
+    var checkingActivation by remember { mutableStateOf(false) }
+    val activationPlaylistName = stringResource(R.string.activated_playlist_default_name)
+    val playlistAssignedMessage = stringResource(R.string.check_device_playlist_found)
+    val noPlaylistAssignedMessage = stringResource(R.string.check_device_playlist_none)
+    val activationCheckFailedMessage = stringResource(R.string.check_device_playlist_failed)
     val openSection: (NavDestination) -> Unit = { destination ->
         travellingNavBar = true
         screen = destination.toScreen()
@@ -697,6 +704,39 @@ private fun App() {
                             playlistViewModel.refreshActive()
                                 .onSuccess { message("Playlist refreshed") }
                                 .onFailure { message(it.message ?: "Playlist refresh failed") }
+                        }
+                    },
+                    // Asks the activation service what, if anything, is now assigned to this
+                    // device's own codes. "Nothing yet" is a normal answer here rather than a
+                    // failure - the viewer is asking precisely because they do not know - so it is
+                    // reported in its own words and not as an error.
+                    checkingActivation = checkingActivation,
+                    onCheckActivation = {
+                        checkingActivation = true
+                        scope.launch {
+                            try {
+                                playlistViewModel.addPlaylist(
+                                    PlaylistInput(
+                                        name = activationPlaylistName,
+                                        kind = PlaylistKind.DEVICE_ACTIVATION,
+                                        address = "",
+                                        username = com.fourkplus.tvplayer.data.DeviceIdentity.mac(context),
+                                        password = com.fourkplus.tvplayer.data.DeviceIdentity.deviceKey(context)
+                                    )
+                                )
+                                    .onSuccess { message(playlistAssignedMessage) }
+                                    .onFailure { error ->
+                                        message(
+                                            if (error is com.fourkplus.tvplayer.data.ActivationPendingException) {
+                                                noPlaylistAssignedMessage
+                                            } else {
+                                                error.message ?: activationCheckFailedMessage
+                                            }
+                                        )
+                                    }
+                            } finally {
+                                checkingActivation = false
+                            }
                         }
                     },
                     onRename = { name ->

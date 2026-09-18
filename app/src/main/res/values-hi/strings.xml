@@ -310,4 +310,10 @@
     <string name="landing_open_favorites">अपने पसंदीदा खोलें</string>
     <string name="subtitle_background_hide">उपशीर्षक पृष्ठभूमि छिपाएँ</string>
     <string name="subtitle_background_show">उपशीर्षक पृष्ठभूमि दिखाएँ</string>
+    <string name="check_device_playlist">प्लेलिस्ट की जाँच करें</string>
+    <string name="check_device_playlist_desc">देखें कि इस डिवाइस को कोई प्लेलिस्ट दी गई है या नहीं</string>
+    <string name="check_device_playlist_checking">सक्रियण सेवा से जाँच की जा रही है…</string>
+    <string name="check_device_playlist_found">इस डिवाइस को एक प्लेलिस्ट दी गई है</string>
+    <string name="check_device_playlist_none">इस डिवाइस को अभी तक कोई प्लेलिस्ट नहीं दी गई है</string>
+    <string name="check_device_playlist_failed">सक्रियण सेवा तक पहुँचा नहीं जा सका</string>
 </resources>

@@ -321,4 +321,10 @@
     <string name="landing_open_favorites">افتح المفضلة</string>
     <string name="subtitle_background_hide">إخفاء خلفية الترجمة</string>
     <string name="subtitle_background_show">إظهار خلفية الترجمة</string>
+    <string name="check_device_playlist">البحث عن قائمة تشغيل</string>
+    <string name="check_device_playlist_desc">تحقق مما إذا تم تعيين قائمة تشغيل لهذا الجهاز</string>
+    <string name="check_device_playlist_checking">جارٍ التحقق من خدمة التفعيل…</string>
+    <string name="check_device_playlist_found">تم تعيين قائمة تشغيل لهذا الجهاز</string>
+    <string name="check_device_playlist_none">لم يتم تعيين أي قائمة تشغيل لهذا الجهاز بعد</string>
+    <string name="check_device_playlist_failed">تعذّر الوصول إلى خدمة التفعيل</string>
 </resources>

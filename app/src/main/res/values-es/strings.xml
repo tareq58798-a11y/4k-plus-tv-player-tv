@@ -310,4 +310,10 @@
     <string name="landing_open_favorites">Abrir tus favoritos</string>
     <string name="subtitle_background_hide">Ocultar el fondo de los subtítulos</string>
     <string name="subtitle_background_show">Mostrar el fondo de los subtítulos</string>
+    <string name="check_device_playlist">Buscar una lista</string>
+    <string name="check_device_playlist_desc">Comprueba si se ha asignado una lista a este dispositivo</string>
+    <string name="check_device_playlist_checking">Consultando el servicio de activación…</string>
+    <string name="check_device_playlist_found">Se asignó una lista a este dispositivo</string>
+    <string name="check_device_playlist_none">Aún no se ha asignado ninguna lista a este dispositivo</string>
+    <string name="check_device_playlist_failed">No se pudo contactar con el servicio de activación</string>
 </resources>

@@ -310,4 +310,10 @@
     <string name="landing_open_favorites">Открыть избранное</string>
     <string name="subtitle_background_hide">Скрыть фон субтитров</string>
     <string name="subtitle_background_show">Показать фон субтитров</string>
+    <string name="check_device_playlist">Проверить наличие плейлиста</string>
+    <string name="check_device_playlist_desc">Узнать, назначен ли плейлист этому устройству</string>
+    <string name="check_device_playlist_checking">Запрос к службе активации…</string>
+    <string name="check_device_playlist_found">Плейлист назначен этому устройству</string>
+    <string name="check_device_playlist_none">Этому устройству пока не назначен плейлист</string>
+    <string name="check_device_playlist_failed">Не удалось связаться со службой активации</string>
 </resources>

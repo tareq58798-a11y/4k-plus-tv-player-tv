@@ -310,4 +310,10 @@
     <string name="landing_open_favorites">Favorilerinizi açın</string>
     <string name="subtitle_background_hide">Altyazı arka planını gizle</string>
     <string name="subtitle_background_show">Altyazı arka planını göster</string>
+    <string name="check_device_playlist">Oynatma listesi ara</string>
+    <string name="check_device_playlist_desc">Bu cihaza bir oynatma listesi atanıp atanmadığını denetle</string>
+    <string name="check_device_playlist_checking">Etkinleştirme hizmetine soruluyor…</string>
+    <string name="check_device_playlist_found">Bu cihaza bir oynatma listesi atandı</string>
+    <string name="check_device_playlist_none">Bu cihaza henüz bir oynatma listesi atanmadı</string>
+    <string name="check_device_playlist_failed">Etkinleştirme hizmetine ulaşılamadı</string>
 </resources>

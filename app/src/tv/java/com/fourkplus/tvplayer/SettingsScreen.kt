@@ -67,6 +67,11 @@ internal fun SettingsScreen(
     onManagePlaylists: () -> Unit,
     onReplace: () -> Unit,
     onRemove: () -> Unit,
+    // Asks the activation service whether a playlist has been assigned to this device since last
+    // time. Reports back whether it is now checking, so the row can say so and refuse to stack up
+    // a second request behind the first.
+    onCheckActivation: () -> Unit,
+    checkingActivation: Boolean = false,
     onMessage: (String) -> Unit
 ) {
     var settingsPage by remember { mutableStateOf(SettingsPage.ROOT) }
@@ -251,6 +256,20 @@ internal fun SettingsScreen(
                         )
                     }
                     HorizontalDivider()
+                    // For a device whose playlist is assigned in the dashboard rather than typed
+                    // in here: the codes are already registered, so the only question is whether
+                    // anything has been put against them yet. Asking is one press rather than
+                    // removing the playlist and going back through the welcome screen to find out.
+                    SettingsAction(
+                        Icons.Default.Sync,
+                        stringResource(R.string.check_device_playlist),
+                        stringResource(
+                            if (checkingActivation) R.string.check_device_playlist_checking
+                            else R.string.check_device_playlist_desc
+                        ),
+                        onCheckActivation,
+                        enabled = !checkingActivation
+                    )
                     SettingsAction(Icons.Default.AddCircleOutline, stringResource(R.string.add_another_playlist), stringResource(R.string.add_another_playlist_desc), onReplace)
                     SettingsAction(
                         Icons.Default.DeleteForever,
@@ -939,10 +958,12 @@ private fun SettingsAction(
     title: String,
     description: String,
     onClick: () -> Unit,
-    destructive: Boolean = false
+    destructive: Boolean = false,
+    enabled: Boolean = true
 ) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(13.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
