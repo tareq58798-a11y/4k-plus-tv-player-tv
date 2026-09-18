@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">4K Plus TV Player</string>
 
@@ -308,4 +308,6 @@
     <string name="landing_hint_favorites_movies">فلمیں پسندیدہ میں شامل کریں تاکہ وہ ایک بٹن کی دوری پر رہیں۔</string>
     <string name="landing_hint_favorites_series">سیریز پسندیدہ میں شامل کریں تاکہ وہ ایک بٹن کی دوری پر رہیں۔</string>
     <string name="landing_open_favorites">اپنے پسندیدہ کھولیں</string>
+    <string name="subtitle_background_hide">سب ٹائٹل کا پس منظر چھپائیں</string>
+    <string name="subtitle_background_show">سب ٹائٹل کا پس منظر دکھائیں</string>
 </resources>

@@ -325,8 +325,8 @@ internal fun LandingScaffold(
         }
         rows.forEachIndexed { rowIndex, row ->
             val rowTile = row.tile
-            // The tile occupies the last of the row's places, so the scrolling part of the row
-            // sets one fewer: four cards beside a fifth that never moves.
+            // The box occupies the first of the row's places, so the scrolling part of the row
+            // sets one fewer: four cards beside a box that never moves.
             val placeholders =
                 (row.minSlots - row.entries.size - (if (rowTile != null) 1 else 0)).coerceAtLeast(0)
             if (row.entries.isEmpty() && rowTile == null && placeholders == 0) return@forEachIndexed
@@ -338,15 +338,29 @@ internal fun LandingScaffold(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dims.GapS)) {
                     SectionHeading(row.title, Modifier.padding(horizontal = Dims.SafeHorizontal))
-                    // The tile is parked outside the scrolling row, not carried along inside it.
-                    // It holds the fifth place on screen and stays there however far the cards
-                    // beside it are scrolled - the row runs in the four places to its left.
+                    // The box is parked outside the scrolling row, not carried along inside it.
+                    // It holds the first place on screen and stays there however far the cards
+                    // beside it are scrolled - the row runs in the places to its right.
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    // Up from the box goes to this page's tab; without an answer of its own it
+                    // was the one focusable with none, which on Live TV - where it can be the only
+                    // thing in the row - left Up doing nothing at all.
+                    if (rowTile != null) {
+                        CategoryTile(
+                            rowTile,
+                            // The first row's box answers Up with the navigation; one further down
+                            // answers with the box above it, which is what sits there.
+                            upTarget = if (rowIndex == 0) ownTab else tileFocus,
+                            modifier = Modifier
+                                .then(if (rowIndex == 0) Modifier.focusRequester(tileFocus) else Modifier)
+                                .padding(start = Dims.SafeHorizontal - Dims.CardBleed)
+                        )
+                    }
                     LazyRow(
                         if (rowTile != null) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            start = Dims.SafeHorizontal - Dims.CardBleed,
-                            end = if (rowTile != null) 0.dp else Dims.SafeHorizontal - Dims.CardBleed
+                            start = if (rowTile != null) 0.dp else Dims.SafeHorizontal - Dims.CardBleed,
+                            end = Dims.SafeHorizontal - Dims.CardBleed
                         ),
                         horizontalArrangement = Arrangement.spacedBy(Dims.GapXs)
                     ) {
@@ -385,20 +399,6 @@ internal fun LandingScaffold(
                         if (placeholders > 0) {
                             items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
                         }
-                    }
-                    // Up from the tile goes to this page's tab; without an answer of its own it
-                    // was the one focusable with none, which on Live TV - where it can be the only
-                    // thing in the row - left Up doing nothing at all.
-                    if (rowTile != null) {
-                        CategoryTile(
-                            rowTile,
-                            // The first row's box answers Up with the navigation; one further down
-                            // answers with the box above it, which is what sits there.
-                            upTarget = if (rowIndex == 0) ownTab else tileFocus,
-                            modifier = Modifier
-                                .then(if (rowIndex == 0) Modifier.focusRequester(tileFocus) else Modifier)
-                                .padding(end = Dims.SafeHorizontal - Dims.CardBleed)
-                        )
                     }
                     }
                     if (placeholders > 0 && row.hint != null) {

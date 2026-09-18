@@ -75,6 +75,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -549,6 +550,7 @@ internal fun MoviePlayer(
     // key press never reaches a BackHandler in this composable at all — it's consumed by that
     // native view hierarchy (or falls through to the app's normal back handling) first.
     var subtitlesEnabled by remember { mutableStateOf(settings.getBoolean("subtitles_enabled", true)) }
+    var subtitleBackground by remember { mutableStateOf(settings.getBoolean("subtitle_background", true)) }
     var externalSubtitle by remember(movie) { mutableStateOf<Uri?>(null) }
     var skipSeconds by remember { mutableIntStateOf(settings.getInt("skip_seconds", 10).takeIf { it in listOf(5, 10, 15, 30, 60) } ?: 10) }
     var seekFeedback by remember { mutableStateOf<Pair<Boolean, Long>?>(null) }
@@ -697,6 +699,7 @@ internal fun MoviePlayer(
                         )
                         resizeMode = videoResizeMode
                         applyRequestedAspectRatio(this, videoMode)
+                        applySubtitleBackground(this, subtitleBackground)
                         this.player = player
                         installDoubleTapSeek(
                             this, player, skipSeconds,
@@ -714,6 +717,7 @@ internal fun MoviePlayer(
                     it.useController = !PictureInPictureCoordinator.active
                     it.resizeMode = videoResizeMode
                     applyRequestedAspectRatio(it, videoMode)
+                    applySubtitleBackground(it, subtitleBackground)
                     installDoubleTapSeek(
                         it, player, skipSeconds,
                         onSwipeUp = { relatedStripExpanded = true },
@@ -769,6 +773,11 @@ internal fun MoviePlayer(
                 onSubtitlesEnabledChange = {
                     subtitlesEnabled = it
                     settings.edit().putBoolean("subtitles_enabled", it).apply()
+                },
+                subtitleBackground = subtitleBackground,
+                onSubtitleBackgroundChange = {
+                    subtitleBackground = it
+                    settings.edit().putBoolean("subtitle_background", it).apply()
                 },
                 externalSubtitle = externalSubtitle,
                 onExternalSubtitleChange = { externalSubtitle = it },
@@ -1002,6 +1011,32 @@ private fun applyTvControlFocusHighlight(view: PlayerView) {
     }
 }
 
+/**
+ * The filled box behind each cue comes from two places: the caption style this view draws with, and
+ * whatever styling the stream itself carries. Switching the box off has to beat both, so embedded
+ * styles are ignored while it is off - otherwise a stream that specifies its own background simply
+ * paints it back. The text is given a black outline in exchange, so it stays readable against
+ * bright footage without a box to sit on.
+ */
+private fun applySubtitleBackground(view: PlayerView, background: Boolean) {
+    val subtitles = view.subtitleView ?: return
+    subtitles.setApplyEmbeddedStyles(background)
+    subtitles.setStyle(
+        if (background) {
+            CaptionStyleCompat.DEFAULT
+        } else {
+            CaptionStyleCompat(
+                android.graphics.Color.WHITE,
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                android.graphics.Color.BLACK,
+                null
+            )
+        }
+    )
+}
+
 private fun applyRequestedAspectRatio(view: PlayerView, mode: String) {
     val targetRatio = when (mode) {
         "16:9" -> 16f / 9f
@@ -1107,6 +1142,8 @@ private fun PlaybackOptionsOverlay(
     onFullscreenChange: (Boolean) -> Unit,
     subtitlesEnabled: Boolean,
     onSubtitlesEnabledChange: (Boolean) -> Unit,
+    subtitleBackground: Boolean,
+    onSubtitleBackgroundChange: (Boolean) -> Unit,
     externalSubtitle: Uri?,
     onExternalSubtitleChange: (Uri?) -> Unit,
     skipSeconds: Int,
@@ -1203,6 +1240,26 @@ private fun PlaybackOptionsOverlay(
                         text = { Text(if (subtitlesEnabled) "Turn subtitles off" else "Turn subtitles on") },
                         leadingIcon = { Icon(Icons.Default.Subtitles, null) },
                         onClick = { onSubtitlesEnabledChange(!subtitlesEnabled); subtitleMenu = false }
+                    )
+                    // Some streams burn a filled box behind every cue. It helps over bright
+                    // footage and gets in the way over dark footage, so it is the viewer's call;
+                    // with the box off the text keeps a black outline so it stays readable.
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (subtitleBackground) R.string.subtitle_background_hide
+                                    else R.string.subtitle_background_show
+                                )
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                if (subtitleBackground) Icons.Default.FormatColorReset else Icons.Default.FormatColorFill,
+                                null
+                            )
+                        },
+                        onClick = { onSubtitleBackgroundChange(!subtitleBackground); subtitleMenu = false }
                     )
                     DropdownMenuItem(
                         text = { Text("Load SRT or VTT file") },
@@ -1460,6 +1517,7 @@ internal fun LiveChannelPreview(
         }
     }
     var subtitlesEnabled by remember { mutableStateOf(settings.getBoolean("subtitles_enabled", true)) }
+    var subtitleBackground by remember { mutableStateOf(settings.getBoolean("subtitle_background", true)) }
     var externalSubtitle by remember(channel?.streamUrl) { mutableStateOf<Uri?>(null) }
     var skipSeconds by remember { mutableIntStateOf(settings.getInt("skip_seconds", 10).takeIf { it in listOf(5, 10, 15, 30, 60) } ?: 10) }
     var seekFeedback by remember { mutableStateOf<Pair<Boolean, Long>?>(null) }
@@ -1695,6 +1753,7 @@ internal fun LiveChannelPreview(
                             setKeepContentOnPlayerReset(true)
                             setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                             resizeMode = videoResizeMode
+                            applySubtitleBackground(this, subtitleBackground)
                             this.player = player
                         }
                     },
@@ -1702,6 +1761,7 @@ internal fun LiveChannelPreview(
                         it.player = player
                         it.resizeMode = videoResizeMode
                         applyRequestedAspectRatio(it, videoMode)
+                        applySubtitleBackground(it, subtitleBackground)
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -1849,6 +1909,11 @@ internal fun LiveChannelPreview(
                     onSubtitlesEnabledChange = {
                         subtitlesEnabled = it
                         settings.edit().putBoolean("subtitles_enabled", it).apply()
+                    },
+                    subtitleBackground = subtitleBackground,
+                    onSubtitleBackgroundChange = {
+                        subtitleBackground = it
+                        settings.edit().putBoolean("subtitle_background", it).apply()
                     },
                     externalSubtitle = externalSubtitle,
                     onExternalSubtitleChange = { externalSubtitle = it },

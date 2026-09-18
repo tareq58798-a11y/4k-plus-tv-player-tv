@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">4K Plus TV Player</string>
 
@@ -308,4 +308,6 @@
     <string name="landing_hint_favorites_movies">Añade películas a tus favoritos para tenerlas a un solo clic.</string>
     <string name="landing_hint_favorites_series">Añade series a tus favoritos para tenerlas a un solo clic.</string>
     <string name="landing_open_favorites">Abrir tus favoritos</string>
+    <string name="subtitle_background_hide">Ocultar el fondo de los subtítulos</string>
+    <string name="subtitle_background_show">Mostrar el fondo de los subtítulos</string>
 </resources>
