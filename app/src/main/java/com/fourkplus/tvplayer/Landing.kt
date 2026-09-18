@@ -237,12 +237,14 @@ internal fun LandingScaffold(
     // margin, so position N in the row below sits directly under position N here - which is what
     // lets Up from the second row step straight up into the artwork above it instead of stopping
     // at the Play button that happens to sit between them.
-    val topRowSlots = ((rows.firstOrNull()?.entries?.size ?: 0) + (if (tile != null) 1 else 0))
-        .coerceAtLeast(1)
-    val topRowFocus = remember(topRowSlots) { List(topRowSlots) { FocusRequester() } }
-    val firstCard = topRowFocus.first()
-    /** The category tile sits after the row's cards, so its slot is the one at that index. */
-    val tileFocus = topRowFocus.getOrNull(rows.firstOrNull()?.entries?.size ?: 0)
+    val topEntries = rows.firstOrNull()?.entries.orEmpty()
+    val topRowFocus = remember(topEntries.size) {
+        List(topEntries.size.coerceAtLeast(1)) { FocusRequester() }
+    }
+    /** The tile is parked beside the row rather than inside it, so it has a handle of its own. */
+    val tileFocus = remember { FocusRequester() }
+    /** Where the page begins: its first card, or the tile when nothing has been watched yet. */
+    val firstCard = if (topEntries.isNotEmpty()) topRowFocus.first() else tileFocus
     // Up from anything in the page goes to the tab of the page it is on, and stays there: Home to
     // Home, Series to Series, and so on. Up is how you get back to the navigation, so it always
     // does the same thing wherever it is pressed - it never changes section under the viewer.
@@ -285,7 +287,7 @@ internal fun LandingScaffold(
         when {
             // Coming back out of the full browser puts focus on the door you came through, rather
             // than on the start of the row - you leave a place standing where you were standing.
-            returningFromCategories && tileFocus != null -> {
+            returningFromCategories && tile != null -> {
                 runCatching { tileFocus.requestFocus() }
                 onReturnHandled()
             }
@@ -319,9 +321,8 @@ internal fun LandingScaffold(
         }
         rows.forEachIndexed { rowIndex, row ->
             val showTile = tile != null && rowIndex == 0
-            // The tile counts as one of the row's places, and it is the last of them. Empty slots
-            // fill the gap in front of it, so it holds the same position whatever the row contains
-            // and new cards appear ahead of it rather than shunting it along.
+            // The tile occupies the last of the row's places, so the scrolling part of the row
+            // sets one fewer: four cards beside a fifth that never moves.
             val placeholders =
                 (row.minSlots - row.entries.size - (if (showTile) 1 else 0)).coerceAtLeast(0)
             if (row.entries.isEmpty() && !showTile && placeholders == 0) return@forEachIndexed
@@ -333,10 +334,15 @@ internal fun LandingScaffold(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dims.GapS)) {
                     SectionHeading(row.title, Modifier.padding(horizontal = Dims.SafeHorizontal))
+                    // The tile is parked outside the scrolling row, not carried along inside it.
+                    // It holds the fifth place on screen and stays there however far the cards
+                    // beside it are scrolled - the row runs in the four places to its left.
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     LazyRow(
-                        Modifier.fillMaxWidth(),
+                        if (showTile) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = Dims.SafeHorizontal - Dims.CardBleed
+                            start = Dims.SafeHorizontal - Dims.CardBleed,
+                            end = if (showTile) 0.dp else Dims.SafeHorizontal - Dims.CardBleed
                         ),
                         horizontalArrangement = Arrangement.spacedBy(Dims.GapXs)
                     ) {
@@ -375,26 +381,19 @@ internal fun LandingScaffold(
                         if (placeholders > 0) {
                             items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
                         }
-                        // Last, and counted among the row's places rather than added past them -
-                        // so it stays where it is instead of being pushed off the right of the
-                        // screen by the empty slots, which is what hid it on a new install.
-                        if (showTile && tile != null) {
-                            // The tile belongs to the page it is on, so Up from it goes to that
-                            // page's tab. Without this it was the one focusable in the row with no
-                            // answer for Up - and on Live TV, where nothing has been watched yet,
-                            // it is the only thing in the row at all.
-                            item(key = "${row.id}_all_categories") {
-                                // The tile is the last focusable position in the top row, so it
-                                // takes the requester for that slot - which is also the entry
-                                // point Down aims at when nothing has been watched yet.
-                                CategoryTile(
-                                    tile,
-                                    upTarget = ownTab,
-                                    modifier = topRowFocus.getOrNull(row.entries.size)
-                                        ?.let { Modifier.focusRequester(it) } ?: Modifier
-                                )
-                            }
-                        }
+                    }
+                    // Up from the tile goes to this page's tab; without an answer of its own it
+                    // was the one focusable with none, which on Live TV - where it can be the only
+                    // thing in the row - left Up doing nothing at all.
+                    if (showTile && tile != null) {
+                        CategoryTile(
+                            tile,
+                            upTarget = ownTab,
+                            modifier = Modifier
+                                .focusRequester(tileFocus)
+                                .padding(end = Dims.SafeHorizontal - Dims.CardBleed)
+                        )
+                    }
                     }
                     if (placeholders > 0 && row.hint != null) {
                         Text(
@@ -570,18 +569,22 @@ private fun CategoryTile(
             focused = focused,
             radius = Dims.RadiusCard
         ) {
+            // Sized to fit inside a card-height box with the title on two lines. Left at the
+            // previous scale the caption was pushed past the bottom edge and clipped.
             Column(
-                Modifier.align(Alignment.Center).padding(horizontal = 10.dp),
+                Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Apps, null, tint = Tone.Accent, modifier = Modifier.size(17.dp))
                 Text(
                     tile.title,
                     color = Tone.TextPrimary,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
