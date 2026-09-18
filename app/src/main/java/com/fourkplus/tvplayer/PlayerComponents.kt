@@ -49,11 +49,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -1182,6 +1184,11 @@ private fun PlaybackOptionsOverlay(
     onBackPress: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val collapseKey = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
+        Key.DirectionRight
+    } else {
+        Key.DirectionLeft
+    }
     var subtitleMenu by remember { mutableStateOf(false) }
     var skipMenu by remember { mutableStateOf(false) }
     var sizeMenu by remember { mutableStateOf(false) }
@@ -1241,7 +1248,11 @@ private fun PlaybackOptionsOverlay(
                 modifier = Modifier.size(38.dp)
                     .focusRequester(muteFocusRequester)
                     .onKeyEvent { event ->
-                        if (autoFocusFirstOnDpad && event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                        // Outward from this first button closes the bar. Which direction that is
+                        // mirrors with the language: the row is anchored to the trailing edge and
+                        // lays its buttons out in reading order, so mute sits at the inner end of
+                        // it either way - on the left of the row in English, on the right in Arabic.
+                        if (autoFocusFirstOnDpad && event.type == KeyEventType.KeyDown && event.key == collapseKey) {
                             onCollapseOnDpad?.invoke()
                             true
                         } else false
@@ -1439,6 +1450,13 @@ internal fun LiveChannelPreview(
     val settings = remember { context.getSharedPreferences("playback_settings", android.content.Context.MODE_PRIVATE) }
     val subtitleLanguages = settings.getString("subtitle_language", "ar,en").orEmpty()
         .split(',').map(String::trim).filter(String::isNotBlank)
+    // The options bar is anchored to the trailing edge, which mirrors with the language: it sits
+    // top right in English and top left in Arabic. The keys that reach it and leave it have to
+    // mirror with it, or in Arabic the bar opens with a press aimed at the opposite side of the
+    // screen from where it appears, and cannot be closed again from its first button.
+    val rtlLayout = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val towardsBar = if (rtlLayout) Key.DirectionLeft else Key.DirectionRight
+    val awayFromBar = if (rtlLayout) Key.DirectionRight else Key.DirectionLeft
     // Keyed on the channel, so a stretch or zoom belongs to the channel it was chosen for and the
     // next one starts from the real default again. A 4:3 channel is worth zooming; the HD channel
     // after it is not, and carrying the choice across meant every later channel arrived cropped
@@ -1741,17 +1759,17 @@ internal fun LiveChannelPreview(
                                     Key.DirectionUp -> {
                                         if (hostedFullscreen && !controllerVisible && channelList.size > 1) { switchChannel(forward = true); true } else false
                                     }
-                                    Key.DirectionLeft -> {
+                                    awayFromBar -> {
                                         if (!hostedFullscreen && channelList.size > 1) { switchChannel(forward = false); true } else false
                                     }
-                                    // Right only opens the top bar in TV fullscreen (focus lands on
-                                    // mute); once it's open, Right must NOT keep being swallowed
+                                    // Only opens the top bar in TV fullscreen (focus lands on
+                                    // mute); once it's open, this key must NOT keep being swallowed
                                     // here or the event never reaches Compose's default d-pad focus
                                     // search, which is what moves focus from mute to the next
-                                    // control. The only way to hide the bar again is pressing Left
-                                    // while mute has focus, handled in PlaybackOptionsOverlay via
-                                    // onCollapseOnDpad.
-                                    Key.DirectionRight -> when {
+                                    // control. The only way to hide the bar again is pressing
+                                    // outward while mute has focus, handled in
+                                    // PlaybackOptionsOverlay via onCollapseOnDpad.
+                                    towardsBar -> when {
                                         hostedFullscreen && !controllerVisible -> { showControllerBriefly(); true }
                                         hostedFullscreen -> false
                                         channelList.size > 1 -> { switchChannel(forward = true); true }
