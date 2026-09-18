@@ -3,12 +3,14 @@ package com.fourkplus.tvplayer.data
 import java.net.URI
 
 object ApprovedServers {
+    // Shown in the login screen as Server 1 and Server 2, in this order - the chips are labelled
+    // by position, so changing the order changes which number a viewer is told to pick.
     val addresses = listOf(
         "http://bag41135.wd.4kplus-tv-za.xyz/",
-        "http://dtamadeus.com:80"
+        "http://d4kip.com:80"
     )
 
-    private val approvedHosts = setOf("bag41135.wd.4kplus-tv-za.xyz", "dtamadeus.com")
+    private val approvedHosts = setOf("bag41135.wd.4kplus-tv-za.xyz", "d4kip.com")
 
     fun allows(input: PlaylistInput): Boolean = runCatching {
         val uri = URI(input.address.trim())
