@@ -371,6 +371,9 @@ private fun App() {
     // rather than on OK. Every other way of reaching a landing page clears it, so arriving from a
     // browser, from playback or at startup still puts focus where the content is.
     var travellingNavBar by remember { mutableStateOf(false) }
+    // Set as the viewer steps back out of a full category browser, so the landing page puts focus
+    // on the tile they came through rather than on the start of its first row.
+    var returningFromCategories by remember { mutableStateOf(false) }
     val openSection: (NavDestination) -> Unit = { destination ->
         travellingNavBar = true
         screen = destination.toScreen()
@@ -531,6 +534,8 @@ private fun App() {
                     onSettings = { openOverlay(Screen.SETTINGS) },
                     arrivedFromNavBar = travellingNavBar,
                     loadBio = loadBio,
+                    returningFromCategories = returningFromCategories,
+                    onReturnHandled = { returningFromCategories = false },
                     onPlay = ::openForPlayback
                 )
                 Screen.MOVIES -> MoviesLandingScreen(
@@ -543,6 +548,8 @@ private fun App() {
                     onOpenAll = { travellingNavBar = false; screen = Screen.MOVIES_ALL },
                     arrivedFromNavBar = travellingNavBar,
                     loadBio = loadBio,
+                    returningFromCategories = returningFromCategories,
+                    onReturnHandled = { returningFromCategories = false },
                     onPlay = ::openForPlayback
                 )
                 Screen.SERIES -> SeriesLandingScreen(
@@ -555,6 +562,8 @@ private fun App() {
                     onOpenAll = { travellingNavBar = false; screen = Screen.SERIES_ALL },
                     arrivedFromNavBar = travellingNavBar,
                     loadBio = loadBio,
+                    returningFromCategories = returningFromCategories,
+                    onReturnHandled = { returningFromCategories = false },
                     onPlay = ::openForPlayback
                 )
                 Screen.LIVE_TV -> LiveLandingScreen(
@@ -567,6 +576,8 @@ private fun App() {
                     onOpenAll = { travellingNavBar = false; screen = Screen.LIVE_ALL },
                     arrivedFromNavBar = travellingNavBar,
                     loadBio = loadBio,
+                    returningFromCategories = returningFromCategories,
+                    onReturnHandled = { returningFromCategories = false },
                     onPlay = ::openForPlayback
                 )
                 Screen.LANGUAGE -> LanguageScreen(
@@ -594,7 +605,7 @@ private fun App() {
                 // and playback behaviour.
                 Screen.LIVE_ALL -> LiveTvScreen(
                     playlist = playlistUiState.loadedPlaylist,
-                    onBack = { travellingNavBar = false; screen = Screen.LIVE_TV },
+                    onBack = { travellingNavBar = false; returningFromCategories = true; screen = Screen.LIVE_TV },
                     onMessage = message,
                     loadEpg = playlistViewModel::shortEpg,
                     requirePin = requirePin,
@@ -604,7 +615,7 @@ private fun App() {
                 Screen.MOVIES_ALL -> MoviesScreen(
                     playlist = playlistUiState.loadedPlaylist,
                     loadDetails = playlistViewModel::movieDetails,
-                    onBack = { travellingNavBar = false; screen = Screen.MOVIES },
+                    onBack = { travellingNavBar = false; returningFromCategories = true; screen = Screen.MOVIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null }
@@ -613,7 +624,7 @@ private fun App() {
                     playlist = playlistUiState.loadedPlaylist,
                     loadDetails = playlistViewModel::seriesDetails,
                     source = playlistUiState.activeSource,
-                    onBack = { travellingNavBar = false; screen = Screen.SERIES },
+                    onBack = { travellingNavBar = false; returningFromCategories = true; screen = Screen.SERIES },
                     requirePin = requirePin,
                     resumeRequest = resumeRequest,
                     onResumeHandled = { resumeRequest = null }
@@ -1429,12 +1440,13 @@ private fun RecentLiveCard(
     onClick: () -> Unit
 ) {
     val key = remember(item) { channelKey(item) }
+    val snapshotContext = LocalContext.current
     var snapshot by remember(key) { mutableStateOf(com.fourkplus.tvplayer.data.LiveSnapshotCache.get(key)) }
     var captureDone by remember(key) { mutableStateOf(snapshot != null) }
     if (!captureDone) {
         LiveSnapshotEffect(item.streamUrl) { bitmap ->
             if (bitmap != null) {
-                com.fourkplus.tvplayer.data.LiveSnapshotCache.put(key, bitmap)
+                com.fourkplus.tvplayer.data.LiveSnapshotCache.put(snapshotContext, key, bitmap)
                 snapshot = bitmap
             }
             captureDone = true

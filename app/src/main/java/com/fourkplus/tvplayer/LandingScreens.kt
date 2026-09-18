@@ -94,6 +94,8 @@ internal fun HomeLandingScreen(
     onSettings: () -> Unit,
     arrivedFromNavBar: Boolean,
     loadBio: suspend (PlaylistItem) -> ItemBio?,
+    returningFromCategories: Boolean = false,
+    onReturnHandled: () -> Unit = {},
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -153,6 +155,8 @@ internal fun HomeLandingScreen(
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
         loadBio = loadBio,
+        returningFromCategories = returningFromCategories,
+        onReturnHandled = onReturnHandled,
         emptyMessage = stringResource(R.string.home_no_history),
         footer = { LandingDeviceStrip(playlist) }
     )
@@ -169,6 +173,8 @@ internal fun MoviesLandingScreen(
     onOpenAll: () -> Unit,
     arrivedFromNavBar: Boolean,
     loadBio: suspend (PlaylistItem) -> ItemBio?,
+    returningFromCategories: Boolean = false,
+    onReturnHandled: () -> Unit = {},
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -218,6 +224,8 @@ internal fun MoviesLandingScreen(
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
         loadBio = loadBio,
+        returningFromCategories = returningFromCategories,
+        onReturnHandled = onReturnHandled,
         emptyMessage = stringResource(R.string.landing_nothing_yet)
     )
 }
@@ -233,6 +241,8 @@ internal fun SeriesLandingScreen(
     onOpenAll: () -> Unit,
     arrivedFromNavBar: Boolean,
     loadBio: suspend (PlaylistItem) -> ItemBio?,
+    returningFromCategories: Boolean = false,
+    onReturnHandled: () -> Unit = {},
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -288,6 +298,8 @@ internal fun SeriesLandingScreen(
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
         loadBio = loadBio,
+        returningFromCategories = returningFromCategories,
+        onReturnHandled = onReturnHandled,
         emptyMessage = stringResource(R.string.landing_nothing_yet)
     )
 }
@@ -303,6 +315,8 @@ internal fun LiveLandingScreen(
     onOpenAll: () -> Unit,
     arrivedFromNavBar: Boolean,
     loadBio: suspend (PlaylistItem) -> ItemBio?,
+    returningFromCategories: Boolean = false,
+    onReturnHandled: () -> Unit = {},
     onPlay: (PlaylistItem, String?) -> Unit
 ) {
     val context = LocalContext.current
@@ -351,6 +365,8 @@ internal fun LiveLandingScreen(
         onSettings = onSettings,
         arrivedFromNavBar = arrivedFromNavBar,
         loadBio = loadBio,
+        returningFromCategories = returningFromCategories,
+        onReturnHandled = onReturnHandled,
         emptyMessage = stringResource(R.string.home_no_history)
     )
 }

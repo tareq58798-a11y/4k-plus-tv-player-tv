@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -167,6 +168,9 @@ internal fun LandingScaffold(
     arrivedFromNavBar: Boolean = false,
     /** Fetches the plot and other details for the focused item. Null disables the lookup. */
     loadBio: (suspend (PlaylistItem) -> ItemBio?)? = null,
+    /** True when the viewer has just stepped back out of the full category browser. */
+    returningFromCategories: Boolean = false,
+    onReturnHandled: () -> Unit = {},
     footer: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf<LandingEntry?>(null) }
@@ -237,6 +241,8 @@ internal fun LandingScaffold(
         .coerceAtLeast(1)
     val topRowFocus = remember(topRowSlots) { List(topRowSlots) { FocusRequester() } }
     val firstCard = topRowFocus.first()
+    /** The category tile sits after the row's cards, so its slot is the one at that index. */
+    val tileFocus = topRowFocus.getOrNull(rows.firstOrNull()?.entries?.size ?: 0)
     // Up from anything in the page goes to the tab of the page it is on, and stays there: Home to
     // Home, Series to Series, and so on. Up is how you get back to the navigation, so it always
     // does the same thing wherever it is pressed - it never changes section under the viewer.
@@ -270,8 +276,16 @@ internal fun LandingScaffold(
     // Only claim focus for the content when the viewer actually opened this page. If they are
     // still moving along the top bar, pulling focus down would end their journey along it after
     // one step - the bar keeps focus and the page just changes underneath.
-    LaunchedEffect(hasContent, arrivedFromNavBar) {
-        if (hasContent && !arrivedFromNavBar) runCatching { firstCard.requestFocus() }
+    LaunchedEffect(hasContent, arrivedFromNavBar, returningFromCategories) {
+        when {
+            // Coming back out of the full browser puts focus on the door you came through, rather
+            // than on the start of the row - you leave a place standing where you were standing.
+            returningFromCategories && tileFocus != null -> {
+                runCatching { tileFocus.requestFocus() }
+                onReturnHandled()
+            }
+            hasContent && !arrivedFromNavBar -> runCatching { firstCard.requestFocus() }
+        }
     }
 
     Column(
@@ -433,18 +447,28 @@ private fun LandingCard(
     onClick: () -> Unit
 ) {
     val live = entry.item.kind == MediaKind.LIVE
-    // A channel shows what is actually on air rather than its station logo. The frame is pulled
-    // once and cached for ten minutes; captures are serialised app-wide, because most IPTV
-    // accounts cap concurrent streams and a row opening one per card would have them all refused.
-    var snapshot by remember(entry.key) { mutableStateOf(LiveSnapshotCache.get(entry.key)) }
-    var captureDone by remember(entry.key) { mutableStateOf(snapshot != null) }
-    if (live && !captureDone) {
-        LiveSnapshotEffect(entry.item.streamUrl) { bitmap ->
-            if (bitmap != null) {
-                LiveSnapshotCache.put(entry.key, bitmap)
-                snapshot = bitmap
+    // A channel shows what is actually on air rather than its station logo.
+    //
+    // Whatever was saved for this channel goes up at once, however old it is - from memory if it
+    // is there, otherwise read from disk - so the card has a picture in it immediately instead of
+    // waiting on a stream connection. Only when that saved frame has aged does a fresh capture run
+    // behind it, and it swaps in when it arrives. Captures stay serialised app-wide, because most
+    // IPTV accounts cap concurrent streams and a row opening one per card would see them refused.
+    val context = LocalContext.current
+    var snapshot by remember(entry.key) { mutableStateOf(LiveSnapshotCache.memory(entry.key)) }
+    var captureDone by remember(entry.key) { mutableStateOf(false) }
+    if (live) {
+        LaunchedEffect(entry.key) {
+            if (snapshot == null) snapshot = LiveSnapshotCache.fromDisk(context, entry.key)
+        }
+        if (!captureDone && !LiveSnapshotCache.isFresh(entry.key)) {
+            LiveSnapshotEffect(entry.item.streamUrl) { bitmap ->
+                if (bitmap != null) {
+                    LiveSnapshotCache.put(context, entry.key, bitmap)
+                    snapshot = bitmap
+                }
+                captureDone = true
             }
-            captureDone = true
         }
     }
     ArtCard(

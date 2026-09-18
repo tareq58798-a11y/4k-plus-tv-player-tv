@@ -347,7 +347,10 @@ internal fun LiveSnapshotEffect(streamUrl: String, onResult: (Bitmap?) -> Unit) 
     LaunchedEffect(firstFrameAt) {
         if (firstFrameAt == 0L) return@LaunchedEffect
         delay(150) // lets the SurfaceTexture consume the frame (updateTexImage) before we read it
-        finishOnce(runCatching { textureView?.getBitmap(320, 200) }.getOrNull())
+        // 16:9 to match the card it lands in, and wide enough to stay sharp there: 320x200 was
+        // both narrower than the card and the wrong shape, so every frame arrived slightly squashed
+        // and slightly soft.
+        finishOnce(runCatching { textureView?.getBitmap(480, 270) }.getOrNull())
     }
     // Waits its turn behind any other card's capture before connecting, so accounts limited to
     // one concurrent stream don't have every visible card's attempt rejected at once.
