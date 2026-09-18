@@ -91,13 +91,18 @@ internal fun SeriesScreen(
     var categoryOrderVersion by remember { mutableIntStateOf(0) }
     val categories = remember(seriesItems, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.SERIES, seriesItems.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("series_library", Context.MODE_PRIVATE) }
-    var view by remember { mutableStateOf(SeriesView.BROWSE) }
+    // Opened straight into a named category - the Favorites box on the landing page uses this -
+    // instead of landing on the browse view and making the viewer find it again. This has to be the
+    // state's initial value rather than an effect: the browser below is the same composable for
+    // both views, so it composes and claims focus on the very first pass. Setting the category
+    // afterwards would leave the ring on Continue watching while the grid showed something else.
+    var view by remember { mutableStateOf(if (openCategory != null) SeriesView.CATEGORY else SeriesView.BROWSE) }
     // Which list the open details page was reached from, and the poster to scroll back to and
     // focus once it closes - the grid is torn down while details are showing, so without these it
     // rebuilds scrolled to the top with focus on the first item.
     var detailsReturnView by remember { mutableStateOf(SeriesView.BROWSE) }
     var restoreFocusKey by remember { mutableStateOf<String?>(null) }
-    var selectedCategory by remember { mutableStateOf("Continue watching") }
+    var selectedCategory by remember { mutableStateOf(openCategory ?: "Continue watching") }
     var selectedSeries by remember { mutableStateOf<PlaylistItem?>(null) }
     var selectedEpisode by remember { mutableStateOf<SeriesEpisode?>(null) }
     var details by remember { mutableStateOf<SeriesDetailsInfo?>(null) }
@@ -127,8 +132,8 @@ internal fun SeriesScreen(
         mutableStateOf(store.getStringSet("watched_episodes", emptySet()).orEmpty().toSet())
     }
 
-    // Opened straight into a named category - the Favorites tile on the landing page uses
-    // this - instead of landing on the browse view and making the viewer find it again.
+    // The initial values above already carry the requested category; this only tells the caller it
+    // has been consumed, and covers a request arriving while the screen is already up.
     LaunchedEffect(openCategory) {
         val target = openCategory ?: return@LaunchedEffect
         selectedCategory = target
@@ -583,8 +588,11 @@ private fun LandscapeSeriesBrowser(
     }
     // Skipped when returning from a details page - SeriesGrid is restoring focus to the poster the
     // user left from, and both requests racing would land focus back on the category list instead.
+    // Lands on the category actually being browsed rather than always on Continue watching: when
+    // the landing page opens this straight into Favorites, the ring belongs on Favorites. On the
+    // ordinary way in the two are the same row, so nothing changes there.
     LaunchedEffect(isTv) {
-        if (isTv && restoreFocusKey == null) requestFocusWithRetry(continueWatchingFocusRequester)
+        if (isTv && restoreFocusKey == null) focusSelectedCategory()
     }
     // Pressing OK on a category should move the remote's focus straight into that category's
     // grid rather than leaving it on the category button — 0 means "not from a press yet".

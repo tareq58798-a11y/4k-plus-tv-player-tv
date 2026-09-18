@@ -1669,13 +1669,18 @@ private fun MoviesScreen(
     var categoryOrderVersion by remember { mutableIntStateOf(0) }
     val categories = remember(movies, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.MOVIE, movies.map { it.group }.distinct()) }
     val store = remember { context.getSharedPreferences("movie_library", android.content.Context.MODE_PRIVATE) }
-    var view by remember { mutableStateOf(MovieView.BROWSE) }
+    // Opened straight into a named category - the Favorites box on the landing page uses this -
+    // instead of landing on the browse view and making the viewer find it again. This has to be the
+    // state's initial value rather than an effect: the browser below is the same composable for
+    // both views, so it composes and claims focus on the very first pass. Setting the category
+    // afterwards would leave the ring on Continue watching while the grid showed something else.
+    var view by remember { mutableStateOf(if (openCategory != null) MovieView.CATEGORY else MovieView.BROWSE) }
     // Which list the open details page was reached from, and the poster to scroll back to and
     // focus once it closes - the grid is torn down while details are showing, so without these it
     // rebuilds scrolled to the top with focus on the first item.
     var detailsReturnView by remember { mutableStateOf(MovieView.BROWSE) }
     var restoreFocusKey by remember { mutableStateOf<String?>(null) }
-    var selectedCategory by remember { mutableStateOf("Continue watching") }
+    var selectedCategory by remember { mutableStateOf(openCategory ?: "Continue watching") }
     var selectedMovie by remember { mutableStateOf<PlaylistItem?>(null) }
     var details by remember { mutableStateOf<MovieDetailsInfo?>(null) }
     var detailsLoading by remember { mutableStateOf(false) }
@@ -1692,8 +1697,8 @@ private fun MoviesScreen(
             }.toMap()
         )
     }
-    // Opened straight into a named category - the Favorites tile on the landing page uses
-    // this - instead of landing on the browse view and making the viewer find it again.
+    // The initial values above already carry the requested category; this only tells the caller it
+    // has been consumed, and covers a request arriving while the screen is already up.
     LaunchedEffect(openCategory) {
         val target = openCategory ?: return@LaunchedEffect
         selectedCategory = target
@@ -2023,8 +2028,11 @@ private fun LandscapeMovieBrowser(
     }
     // Skipped when returning from a details page - MovieGrid is restoring focus to the poster the
     // user left from, and both requests racing would land focus back on the category list instead.
+    // Lands on the category actually being browsed rather than always on Continue watching: when
+    // the landing page opens this straight into Favorites, the ring belongs on Favorites. On the
+    // ordinary way in the two are the same row, so nothing changes there.
     LaunchedEffect(isTv) {
-        if (isTv && restoreFocusKey == null) requestFocusWithRetry(continueWatchingFocusRequester)
+        if (isTv && restoreFocusKey == null) focusSelectedCategory()
     }
     // Pressing OK on a category should move the remote's focus straight into that category's
     // grid rather than leaving it on the category button — 0 means "not from a press yet".
@@ -2185,7 +2193,9 @@ private fun LandscapeLiveBrowser(
     LaunchedEffect(isTv) {
         if (!isTv) return@LaunchedEffect
         if (!returningFromFullscreen) {
-            requestFocusWithRetry(recentCategoryFocusRequester)
+            // The category actually being browsed, not always Recently watched: the landing page
+            // can open this straight into Favorites, and the ring belongs on what was asked for.
+            focusSelectedCategory()
             return@LaunchedEffect
         }
         val categoryIndex = searchedCategories.indexOf(selectedCategory)
@@ -2888,8 +2898,13 @@ private fun LiveTvScreen(
     val categories = remember(channels, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.LIVE, channels.map { it.group }.distinct()) }
     val recentlyWatched = "Recently watched"
     val favorites = "Favorites"
-    var view by remember { mutableStateOf(LiveView.BROWSE) }
-    var selectedCategory by remember(channels) { mutableStateOf(recentlyWatched) }
+    // Opened straight into a named category - the Favorites box on the landing page uses this -
+    // instead of landing on the browse view and making the viewer find it again. This has to be the
+    // state's initial value rather than an effect: the menu below is the same composable for both
+    // views, so it composes and claims focus on the very first pass. Setting the category
+    // afterwards would leave the ring on Recently watched while the list showed something else.
+    var view by remember { mutableStateOf(if (openCategory != null) LiveView.CATEGORY else LiveView.BROWSE) }
+    var selectedCategory by remember(channels) { mutableStateOf(openCategory ?: recentlyWatched) }
     var categoryQuery by remember { mutableStateOf("") }
     var channelQuery by remember { mutableStateOf("") }
     var showRecentInPlayer by remember { mutableStateOf(false) }
@@ -2900,8 +2915,8 @@ private fun LiveTvScreen(
     // highlighted at whatever position it happens to occupy in whichever category is open,
     // typically somewhere meaningless like the bottom of Recently watched.
     var hasChosenChannel by remember(channels) { mutableStateOf(false) }
-    // Opened straight into a named category - the Favorites tile on the landing page uses this -
-    // instead of landing on the browse view and making the viewer find it again.
+    // The initial values above already carry the requested category; this only tells the caller it
+    // has been consumed, and covers a request arriving while the screen is already up.
     LaunchedEffect(openCategory) {
         val target = openCategory ?: return@LaunchedEffect
         selectedCategory = target
