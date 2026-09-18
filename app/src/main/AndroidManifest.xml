@@ -6,9 +6,11 @@
          touchscreen optional (rather than leaving the implicit default of "required") is what
          lets the app appear on TV devices in the Play Store at all. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <!-- Marks this as a proper TV app (shows in the Leanback launcher's app row, gets listed
-         under "Android TV" on the Play Store) rather than a phone app side-loaded onto a TV. -->
-    <uses-feature android:name="android.software.leanback" android:required="true" />
+    <!-- Declared, so the app still shows in the Leanback launcher's app row and is listed under
+         "Android TV" on the Play Store - but not required, because requiring it hides the app from
+         every phone and tablet in the Play Store. One build serves both: the TV layouts are chosen
+         at runtime from isTvDevice() and the screen's own size, not from this flag. -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <queries>
         <package android:name="org.videolan.vlc" />
@@ -26,10 +28,13 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.FourKPlus">
+        <!-- android:screenOrientation is deliberately unset. A television is fixed landscape and
+             behaves exactly as before; a phone held upright used to be forced sideways, which is
+             why the app appeared as a TV screen turned on its side. The layouts already branch on
+             orientation - see portraitLayout through the player and the browsers. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="landscape"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode">
             <intent-filter>
