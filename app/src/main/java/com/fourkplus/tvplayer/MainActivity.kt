@@ -2053,10 +2053,15 @@ private fun LandscapeMovieBrowser(
     }
     // Pressing OK on a category should move the remote's focus straight into that category's
     // grid rather than leaving it on the category button — 0 means "not from a press yet".
+    //
+    // Retried rather than asked once. The poster this points at is composed by the grid's own
+    // layout pass, which has not run yet at the moment this effect starts, so a single request
+    // only lands if the grid happens to win that race. It does on a fast panel; on a slower box
+    // the request finds no node, fails silently, and focus is left sitting on the category.
     var categorySelectionTick by remember { mutableIntStateOf(0) }
     val firstItemFocusRequester = remember { FocusRequester() }
     LaunchedEffect(categorySelectionTick) {
-        if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
+        if (categorySelectionTick > 0 && isTv) requestFocusWithRetry(firstItemFocusRequester)
     }
     // The poster the remote is on, which the app-wide background follows.
     var focusedItem by remember { mutableStateOf<PlaylistItem?>(null) }
@@ -2123,7 +2128,8 @@ private fun LandscapeMovieBrowser(
                 displayed, favoriteIds, onFavorite, onMovie, Modifier.weight(1f), true, progress,
                 firstItemFocusRequester, restoreFocusKey, onRestoreHandled,
                 onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null,
-                onItemFocused = if (backdrop != null) ({ focusedItem = it }) else null
+                onItemFocused = if (backdrop != null) ({ focusedItem = it }) else null,
+                openedCategoryTick = categorySelectionTick
             )
         }
     }
@@ -2241,10 +2247,19 @@ private fun LandscapeLiveBrowser(
     // Pressing OK on a category should move the remote's focus straight into that category's
     // channel list rather than leaving it sitting on the category button — 0 means "not from a
     // press yet" (the initial LaunchedEffect above owns focus at that point).
+    //
+    // Scrolled back to the top first, and retried rather than asked once, for the same two reasons
+    // as the poster grids: one list serves every category and keeps the scroll position it had, and
+    // the row this points at is composed by the list's own layout pass, which has not run yet when
+    // this effect starts. Either way the request finds no node and fails silently, leaving focus on
+    // the category. Channel lists run to hundreds of rows, so the scrolled case is the common one.
     var categorySelectionTick by remember { mutableIntStateOf(0) }
     val firstChannelFocusRequester = remember { FocusRequester() }
     LaunchedEffect(categorySelectionTick) {
-        if (categorySelectionTick > 0 && isTv) runCatching { firstChannelFocusRequester.requestFocus() }
+        if (categorySelectionTick > 0 && isTv) {
+            runCatching { channelListState.scrollToItem(0) }
+            requestFocusWithRetry(firstChannelFocusRequester)
+        }
     }
         BoxWithConstraints(Modifier.fillMaxSize()) {
         // These two columns are fixed-width, so on a narrow panel they would between them leave the
@@ -2503,7 +2518,9 @@ private fun MovieGrid(
     onExitLeft: (() -> Unit)? = null,
     // Reports the poster the remote has landed on, so the caller can put its artwork up behind the
     // browser. Null wherever that background is not wanted.
-    onItemFocused: ((PlaylistItem) -> Unit)? = null
+    onItemFocused: ((PlaylistItem) -> Unit)? = null,
+    // Bumped by the caller each time a category is opened; 0 means "not from a press yet".
+    openedCategoryTick: Int = 0
 ) {
     val gridState = rememberLazyGridState()
     val restoreFocusRequester = remember { FocusRequester() }
@@ -2520,6 +2537,13 @@ private fun MovieGrid(
             focusRequester = restoreFocusRequester.takeIf { isTvDevice }
         )
         onRestoreHandled()
+    }
+    // One grid serves every category, and a lazy grid keeps whatever scroll position it had. Open
+    // a category from halfway down another one and it opens halfway down - and the first poster,
+    // the one the caller is about to ask for focus on, is not composed at all, which is the same
+    // silent no-op described on restoreListPosition. Back to the top before that request is made.
+    LaunchedEffect(openedCategoryTick) {
+        if (openedCategoryTick > 0) runCatching { gridState.scrollToItem(0) }
     }
     if (movies.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_movies_match), color = MaterialTheme.colorScheme.onSurfaceVariant) }

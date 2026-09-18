@@ -609,10 +609,15 @@ private fun LandscapeSeriesBrowser(
     }
     // Pressing OK on a category should move the remote's focus straight into that category's
     // grid rather than leaving it on the category button — 0 means "not from a press yet".
+    //
+    // Retried rather than asked once. The poster this points at is composed by the grid's own
+    // layout pass, which has not run yet at the moment this effect starts, so a single request
+    // only lands if the grid happens to win that race. It does on a fast panel; on a slower box
+    // the request finds no node, fails silently, and focus is left sitting on the category.
     var categorySelectionTick by remember { mutableIntStateOf(0) }
     val firstItemFocusRequester = remember { FocusRequester() }
     LaunchedEffect(categorySelectionTick) {
-        if (categorySelectionTick > 0 && isTv) runCatching { firstItemFocusRequester.requestFocus() }
+        if (categorySelectionTick > 0 && isTv) requestFocusWithRetry(firstItemFocusRequester)
     }
     // The poster the remote is on, which the app-wide background follows.
     var focusedItem by remember { mutableStateOf<PlaylistItem?>(null) }
@@ -678,7 +683,8 @@ private fun LandscapeSeriesBrowser(
                 displayed, favoriteIds, onFavorite, onSeries, Modifier.weight(1f), true,
                 firstItemFocusRequester, restoreFocusKey, onRestoreHandled,
                 onExitLeft = if (isTv) ({ focusSelectedCategory() }) else null,
-                onItemFocused = if (backdrop != null) ({ focusedItem = it }) else null
+                onItemFocused = if (backdrop != null) ({ focusedItem = it }) else null,
+                openedCategoryTick = categorySelectionTick
             )
         }
     }
@@ -819,7 +825,9 @@ private fun SeriesGrid(
     onExitLeft: (() -> Unit)? = null,
     // Reports the poster the remote has landed on, so the caller can put its artwork up behind the
     // browser. Null wherever that background is not wanted.
-    onItemFocused: ((PlaylistItem) -> Unit)? = null
+    onItemFocused: ((PlaylistItem) -> Unit)? = null,
+    // Bumped by the caller each time a category is opened; 0 means "not from a press yet".
+    openedCategoryTick: Int = 0
 ) {
     val gridState = rememberLazyGridState()
     val restoreFocusRequester = remember { FocusRequester() }
@@ -836,6 +844,13 @@ private fun SeriesGrid(
             focusRequester = restoreFocusRequester.takeIf { isTvDevice }
         )
         onRestoreHandled()
+    }
+    // One grid serves every category, and a lazy grid keeps whatever scroll position it had. Open
+    // a category from halfway down another one and it opens halfway down - and the first poster,
+    // the one the caller is about to ask for focus on, is not composed at all, which is the same
+    // silent no-op described on restoreListPosition. Back to the top before that request is made.
+    LaunchedEffect(openedCategoryTick) {
+        if (openedCategoryTick > 0) runCatching { gridState.scrollToItem(0) }
     }
     if (seriesItems.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
