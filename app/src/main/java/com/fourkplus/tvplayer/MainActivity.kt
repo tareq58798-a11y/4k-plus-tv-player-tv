@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -1692,6 +1693,9 @@ private fun MoviesScreen(
     var detailsReturnView by remember { mutableStateOf(MovieView.BROWSE) }
     var restoreFocusKey by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf(openCategory ?: "Continue watching") }
+    // Held here rather than inside the browser: opening a details page replaces the browser, and a
+    // scroll position remembered there would not survive the trip back. See LandscapeMovieBrowser.
+    val categoryListState = rememberLazyListState()
     var selectedMovie by remember { mutableStateOf<PlaylistItem?>(null) }
     var details by remember { mutableStateOf<MovieDetailsInfo?>(null) }
     var detailsLoading by remember { mutableStateOf(false) }
@@ -1856,6 +1860,7 @@ private fun MoviesScreen(
                     onBack = {
                         if (view == MovieView.CATEGORY) view = MovieView.BROWSE else onBack()
                     },
+                    categoryListState = categoryListState,
                     backdrop = backdrop,
                     loadBio = loadBio
                 )
@@ -2003,6 +2008,10 @@ private fun LandscapeMovieBrowser(
     onCategoriesReordered: () -> Unit,
     onBack: () -> Unit,
     progress: Map<String, Long> = emptyMap(),
+    // Owned by the caller, which outlives this browser. A details page replaces this whole
+    // composable, so a state remembered here would be thrown away and the column would come back
+    // scrolled to the top - reading as though the categories had jumped back to the first one.
+    categoryListState: LazyListState,
     // Drives the app-wide background from whichever poster the remote is on - see
     // [BackdropFollowsFocus]. Null leaves whatever artwork is already up alone.
     backdrop: BackdropState? = null,
@@ -2021,7 +2030,6 @@ private fun LandscapeMovieBrowser(
     val isTv = remember { context.isTvDevice() }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
     var reorderingCategory by remember { mutableStateOf<String?>(null) }
-    val categoryListState = rememberLazyListState()
     // Keeps the moving category in view as it's nudged past the edge of the visible list -
     // otherwise it scrolls out from under the user with no sign of where it went.
     LaunchedEffect(reorderingCategory, allCategories) {
