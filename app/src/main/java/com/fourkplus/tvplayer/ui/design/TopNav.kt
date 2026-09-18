@@ -108,6 +108,10 @@ fun AppTopBar(
     val ownTabFocus = remember { NavDestination.entries.associateWith { FocusRequester() } }
     val tabs = tabFocus ?: ownTabFocus
     val selectedTab = tabs.getValue(selected)
+    // While the remote is on search, language or settings, the section's own ring is put out. Two
+    // rings on screen at once is two answers to "where am I", and the one the viewer can move is
+    // the one that should be lit. It comes back the moment they step back onto the bar.
+    var globalControlFocused by remember { mutableStateOf(false) }
     LaunchedEffect(selected, keepFocus) {
         if (keepFocus) runCatching { selectedTab.requestFocus() }
     }
@@ -160,7 +164,7 @@ fun AppTopBar(
             NavDestination.entries.forEach { destination ->
                 NavTab(
                     label = labels[destination].orEmpty(),
-                    selected = destination == selected,
+                    selected = destination == selected && !globalControlFocused,
                     modifier = Modifier.focusRequester(tabs.getValue(destination)),
                     // Reaching a section is enough to open it. On a remote there is no hover, so
                     // requiring OK as well would mean two presses to do what the movement already
@@ -181,9 +185,16 @@ fun AppTopBar(
             horizontalArrangement = Arrangement.spacedBy(Dims.GapS),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (onSearch != null) GlobalIconButton(Icons.Default.Search, "Search", onSearch)
-            if (onLanguage != null) GlobalIconButton(Icons.Default.Language, "Language", onLanguage)
-            if (onSettings != null) GlobalIconButton(Icons.Default.Settings, "Settings", onSettings)
+            val reportFocus: (Boolean) -> Unit = { globalControlFocused = it }
+            if (onSearch != null) {
+                GlobalIconButton(Icons.Default.Search, "Search", onSearch, reportFocus)
+            }
+            if (onLanguage != null) {
+                GlobalIconButton(Icons.Default.Language, "Language", onLanguage, reportFocus)
+            }
+            if (onSettings != null) {
+                GlobalIconButton(Icons.Default.Settings, "Settings", onSettings, reportFocus)
+            }
             // Separates the controls you can act on from the clock, which you cannot.
             Box(
                 Modifier
@@ -248,7 +259,12 @@ private fun NavTab(
 }
 
 @Composable
-fun GlobalIconButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+fun GlobalIconButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit = {}
+) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         if (focused && !LocalReducedMotion.current) 1.1f else 1f,
@@ -266,7 +282,13 @@ fun GlobalIconButton(icon: ImageVector, description: String, onClick: () -> Unit
             .size(34.dp)
             .clip(RoundedCornerShape(18.dp))
             .border(BorderStroke(2.dp, border), RoundedCornerShape(18.dp))
-            .tvFocusable(onFocusChanged = { focused = it }, onClick = onClick),
+            .tvFocusable(
+                onFocusChanged = {
+                    focused = it
+                    onFocusChanged(it)
+                },
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, description, tint = Tone.TextPrimary, modifier = Modifier.size(20.dp))

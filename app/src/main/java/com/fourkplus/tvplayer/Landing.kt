@@ -319,7 +319,11 @@ internal fun LandingScaffold(
         }
         rows.forEachIndexed { rowIndex, row ->
             val showTile = tile != null && rowIndex == 0
-            val placeholders = (row.minSlots - row.entries.size).coerceAtLeast(0)
+            // The tile counts as one of the row's places, and it is the last of them. Empty slots
+            // fill the gap in front of it, so it holds the same position whatever the row contains
+            // and new cards appear ahead of it rather than shunting it along.
+            val placeholders =
+                (row.minSlots - row.entries.size - (if (showTile) 1 else 0)).coerceAtLeast(0)
             if (row.entries.isEmpty() && !showTile && placeholders == 0) return@forEachIndexed
             // Each band starts a little after the one above it, so the page assembles top to
             // bottom instead of appearing all at once.
@@ -368,9 +372,12 @@ internal fun LandingScaffold(
                                 onClick = { onSelect(entry) }
                             )
                         }
-                        // The way into the full catalogue comes before the empty places, never
-                        // after them: five unfilled slots would otherwise push it off the right
-                        // of the screen on a new install, hiding the one control that fills them.
+                        if (placeholders > 0) {
+                            items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
+                        }
+                        // Last, and counted among the row's places rather than added past them -
+                        // so it stays where it is instead of being pushed off the right of the
+                        // screen by the empty slots, which is what hid it on a new install.
                         if (showTile && tile != null) {
                             // The tile belongs to the page it is on, so Up from it goes to that
                             // page's tab. Without this it was the one focusable in the row with no
@@ -387,9 +394,6 @@ internal fun LandingScaffold(
                                         ?.let { Modifier.focusRequester(it) } ?: Modifier
                                 )
                             }
-                        }
-                        if (placeholders > 0) {
-                            items(placeholders, key = { "${row.id}_placeholder_$it" }) { EmptySlot() }
                         }
                     }
                     if (placeholders > 0 && row.hint != null) {
@@ -584,7 +588,7 @@ private fun CategoryTile(
                     Text(
                         tile.caption,
                         color = Tone.TextMuted,
-                        fontSize = 10.sp,
+                        fontSize = 9.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)

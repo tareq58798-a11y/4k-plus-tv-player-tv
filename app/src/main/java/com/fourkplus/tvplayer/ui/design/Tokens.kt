@@ -102,12 +102,14 @@ object Dims {
     val CardBleed: Dp = 8.dp
 
     /**
-     * Landscape artwork cards (16:9), sized so a row shows roughly five at once on a 1080p panel
-     * rather than three. A row you can see the shape of is worth more than a row of larger
-     * pictures you have to scroll to discover.
+     * Landscape artwork cards (16:9), sized so exactly five fit across a 1080p panel inside the
+     * safe margins - five cards plus their bleed and the gaps between them come to 886 of the 896
+     * available. Five is the number the rows are built around: it is how many places a row sets,
+     * and the category tile holds the last of them, so a card any wider would push that tile off
+     * the edge of the screen.
      */
-    val CardWidth: Dp = 172.dp
-    val CardWidthCompact: Dp = 144.dp
+    val CardWidth: Dp = 158.dp
+    val CardWidthCompact: Dp = 134.dp
 }
 
 /**

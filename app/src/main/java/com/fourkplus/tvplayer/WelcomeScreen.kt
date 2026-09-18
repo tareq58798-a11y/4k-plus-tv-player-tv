@@ -110,9 +110,11 @@ internal fun ActivationScreen(
                 Spacer(Modifier.weight(1f))
                 // Language is the only global control that means anything before a playlist
                 // exists; search, settings and the sections have nothing to act on yet.
-                GlobalIconButton(Icons.Default.Language, stringResource(R.string.cd_language)) {
-                    showLanguage = true
-                }
+                GlobalIconButton(
+                    icon = Icons.Default.Language,
+                    description = stringResource(R.string.cd_language),
+                    onClick = { showLanguage = true }
+                )
             }
             Column(verticalArrangement = Arrangement.spacedBy(Dims.GapXs)) {
                 Text(
