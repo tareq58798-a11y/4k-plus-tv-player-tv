@@ -58,7 +58,14 @@ class BackdropState {
         requestedModel = model
     }
 
-    /** Explicitly returns to the app's own default artwork (used when a session has no content yet). */
+    /**
+     * Asks for the app's own default artwork back, fading whatever is up back out to it.
+     *
+     * Home uses this: it is where the app starts over, so it shows the app's own picture rather
+     * than whichever title the viewer was last looking at somewhere else. A reset immediately
+     * followed by a real request is collapsed by the same debounce every other change goes through,
+     * so arriving somewhere that puts a picture up straight away never flashes the default first.
+     */
     fun reset() {
         requestedModel = null
     }
@@ -95,6 +102,9 @@ fun CinematicBackdrop(
     var settledModel by remember { mutableStateOf<String?>(null) }
     var incomingModel by remember { mutableStateOf<String?>(null) }
     val fade = remember { Animatable(0f) }
+    // Fades the settled layer back out when the app asks for its own artwork again, so returning to
+    // the default looks like every other change of background rather than a cut.
+    val settledFade = remember { Animatable(1f) }
 
     val context = LocalContext.current
     // Backdrops are decoded at up to 4K rather than at the size of the view they land in. Coil
@@ -123,9 +133,28 @@ fun CinematicBackdrop(
             .distinctUntilChanged()
             .debounce(Motion.BackdropDebounceMs)
             .collect { model ->
+                // A null model is a request for the app's own artwork back - see [BackdropState.
+                // reset]. The settled layer fades out and the default drawn underneath is what is
+                // left. Note this arrives through the same debounce as everything else, so a reset
+                // immediately followed by a real request never shows: the viewer goes straight to
+                // the new picture instead of flashing through the default on the way.
+                if (model == null) {
+                    if (settled != null) {
+                        incomingModel = null
+                        if (reducedMotion) {
+                            settledFade.snapTo(0f)
+                        } else {
+                            settledFade.animateTo(0f, Motion.backdrop())
+                        }
+                        settled = null
+                        settledModel = null
+                        settledFade.snapTo(1f)
+                    }
+                    return@collect
+                }
                 // Already showing it, or already loading it: starting the transition again would
                 // fade the picture out and back into itself for no reason.
-                if (model == null || model == settledModel || model == incomingModel) return@collect
+                if (model == settledModel || model == incomingModel) return@collect
                 fade.snapTo(0f)
                 incomingModel = model
             }
@@ -162,7 +191,12 @@ fun CinematicBackdrop(
             modifier = Modifier.fillMaxSize()
         )
         settled?.let { current ->
-            Image(current, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Image(
+                current,
+                null,
+                Modifier.fillMaxSize().alpha(settledFade.value),
+                contentScale = ContentScale.Crop
+            )
         }
         if (incomingModel != null) {
             Image(

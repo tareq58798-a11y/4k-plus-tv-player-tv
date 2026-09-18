@@ -141,6 +141,14 @@ internal data class LandingRow(
  * carry. Series never arrive with a plot or a year at list level, and many panels omit them for
  * films too, so without this the information block is a title and a category and nothing else.
  */
+/** The four keys that count as the viewer moving the highlight themselves. */
+private val directionKeys = setOf(
+    Key.DirectionUp,
+    Key.DirectionDown,
+    Key.DirectionLeft,
+    Key.DirectionRight
+)
+
 internal data class ItemBio(
     val description: String? = null,
     val year: String? = null,
@@ -335,9 +343,23 @@ internal fun LandingScaffold(
         }
     }
 
+    // Home shows the app's own artwork until the viewer actually moves onto something. A card is
+    // focused for them as the page opens, and letting that stand in for a choice would replace the
+    // background before they had touched the remote. Every other section starts true: arriving
+    // there is itself the choice to look at that section's titles.
+    var viewerHasMoved by remember(destination) {
+        mutableStateOf(destination != NavDestination.HOME)
+    }
+
     Column(
         Modifier
             .fillMaxSize()
+            // Preview, and never consumed: this only needs to know that a direction key was
+            // pressed, and it has to know before the focus move it causes reports back.
+            .onPreviewKeyEvent { event ->
+                if (event.isInitialKeyDown && event.key in directionKeys) viewerHasMoved = true
+                false
+            }
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Dims.GapM)
     ) {
@@ -426,7 +448,7 @@ internal fun LandingScaffold(
                                     // only otherwise the poster. Asking for the better picture up
                                     // front is what makes this a single transition rather than a
                                     // poster that is replaced a moment later.
-                                    if (entry.item.kind != MediaKind.LIVE) {
+                                    if (viewerHasMoved && entry.item.kind != MediaKind.LIVE) {
                                         backdrop.show(
                                             entry.key,
                                             bios[entry.key]?.backdropUrl?.takeIf { it.isNotBlank() }

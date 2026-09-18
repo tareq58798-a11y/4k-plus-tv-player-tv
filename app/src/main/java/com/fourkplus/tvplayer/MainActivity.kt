@@ -399,6 +399,14 @@ private fun App() {
         screen = Screen.HOME
     }
 
+    // Home is where the app starts over, so it shows the app's own artwork rather than whichever
+    // title the viewer was last looking at in another section. Moving onto a film or a series from
+    // here puts that title's picture up again in the ordinary way; the reset is collapsed into that
+    // request when one follows straight away, so arriving on a card never flashes the default.
+    LaunchedEffect(screen) {
+        if (screen == Screen.HOME) backdrop.reset()
+    }
+
     // The plot, year, rating and genre for whichever title the viewer has settled on. Catalogue
     // listings carry almost none of this - series never carry any of it - so the landing pages ask
     // for it the same way the details pages do, once per title and only after focus has settled.
