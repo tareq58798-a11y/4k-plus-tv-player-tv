@@ -1050,11 +1050,83 @@ private fun SeriesDetails(
                     }
                 }
             }
-            // Title/pills/description/cast/director are fixed (no scroll) so they stay on screen;
-            // only the episode list below scrolls, in its own LazyColumn, as the user D-pads
-            // through episodes - it used to all live in one shared scrolling column. Kept
-            // deliberately compact (small fonts, capped description/credit lines) so this header
-            // eats as little vertical space as possible and the episode list gets the rest.
+            // A television keeps title, pills, plot and credits fixed above an episode list that
+            // scrolls by itself: a remote walks down into that list and the header stays put, which
+            // is why the header is written so compactly - small fonts, two lines of plot - to leave
+            // the list as much of the screen as it can.
+            //
+            // A phone cannot do that. The same fixed header left a single episode row along the
+            // bottom edge and nothing to drag, so the rest of a series was unreachable. Here the
+            // whole right-hand side is one list instead, and a finger scrolls all of it, plot and
+            // credits included - which also means the plot need no longer be cut to two lines.
+            //
+            // The title goes with it: the page's own header carries it a few millimetres above,
+            // and saying it twice only costs the episodes another line.
+            if (BuildConfig.TOUCH_BUILD) {
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    item {
+                        FlowRowPills {
+                            details?.rating?.takeIf { it != "0" && it != "0.0" }?.let { SeriesPill("★ $it/10", Orange) }
+                            details?.year?.takeIf(String::isNotBlank)?.let { SeriesPill(it, Cyan) }
+                            details?.genre?.takeIf(String::isNotBlank)?.let { SeriesPill(it, BrandBlue) }
+                            SeriesPill(series.group, Cyan)
+                        }
+                    }
+                    if (loading) {
+                        item {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.loading_seasons_episodes), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        item {
+                            Text(
+                                details?.description?.takeIf(String::isNotBlank) ?: stringResource(R.string.no_series_details),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+                        details?.cast?.takeIf(String::isNotBlank)?.let { cast ->
+                            item { SeriesCredit(Icons.Default.Groups, stringResource(R.string.cast_label), cast) }
+                        }
+                        details?.director?.takeIf(String::isNotBlank)?.let { director ->
+                            item { SeriesCredit(Icons.Default.MovieCreation, stringResource(R.string.director_label), director) }
+                        }
+                        if (seasons.isNotEmpty()) {
+                            item {
+                                Row(
+                                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    seasons.forEach { season ->
+                                        FilterChip(
+                                            selected = selectedSeason == season,
+                                            onClick = { onSeason(season) },
+                                            label = { Text(stringResource(R.string.season_number, season), fontSize = 12.sp) }
+                                        )
+                                    }
+                                }
+                            }
+                            itemsIndexed(episodes, key = { _, episode -> episode.id }) { _, episode ->
+                                EpisodeRow(
+                                    episode = episode,
+                                    progress = progress[episode.id] ?: 0L,
+                                    watched = episode.id in watchedEpisodeIds,
+                                    focusRequester = null,
+                                    onClick = { onEpisode(episode) }
+                                )
+                            }
+                        } else if (error != null) {
+                            item { Text(stringResource(R.string.episodes_unavailable), color = MaterialTheme.colorScheme.error) }
+                        } else {
+                            item { Text(stringResource(R.string.no_episodes_supplied), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+            } else {
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(displayTitle, fontSize = 18.sp, fontWeight = FontWeight.Black, lineHeight = 21.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (!details?.originalTitle.isNullOrBlank() && details?.originalTitle != series.name) {
@@ -1110,6 +1182,7 @@ private fun SeriesDetails(
                         Text(stringResource(R.string.no_episodes_supplied), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+            }
             }
         }
         return
