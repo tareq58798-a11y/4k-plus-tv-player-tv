@@ -25,6 +25,7 @@ import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
+import { loadM3u } from './shared/m3u';
 import {
   isCategoryLocked, isChannelLocked, isUnlocked, markUnlocked, parental, relock,
   removePin, setPin, toggleCategoryLock,
@@ -38,6 +39,8 @@ let player: MediaPlayer;
 let backdrop: Backdrop;
 
 const SAVED_LOGIN = 'login';
+/** An M3U playlist has no account, so it is remembered by address instead of by login. */
+const SAVED_M3U = 'm3u';
 
 let login: ProviderLogin | null = null;
 let catalogue: LoadedPlaylist | null = null;
@@ -134,9 +137,17 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
         const result = await activate(mac, key);
         if (stopped) return;
         if (result.kind === 'm3u') {
-          // The M3U path needs its own loader, which is not built yet. Better to say so than to
-          // hand the Xtream client an address it cannot use.
-          status.textContent = t('playlist_could_not_be_loaded');
+          // An M3U has no account behind it, so there is nothing to sign in to and nothing to
+          // refresh with - it is fetched once, here, and becomes the catalogue.
+          status.textContent = t('loading_your_playlist');
+          try {
+            catalogue = await loadM3u(result.name, result.url);
+            login = null;
+            writeJson(SAVED_M3U, { name: result.name, url: result.url });
+            showSection('home');
+          } catch (error) {
+            status.textContent = error instanceof Error ? error.message : t('playlist_could_not_be_loaded');
+          }
           return;
         }
         onActivated(result.login);
@@ -430,6 +441,9 @@ function settingsScreen(): void {
       // opened on somebody else's playlist.
       if (login) void clearCatalogue(cacheKey(login));
       removeStored(SAVED_LOGIN);
+      // The M3U goes too. Leaving it would have the next start quietly reload the playlist the
+      // viewer has just removed.
+      removeStored(SAVED_M3U);
       login = null;
       catalogue = null;
       loginScreen();
@@ -778,6 +792,24 @@ function boot(): void {
   }
 
   const saved = readJson<ProviderLogin | null>(SAVED_LOGIN, null);
+  const savedM3u = readJson<{ name: string; url: string } | null>(SAVED_M3U, null);
+  if (!saved && savedM3u) {
+    // An M3U has no login to replay, so it is simply fetched again. There is no cache behind it
+    // either: the whole playlist is one download, and a stale copy is worth less than the wait.
+    clear();
+    const status = el('div', { class: 'status' }, t('loading_your_playlist'));
+    app.append(status);
+    void loadM3u(savedM3u.name, savedM3u.url).then(
+      (loaded) => {
+        catalogue = loaded;
+        showSection('home');
+      },
+      (error: unknown) => {
+        status.textContent = error instanceof Error ? error.message : t('playlist_could_not_be_loaded');
+      },
+    );
+    return;
+  }
   if (!saved) {
     loginScreen();
     return;
