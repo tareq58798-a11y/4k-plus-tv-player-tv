@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Samsung widget manifest. Copied next to the built files to make a .wgt.
+
+  Two things here have to be right before a build will install on a real set:
+
+  * The ten-character package prefix on tizen:application is issued by Samsung when the app is
+    registered in Seller Office. 4KPlusTVXX below is a placeholder; a set will install a widget
+    signed with a matching certificate and refuse anything else, so this and the author
+    certificate have to agree.
+  * required_version is the oldest Tizen the app claims to run on. 5.5 is the 2020 sets, which is
+    the floor we chose; declaring lower would let the app install on a set whose engine cannot
+    parse what Vite emits for this target.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://fourkplus.com/tvplayer"
+        version="1.0.0"
+        viewmodes="maximized">
+
+  <tizen:application id="4KPlusTVXX.FourKPlusTVPlayer"
+                     package="4KPlusTVXX"
+                     required_version="5.5"/>
+
+  <tizen:profile name="tv-samsung"/>
+
+  <name>4K Plus TV Player</name>
+  <description>Live TV, films and series from your own provider.</description>
+  <author email="support@fourkplus.com">4K Plus TV</author>
+
+  <content src="index.html"/>
+  <icon src="icon.png"/>
+
+  <!-- The network, and nothing else. An IPTV player has no business asking for more, and every
+       extra privilege is another thing Samsung's reviewers will want justified. -->
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
+
+  <!-- Provider panels are on arbitrary hosts the viewer supplies, so the app cannot enumerate
+       them ahead of time. -->
+  <access origin="*" subdomains="true"/>
+  <tizen:allow-navigation>*</tizen:allow-navigation>
+
+  <!-- Landscape only, like the television app, and no background running: when the viewer leaves,
+       playback should stop rather than keep a stream open against their account. -->
+  <tizen:setting screen-orientation="landscape"
+                 context-menu="disable"
+                 background-support="disable"
+                 encryption="disable"
+                 install-location="auto"
+                 hwkey-event="enable"/>
+</widget>

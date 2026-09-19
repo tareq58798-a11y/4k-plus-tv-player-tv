@@ -1,0 +1,21 @@
+{
+  "name": "fourkplus-tv-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "4K Plus TV Player — web core. One codebase for Samsung Tizen, LG webOS, Hisense VIDAA and Windows.",
+  "type": "module",
+  "scripts": {
+    "shared": "node scripts/extract-strings.mjs && node scripts/extract-tokens.mjs",
+    "dev": "npm run shared && vite",
+    "build": "npm run shared && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "npm run shared && tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  },
+  "dependencies": {
+    "hls.js": "^1.5.20"
+  }
+}

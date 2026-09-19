@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>4K Plus TV Player</title>
+    <!--
+      A Tizen app is a fixed 1920x1080 canvas, not a responsive page: the set scales the whole
+      thing to its own panel, so a 4K television gets the same layout rendered larger rather than
+      a different one. user-scalable=no keeps a stray remote gesture from zooming it.
+    -->
+    <meta name="viewport" content="width=1920, initial-scale=1, user-scalable=no" />
+    <link rel="stylesheet" href="./src/ui/app.css" />
+  </head>
+  <body>
+    <!--
+      AVPlay draws video on a hardware plane behind the page. This is the hole it shows through:
+      the element itself is only a position, and on Samsung nothing is ever rendered into it.
+      In a browser the <video> below sits in the same place and does the work.
+    -->
+    <div id="video-plane"></div>
+    <video id="video" playsinline></video>
+    <div id="app"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

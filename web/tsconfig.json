@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    /* 2020 Samsung sets run Tizen 5.5, whose engine is Chromium 69 - ES2017 is comfortably
+       within it, and anything newer risks syntax the set cannot parse at all. Vite compiles
+       to this target, so the source can stay modern. */
+    "target": "ES2017",
+    "lib": ["ES2019", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": false,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src", "types"]
+}

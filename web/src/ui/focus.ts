@@ -1,0 +1,192 @@
+/**
+ * The D-pad. This is the part of the Android app that transfers completely, because it is
+ * behaviour rather than code, and it is the part that took longest to get right.
+ *
+ * A browser has no spatial navigation, so it is built here: candidates are chosen by where they
+ * are on screen, not by their order in the document. That ordering is what lets a grid behave like
+ * a grid - pressing Down from the third poster in a row reaches the third poster in the next row,
+ * which tab order alone would never do.
+ *
+ * Rules carried over from the television app:
+ *
+ *  - **Right-to-left mirrors.** In Arabic the whole layout flips, so Left must mean "towards the
+ *    start of the row", which is the right-hand side of the screen. Hard-coding the direction was
+ *    the bug that stopped Arabic moving between posters at all.
+ *  - **A row remembers where you were.** Leaving a row and coming back puts the highlight where it
+ *    was, not at the beginning. Without it, stepping up to the tabs and back down loses your place
+ *    in a list of four hundred channels.
+ *  - **Explicit overrides beat geometry.** Some moves are a decision, not a direction: Up from
+ *    anywhere in a page goes to that page's tab, whatever happens to be above. Those are declared
+ *    on the element and checked first.
+ */
+import type { RemoteKey } from '../platform/keys';
+
+export type Direction = 'up' | 'down' | 'left' | 'right';
+
+const FOCUSABLE = '[data-focus]';
+
+/** Where the highlight was when each group was last left, so returning restores it. */
+const lastInGroup = new Map<string, string>();
+
+let rtl = false;
+
+export function setFocusDirection(isRtl: boolean): void {
+  rtl = isRtl;
+}
+
+export function focused(): HTMLElement | null {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.matches(FOCUSABLE) ? active : null;
+}
+
+function centre(element: Element): { x: number; y: number } {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+function visible(element: Element): boolean {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  const style = getComputedStyle(element);
+  return style.visibility !== 'hidden' && style.display !== 'none';
+}
+
+/**
+ * The nearest focusable element in [direction].
+ *
+ * Distance is weighted: drift across the axis of travel counts four times as much as distance
+ * along it. Pressing Down should reach the item below rather than one much further sideways that
+ * happens to be marginally closer in a straight line, and an unweighted nearest-neighbour search
+ * gets that wrong constantly in a grid.
+ */
+function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
+  const origin = centre(from);
+  let best: HTMLElement | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const candidate of document.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+    if (candidate === from || candidate.hasAttribute('data-focus-skip') || !visible(candidate)) continue;
+    const point = centre(candidate);
+    const dx = point.x - origin.x;
+    const dy = point.y - origin.y;
+
+    let along: number;
+    let across: number;
+    if (direction === 'up') {
+      if (dy >= -1) continue;
+      along = -dy;
+      across = Math.abs(dx);
+    } else if (direction === 'down') {
+      if (dy <= 1) continue;
+      along = dy;
+      across = Math.abs(dx);
+    } else if (direction === 'left') {
+      if (dx >= -1) continue;
+      along = -dx;
+      across = Math.abs(dy);
+    } else {
+      if (dx <= 1) continue;
+      along = dx;
+      across = Math.abs(dy);
+    }
+    const score = along + across * 4;
+    if (score < bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/** `data-focus-up="#channels"` and friends: a named destination that overrides geometry. */
+function override(from: HTMLElement, direction: Direction): HTMLElement | null {
+  const selector = from.getAttribute(`data-focus-${direction}`);
+  if (!selector) return null;
+  // "none" is a deliberate wall - the Android app uses it to stop Down from the tab strip
+  // falling through to the play button when it should land on the first box of the page.
+  if (selector === 'none') return from;
+  const target = document.querySelector<HTMLElement>(selector);
+  return target && visible(target) ? target : null;
+}
+
+/** Entering a group lands on whichever of its children was last focused. */
+function resolveGroupEntry(target: HTMLElement): HTMLElement {
+  const group = target.closest<HTMLElement>('[data-focus-group]');
+  if (!group) return target;
+  const name = group.getAttribute('data-focus-group');
+  if (!name) return target;
+  const previous = lastInGroup.get(name);
+  if (!previous) return target;
+  const remembered = group.querySelector<HTMLElement>(`[data-focus-id="${CSS.escape(previous)}"]`);
+  // Only when it is a sibling of where we are heading, not a jump into an unrelated row.
+  return remembered && visible(remembered) ? remembered : target;
+}
+
+function remember(element: HTMLElement): void {
+  const group = element.closest<HTMLElement>('[data-focus-group]');
+  const name = group?.getAttribute('data-focus-group');
+  const id = element.getAttribute('data-focus-id');
+  if (name && id) lastInGroup.set(name, id);
+}
+
+export function focus(element: HTMLElement | null): void {
+  if (!element) return;
+  remember(element);
+  element.focus({ preventScroll: true });
+  element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+}
+
+/** Clears a group's memory, for when its contents have been replaced entirely. */
+export function forgetGroup(name: string): void {
+  lastInGroup.delete(name);
+}
+
+export function move(direction: Direction): boolean {
+  const from = focused();
+  if (!from) {
+    const first = document.querySelector<HTMLElement>(FOCUSABLE);
+    focus(first);
+    return Boolean(first);
+  }
+  // In Arabic the layout mirrors, so Left means "towards the start of the row", which is on the
+  // right of the screen. Mirroring here rather than at each call site is what keeps every grid,
+  // row and list correct in both directions at once.
+  const effective: Direction =
+    rtl && direction === 'left' ? 'right' : rtl && direction === 'right' ? 'left' : direction;
+
+  const declared = override(from, direction);
+  if (declared === from) return true;
+  const target = declared ?? nearest(from, effective);
+  if (!target) return false;
+  focus(resolveGroupEntry(target));
+  return true;
+}
+
+export type KeyHandler = (key: RemoteKey) => boolean;
+
+const handlers: KeyHandler[] = [];
+
+/**
+ * Screens push a handler and pop it when they close. The newest gets first refusal, which is what
+ * makes Back close a dialog rather than leaving the page underneath it.
+ */
+export function pushKeyHandler(handler: KeyHandler): () => void {
+  handlers.push(handler);
+  return () => {
+    const index = handlers.indexOf(handler);
+    if (index >= 0) handlers.splice(index, 1);
+  };
+}
+
+export function handleKey(key: RemoteKey): void {
+  for (let index = handlers.length - 1; index >= 0; index--) {
+    if (handlers[index]!(key)) return;
+  }
+  if (key === 'up' || key === 'down' || key === 'left' || key === 'right') {
+    move(key);
+    return;
+  }
+  if (key === 'enter') {
+    focused()?.click();
+  }
+}

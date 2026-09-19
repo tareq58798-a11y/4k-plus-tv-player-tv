@@ -1,0 +1,6 @@
+﻿node_modules/
+dist/
+# Generated from the Android resources by `npm run shared` - never edited by hand, never committed.
+src/shared/strings.generated.ts
+src/shared/tokens.generated.ts
+src/shared/tokens.generated.css

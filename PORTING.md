@@ -130,11 +130,22 @@ The order below is chosen so that each step unblocks or reuses the last.
 | # | Platform | Codebase | State |
 |---|---|---|---|
 | 1 | Android phones | A | In progress |
-| 2 | LG webOS | B | Not started |
-| 3 | Samsung Tizen | B | Not started |
+| 2 | LG webOS | B | Not started — key map already carried in `web/src/platform/keys.ts` |
+| 3 | Samsung Tizen | B | **Started** — see `web/`. Shared layer, provider client, D-pad engine and a vertical slice run; nothing on hardware yet |
 | 4 | Hisense VIDAA | B | Not started |
 | 5 | Windows | B | Not started |
 | 6 | iOS | C | Not started |
+
+Tizen was taken before webOS at the owner's request. Nothing is lost by the swap: the work is
+the shared core either way, and `keys.ts` already carries LG's codes.
+
+Decisions taken for codebase B:
+
+- Lives in `web/`, in this repo, so the strings and tokens can be read out of the Android
+  sources at build time instead of copied. Gradle does not know the folder exists.
+- Floor is **Tizen 5.5**, the 2020 sets. Older sets would mean an older engine and weaker CPUs.
+- First milestone is a **vertical slice** — sign in, browse, play — so the provider client, the
+  focus engine and AVPlay are proven together before the remaining screens are built on them.
 
 ## Carried over from the TV app
 

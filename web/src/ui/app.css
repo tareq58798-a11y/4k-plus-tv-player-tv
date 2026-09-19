@@ -1,0 +1,304 @@
+/*
+ * Layout for a 1920x1080 canvas at a viewing distance of about three metres. Every colour, gap,
+ * radius and timing below is a variable generated from the Android app's Tokens.kt - see
+ * tokens.generated.css. Nothing here invents a value of its own.
+ */
+@import './../shared/tokens.generated.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  font-family: 'Samsung One', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  color: var(--tone-text-primary);
+  /* Transparent, not coloured. On Samsung the video plane is *behind* the page, so an opaque
+     background plays the stream perfectly and shows the viewer nothing at all. */
+  background: transparent;
+}
+
+body {
+  background-image: linear-gradient(180deg, var(--tone-page-top), var(--tone-page-bottom));
+}
+
+body.playing {
+  background-image: none;
+  background: transparent;
+}
+
+#video-plane {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#video {
+  display: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  object-fit: contain;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: var(--dim-safe-vertical) var(--dim-safe-horizontal);
+}
+
+body.playing #app {
+  /* The controls layer stays, the page behind it does not. */
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ focus */
+
+[data-focus] {
+  outline: none;
+  transition:
+    transform var(--motion-poster-scale-ms) var(--motion-ease-out),
+    box-shadow var(--motion-focus-ms) var(--motion-ease-out),
+    background-color var(--motion-focus-ms) var(--motion-ease-out);
+}
+
+[data-focus]:focus {
+  /* The ring, matching the television app: three device pixels of accent, drawn outside the
+     element so it never crops the artwork it surrounds. */
+  box-shadow: 0 0 0 3px var(--tone-accent);
+}
+
+/* ------------------------------------------------------------------ chrome */
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--dim-gap-xl);
+  height: 64px;
+  margin-bottom: var(--dim-gap-l);
+}
+
+.brand {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.brand span {
+  color: var(--tone-accent);
+}
+
+.tab {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--tone-text-secondary);
+  padding: 8px 20px;
+  border-radius: var(--dim-radius-pill);
+  cursor: pointer;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--tone-text-primary);
+  background: var(--tone-glass);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.clock {
+  font-size: 19px;
+  color: var(--tone-text-secondary);
+}
+
+/* ------------------------------------------------------------------ login */
+
+.panel {
+  width: 720px;
+  margin: 80px auto 0;
+  padding: var(--dim-gap-xl);
+  border-radius: var(--dim-radius-panel);
+  background: var(--tone-glass);
+  border: 1px solid var(--tone-glass-border);
+}
+
+.panel h1 {
+  margin: 0 0 var(--dim-gap-s);
+  font-size: 44px;
+  font-weight: 800;
+}
+
+.panel p {
+  margin: 0 0 var(--dim-gap-l);
+  color: var(--tone-text-secondary);
+  font-size: 19px;
+}
+
+.field {
+  display: block;
+  margin-bottom: var(--dim-gap-m);
+}
+
+.field span {
+  display: block;
+  margin-bottom: var(--dim-gap-xs);
+  font-size: 16px;
+  color: var(--tone-text-muted);
+}
+
+.field input {
+  width: 100%;
+  height: 56px;
+  padding: 0 var(--dim-gap-m);
+  font-size: 20px;
+  color: var(--tone-text-primary);
+  background: var(--tone-glass-strong);
+  border: 1px solid var(--tone-glass-border);
+  border-radius: var(--dim-radius-card);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  padding: 0 var(--dim-gap-xl);
+  font-size: 20px;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--dim-radius-pill);
+  color: #04131f;
+  background: var(--tone-action-gradient);
+  cursor: pointer;
+}
+
+.button.ghost {
+  color: var(--tone-text-primary);
+  background: var(--tone-glass-strong);
+}
+
+.message {
+  margin-top: var(--dim-gap-m);
+  font-size: 18px;
+  color: var(--tone-star);
+  min-height: 24px;
+}
+
+/* ------------------------------------------------------------------- rows */
+
+.section-title {
+  margin: 0 0 var(--dim-gap-s);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.row {
+  display: flex;
+  gap: var(--dim-gap-s);
+  overflow: hidden;
+  padding: var(--dim-card-bleed) 0;
+}
+
+.card {
+  flex: 0 0 var(--dim-card-width);
+  width: var(--dim-card-width);
+  border-radius: var(--dim-radius-card);
+  background: var(--tone-glass);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.card:focus {
+  transform: scale(var(--motion-poster-focus-scale));
+}
+
+.card .art {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--tone-glass-strong);
+  display: block;
+}
+
+.card .label {
+  padding: 6px 8px 8px;
+  font-size: 14px;
+  line-height: 1.25;
+  height: 46px;
+  overflow: hidden;
+  color: var(--tone-text-secondary);
+}
+
+.card:focus .label {
+  color: var(--tone-text-primary);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(5, var(--dim-card-width));
+  gap: var(--dim-gap-m) var(--dim-gap-s);
+  align-content: start;
+  height: 800px;
+  overflow-y: auto;
+  padding: var(--dim-card-bleed);
+}
+
+.sidebar {
+  width: 360px;
+  height: 820px;
+  overflow-y: auto;
+  padding-right: var(--dim-gap-s);
+}
+
+.category {
+  padding: 12px var(--dim-gap-m);
+  margin-bottom: 6px;
+  border-radius: var(--dim-radius-card);
+  font-size: 18px;
+  color: var(--tone-text-secondary);
+  cursor: pointer;
+}
+
+.category[aria-selected='true'] {
+  color: var(--tone-text-primary);
+  background: var(--tone-glass-strong);
+}
+
+.browser {
+  display: flex;
+  gap: var(--dim-gap-l);
+}
+
+/* ---------------------------------------------------------------- overlay */
+
+.status {
+  font-size: 20px;
+  color: var(--tone-text-secondary);
+}
+
+.player-bar {
+  position: fixed;
+  left: var(--dim-safe-horizontal);
+  right: var(--dim-safe-horizontal);
+  bottom: 48px;
+  padding: var(--dim-gap-m) var(--dim-gap-l);
+  border-radius: var(--dim-radius-panel);
+  background: rgba(3, 7, 17, 0.72);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.player-bar .hint {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--tone-text-muted);
+}
