@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer.ui.design
+package com.fourkplus.tvplayer.ui.design
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Image
@@ -14,7 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.fourkplus.tvplayer.BuildConfig
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -184,10 +186,19 @@ fun CinematicBackdrop(
 
     Box(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Tone.PageTop, Tone.PageBottom)))) {
         // Always present underneath, so the screen is never empty even before any artwork loads.
+        //
+        // The artwork is 16:9, which is a television exactly and nothing like a phone held
+        // sideways - a 20:9 handset is far wider for its height, so filling the width leaves the
+        // picture taller than the screen and Crop takes the difference off both ends. Centred,
+        // half of that came off the top, which is where the astronaut's helmet is. Aligning to the
+        // top instead spends the whole overlap at the bottom, on empty ground, and brings the head
+        // back down into view. The television is 16:9 itself, has no overlap to place, and keeps
+        // the centring it has always had.
         Image(
             painter = painterResource(R.drawable.bg_app_default),
             contentDescription = null,
             contentScale = ContentScale.Crop,
+            alignment = if (BuildConfig.TOUCH_BUILD) Alignment.TopCenter else Alignment.Center,
             modifier = Modifier.fillMaxSize()
         )
         settled?.let { current ->
