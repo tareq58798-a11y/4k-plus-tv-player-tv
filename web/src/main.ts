@@ -17,6 +17,7 @@ import { focus, handleKey, pushKeyHandler, setFocusDirection } from './ui/focus'
 import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
 import { renderNav, trackNavHighlight, type Section } from './ui/nav';
+import { renderSeries } from './ui/series';
 
 const platform = detectPlatform();
 const app = document.getElementById('app') as HTMLElement;
@@ -291,10 +292,50 @@ function browseScreen(current: Section, favoritesOnly = false): void {
 
 /* ------------------------------------------------------------------- play */
 
+/**
+ * A series is opened, not played: its `series://` url is an identifier, not a stream. The episode
+ * list is fetched here rather than on the landing page because it is several hundred kilobytes
+ * for a long-running show, and nobody wants that for every series they scroll past.
+ */
+async function seriesScreen(item: PlaylistItem): Promise<void> {
+  if (!login || !item.channelId) return;
+  clear();
+  document.body.classList.remove('playing');
+  const status = el('div', { class: 'status' }, t('loading_seasons_episodes'));
+  app.append(status);
+  try {
+    const details = await seriesDetails(login, item.channelId, item.logoUrl);
+    clear();
+    renderSeries(app, {
+      series: item,
+      details,
+      backdrop,
+      onEpisode: (episode) =>
+        playScreen({
+          ...item,
+          // The episode is what plays, and what a resume point belongs to - a series has no
+          // single position of its own.
+          name: `${item.name} • ${episode.title}`,
+          streamUrl: episode.streamUrl,
+          channelId: episode.id,
+          kind: 'movie',
+        }),
+      onBack: () => showSection(section),
+    });
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : t('episodes_unavailable');
+    const release = pushKeyHandler((key: RemoteKey) => {
+      if (key !== 'back') return false;
+      release();
+      showSection(section);
+      return true;
+    });
+  }
+}
+
 function playScreen(item: PlaylistItem): void {
   if (item.kind === 'series') {
-    // A series is opened, not played - the episode list is the next screen, and it is not built
-    // yet. Saying so is better than starting a stream from a `series://` url that cannot play.
+    void seriesScreen(item);
     return;
   }
   clear();
@@ -360,6 +401,16 @@ function boot(): void {
         showSection('home');
       },
       section: (next: Section) => showSection(next),
+      series(item: PlaylistItem, details: Parameters<typeof renderSeries>[1]['details']) {
+        clear();
+        renderSeries(app, {
+          series: item,
+          details,
+          backdrop,
+          onEpisode: () => undefined,
+          onBack: () => showSection('series'),
+        });
+      },
     };
   }
 

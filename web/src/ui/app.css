@@ -469,3 +469,159 @@ body.playing .backdrop-scrim {
   font-weight: 800;
   margin-bottom: var(--dim-gap-s);
 }
+
+/* ----------------------------------------------------------------- series */
+
+.series {
+  display: flex;
+  gap: var(--dim-gap-l);
+  height: 940px;
+}
+
+.series-poster {
+  flex: 0 0 300px;
+  width: 300px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--dim-radius-panel);
+  overflow: hidden;
+  background: var(--tone-glass-strong);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+}
+
+.series-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The header stays put and the list below it scrolls - a remote walks down into the episodes and
+   the title should not walk away with it. Kept tight on purpose so the list gets the rest. */
+.series-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.series-head h1 {
+  margin: 0;
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.series-alt {
+  margin-top: 4px;
+  font-size: 22px;
+  color: var(--tone-text-muted);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dim-gap-s);
+  margin: var(--dim-gap-s) 0;
+}
+
+.pill {
+  padding: 6px 22px;
+  border-radius: var(--dim-radius-pill);
+  border: 1px solid var(--tone-accent);
+  background: rgba(34, 211, 238, 0.12);
+  font-size: 24px;
+}
+
+.pill.star {
+  border-color: var(--tone-star);
+  background: rgba(255, 181, 71, 0.14);
+  color: var(--tone-star);
+}
+
+.series-plot {
+  margin: 0 0 var(--dim-gap-s);
+  font-size: 24px;
+  line-height: 1.35;
+  color: var(--tone-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.credit {
+  font-size: 22px;
+  color: var(--tone-text-secondary);
+  margin-bottom: 4px;
+}
+
+.credit span {
+  color: var(--tone-accent);
+  font-weight: 700;
+  margin-right: var(--dim-gap-s);
+}
+
+.chips {
+  display: flex;
+  gap: var(--dim-gap-s);
+  margin: var(--dim-gap-s) 0;
+  overflow-x: auto;
+}
+
+.chip {
+  padding: 10px 28px;
+  border-radius: var(--dim-radius-pill);
+  background: var(--tone-glass);
+  font-size: 24px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip[aria-selected='true'] {
+  background: var(--tone-category-gradient);
+  color: #04131f;
+  font-weight: 700;
+}
+
+.episodes {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: var(--dim-gap-s);
+}
+
+.episode {
+  display: flex;
+  align-items: center;
+  gap: var(--dim-gap-m);
+  padding: var(--dim-gap-s);
+  margin-bottom: var(--dim-gap-s);
+  border-radius: var(--dim-radius-card);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.episode-thumb {
+  flex: 0 0 200px;
+  height: 112px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.episode-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.episode-title {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.episode-meta {
+  margin-top: 4px;
+  font-size: 20px;
+  color: var(--tone-text-muted);
+}
