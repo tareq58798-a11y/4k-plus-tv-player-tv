@@ -507,24 +507,30 @@ private fun App() {
                 // a playlist happens on the same picture the welcome screen shows rather than on a
                 // separate plate drawn over it.
                 Screen.LOADING -> Box(Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        CircularProgressIndicator(color = Cyan)
-                        Text(stringResource(R.string.loading_your_playlist), fontWeight = FontWeight.SemiBold)
-                        // Distinguishes "reading the saved copy" (should be quick) from "this
-                        // restart has no saved copy and is genuinely re-fetching over the
-                        // network" (only as fast as the provider responds) - both show the same
-                        // spinner otherwise, so a slow startup is otherwise impossible to tell
-                        // apart from a healthy cache read just taking its normal course.
-                        if (playlistUiState.bootstrappingFromNetwork) {
-                            Text(
-                                stringResource(R.string.loading_playlist_from_network),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    // The phone opens straight onto the app's own artwork and waits there, with no
+                    // spinner and no caption written over it. A television is often reading a large
+                    // playlist over a slow box and sitting on a still picture with nothing to say
+                    // reads as a hang, so it keeps both.
+                    if (!BuildConfig.TOUCH_BUILD) {
+                        Column(
+                            Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            CircularProgressIndicator(color = Cyan)
+                            Text(stringResource(R.string.loading_your_playlist), fontWeight = FontWeight.SemiBold)
+                            // Distinguishes "reading the saved copy" (should be quick) from "this
+                            // restart has no saved copy and is genuinely re-fetching over the
+                            // network" (only as fast as the provider responds) - both show the same
+                            // spinner otherwise, so a slow startup is otherwise impossible to tell
+                            // apart from a healthy cache read just taking its normal course.
+                            if (playlistUiState.bootstrappingFromNetwork) {
+                                Text(
+                                    stringResource(R.string.loading_playlist_from_network),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
