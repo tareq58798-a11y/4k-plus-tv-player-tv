@@ -69,8 +69,17 @@ app.post('/admin/devices/:mac/assign', requireAdmin, async (req, res) => {
   res.redirect('/admin');
 });
 
-app.post('/admin/devices/:mac/unassign', requireAdmin, async (req, res) => {
-  await db.unassignDevice(normalizeMac(req.params.mac));
+/**
+ * Clears the playlist assigned to a device, leaving the device in the list as pending.
+ *
+ * Validated and POST-only for the same reason the delete route below is: this throws away stored
+ * credentials, and anything that can be triggered by following a link can be triggered by
+ * something that follows links on its own.
+ */
+app.post('/admin/devices/:mac/delete-profile', requireAdmin, async (req, res) => {
+  const mac = normalizeMac(req.params.mac);
+  if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
+  await db.deleteProfile(mac);
   res.redirect('/admin');
 });
 
@@ -90,5 +99,11 @@ app.post('/admin/devices/:mac/delete', requireAdmin, async (req, res) => {
 
 app.get('/', (req, res) => res.send('4K Plus TV activation server is running.'));
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Activation server listening on port ${port}`));
+// Started only when this file is run directly, so the test can require the app and listen on a
+// port of its own instead of racing the real one.
+if (require.main === module) {
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => console.log(`Activation server listening on port ${port}`));
+}
+
+module.exports = app;

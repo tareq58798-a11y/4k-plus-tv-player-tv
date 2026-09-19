@@ -4,6 +4,27 @@ function escapeHtml(value) {
   }[char]));
 }
 
+/**
+ * Escapes a value for use inside a single-quoted JS string that itself sits in a double-quoted
+ * HTML attribute - which is what an onsubmit="return confirm('...')" is.
+ *
+ * escapeHtml is not enough on its own here. It turns an apostrophe into &#39;, the browser decodes
+ * that back to a bare apostrophe before the JS is ever parsed, and a playlist called "Kid's TV"
+ * then ends the string early and breaks the confirmation - which, for a button that erases
+ * credentials, fails open. So the JS escaping happens first and the HTML escaping deliberately
+ * leaves apostrophes alone, since a raw one is legal inside a double-quoted attribute.
+ */
+function escapeJsInAttribute(value) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r?\n/g, ' ')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function layout(body) {
   return `<!doctype html>
 <html>
@@ -24,6 +45,9 @@ function layout(body) {
   input, select { background: #0b1220; border: 1px solid #2a3a56; color: #e6edf3; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
   button { background: #2f6feb; color: white; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
   button.secondary { background: #3a4a68; }
+  /* Two destructive buttons, two weights. Deleting a profile is recoverable by reassigning it;
+     deleting the device throws away the row, so it is the red one. */
+  button.warn { background: #7a5312; margin-top: 6px; }
   button.danger { background: #8b2331; margin-top: 6px; }
   .row { display: flex; gap: 6px; }
   .muted { color: #7d8ba1; font-size: 12px; }
@@ -70,16 +94,25 @@ function renderDevices(devices) {
           <input data-xtream type="text" name="xtreamPassword" placeholder="Password" value="${escapeHtml(device.xtream_password || '')}">
           <div class="row">
             <button type="submit">Save</button>
-            ${device.status === 'assigned' ? `<button type="submit" formaction="/admin/devices/${encodeURIComponent(mac)}/unassign" formnovalidate class="secondary">Unassign</button>` : ''}
           </div>
         </form>
+        ${device.status === 'assigned' ? `
+        <!--
+          Its own form for the same reason the delete below has one: inside the assign form this
+          button would inherit that form's required fields, and formnovalidate would be the only
+          thing between a mis-click and wiped credentials.
+        -->
+        <form method="post" action="/admin/devices/${encodeURIComponent(mac)}/delete-profile"
+              onsubmit="return confirm('Delete the playlist ${escapeJsInAttribute(device.playlist_name || '(unnamed)')} from ${escapeJsInAttribute(device.mac)}? The stored server, username and password are erased. The device stays in this list and goes back to pending.');">
+          <button type="submit" class="warn">Delete profile</button>
+        </form>` : ''}
         <!--
           Its own form, deliberately outside the assign form. Sharing that one would mean the
           delete button inherited its required fields, and formnovalidate would then be the only
           thing standing between a mis-click and a deletion. Separate form, separate confirmation.
         -->
         <form method="post" action="/admin/devices/${encodeURIComponent(mac)}/delete"
-              onsubmit="return confirm('Remove ${mac} from the dashboard? The device will reappear as pending if it is still switched on and checking in.');">
+              onsubmit="return confirm('Remove ${escapeJsInAttribute(device.mac)} from the dashboard? Everything stored for it, including its playlist, is erased. It reappears as pending within seconds if the device is still switched on and checking in.');">
           <button type="submit" class="danger">Delete device</button>
         </form>
       </td>

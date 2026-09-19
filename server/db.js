@@ -54,8 +54,19 @@ async function assignXtream(mac, playlistName, server, username, password) {
   );
 }
 
-async function unassignDevice(mac) {
-  await pool.query(
+/**
+ * Wipes the playlist assigned to a device, leaving the device itself in the list as pending.
+ *
+ * Every playlist column is cleared, not just the ones the current type uses: a device that was on
+ * an Xtream login and is later given an M3U URL leaves its old server, username and password
+ * sitting in the row, and those are someone's real credentials. Deleting the profile has to mean
+ * the credentials are gone, or the word is a lie.
+ *
+ * The device keeps polling and reappears as pending, which is what the dashboard should show - the
+ * set is still switched on and still has no playlist.
+ */
+async function deleteProfile(mac) {
+  const result = await pool.query(
     `update devices set
        status = 'pending',
        playlist_type = null,
@@ -67,6 +78,7 @@ async function unassignDevice(mac) {
      where mac = $1`,
     [mac]
   );
+  return result.rowCount > 0;
 }
 
 /**
@@ -90,6 +102,6 @@ module.exports = {
   listDevices,
   assignM3u,
   assignXtream,
-  unassignDevice,
+  deleteProfile,
   deleteDevice
 };
