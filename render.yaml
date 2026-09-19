@@ -13,11 +13,20 @@
 # service is created from it, or when an existing Blueprint instance is synced; a service created
 # by hand carries on using its dashboard settings until it is replaced or attached to this file.
 services:
+  # Matches the existing service, which is named 4k-plus-tv-player and runs in Oregon. Note its
+  # public hostname is fourk-plus-tv-player.onrender.com, which does not follow from this name -
+  # the service was evidently renamed after it was created, and Render keeps the original
+  # hostname. A service created fresh from this file would therefore answer on a different URL,
+  # and every installed app points at the old one, so prefer repointing the existing service to
+  # replacing it.
+  #
+  # Region cannot be changed after a service is created. It is recorded here to match reality,
+  # not as a preference.
   - type: web
-    name: fourk-plus-tv-player
+    name: 4k-plus-tv-player
     runtime: node
     plan: free
-    region: frankfurt
+    region: oregon
     branch: main
     # Where package.json is. Everything below runs inside this directory.
     rootDir: server
