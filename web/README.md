@@ -84,12 +84,18 @@ Working: the shared extraction, the Xtream client, the D-pad engine, the key map
 AVPlay and browser players, and a vertical slice — sign in, load, browse Live TV by category,
 play a channel.
 
-Also working: Home, Live TV, Movies and Series as landing pages with rows, the category box first
-in its row, empty places that hold a row's shape, the information block, the layered backdrop,
-favourites and resume points.
+Also working: Home, Live TV, Movies and Series as landing pages, the category browser, the series
+page with seasons and episodes, search across the whole playlist, settings with all eight
+languages, now-and-next listings in Live TV, the layered backdrop, favourites, resume points, and
+a catalogue cache that opens the app on what is already on the set.
 
-Not built yet: the series episode list, search, settings, EPG, parental controls and the
-catalogue cache. Not yet run on Samsung hardware or the emulator - see the certificate below.
+Not built: parental controls. Everything else the television app does that is missing here -
+subtitle appearance, aspect ratio, buffering modes - belongs with playback, which cannot be tried
+until this runs on a set.
+
+Nothing has run on Samsung hardware or the emulator yet: see the certificate above. In particular
+nothing that depends on the browser delivering real focus events has been seen working, because
+the pane used for development runs hidden and Chrome suppresses those while a document is hidden.
 
 ## Installing on a Samsung emulator or television
 
