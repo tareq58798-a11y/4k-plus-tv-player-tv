@@ -123,3 +123,17 @@ certificate, which Certificate Manager creates after signing in with a Samsung a
 
 That sign-in is the one step that cannot be automated here. Once the profile exists, sign with it
 and the two commands above should complete.
+## A difference from Android worth knowing about
+
+The Android app keeps provider credentials in `EncryptedSharedPreferences`, backed by the device
+keystore. A Tizen web app has no equivalent: `localStorage` is plain text, and there is no key
+store a page can reach. So the saved username and password sit unencrypted on the set.
+
+This matches what the app needs to do - it has to replay the login to refresh the catalogue - but
+it is genuinely weaker than the television build, and it is a decision rather than an oversight.
+If that is not acceptable, the alternatives are to stop saving the password and ask on every
+launch, or to save only long enough for one session. Both cost the viewer something, which is why
+it is worth deciding deliberately rather than by default.
+
+The catalogue cache is separate and carries no credentials: its key is the host and username
+only, so a changed password does not throw away a catalogue that is still good.

@@ -8,6 +8,7 @@
 import { detectPlatform, keyOf, registerPlatformKeys, type RemoteKey } from './platform/keys';
 import { createPlayer, type MediaPlayer } from './platform/video';
 import { readJson, writeJson } from './platform/storage';
+import { cacheKey, readCatalogue, writeCatalogue } from './platform/cache';
 import { setLocale, isRtl, t } from './shared/i18n';
 import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, PlaylistItem, ProviderLogin } from './shared/models';
@@ -117,9 +118,39 @@ async function connectAndLoad(entered: ProviderLogin, status: HTMLElement): Prom
     writeJson(SAVED_LOGIN, entered);
     login = entered;
     catalogue = loaded;
+    void writeCatalogue(cacheKey(entered), loaded);
     showSection('home');
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : String(error);
+  }
+}
+
+/**
+ * Opens on the catalogue already on the device, and fetches a fresh one behind it.
+ *
+ * The viewer is looking at their playlist in the time it takes to read a local database, instead
+ * of waiting on several megabytes over whatever connection the television has. What arrives later
+ * replaces it quietly - a page that rebuilt itself under the viewer's hands would move the
+ * highlight out from under them, so the refresh only redraws when they are still on Home, where
+ * nothing is in the middle of being done.
+ */
+async function resumeFromCache(saved: ProviderLogin): Promise<void> {
+  const key = cacheKey(saved);
+  const cached = await readCatalogue(key);
+  if (!cached) return;
+
+  login = saved;
+  catalogue = cached.playlist;
+  showSection('home');
+
+  try {
+    const fresh = await loadProvider(saved, { liveContainer: player.liveContainer });
+    catalogue = fresh;
+    void writeCatalogue(key, fresh);
+    if (section === 'home' && app.querySelector('.landing')) showSection('home');
+  } catch {
+    // The cached catalogue is still on screen and still usable. A television that cannot reach
+    // the provider this minute should not be an error message over a working playlist.
   }
 }
 
@@ -415,7 +446,18 @@ function boot(): void {
   }
 
   const saved = readJson<ProviderLogin | null>(SAVED_LOGIN, null);
-  if (saved) {
+  if (!saved) {
+    loginScreen();
+    return;
+  }
+  // Straight to the catalogue already on the device when there is one; otherwise the sign-in
+  // page with the saved details filled in, fetching while it shows.
+  void (async () => {
+    const cached = await readCatalogue(cacheKey(saved));
+    if (cached) {
+      void resumeFromCache(saved);
+      return;
+    }
     loginScreen('');
     const status = app.querySelector<HTMLElement>('.message');
     const fields = app.querySelectorAll<HTMLInputElement>('.field input');
@@ -424,9 +466,7 @@ function boot(): void {
     if (fields[2]) fields[2].value = saved.username;
     if (fields[3]) fields[3].value = saved.password;
     if (status) void connectAndLoad(saved, status);
-  } else {
-    loginScreen();
-  }
+  })();
 }
 
 boot();
