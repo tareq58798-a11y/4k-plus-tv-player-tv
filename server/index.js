@@ -74,6 +74,20 @@ app.post('/admin/devices/:mac/unassign', requireAdmin, async (req, res) => {
   res.redirect('/admin');
 });
 
+/**
+ * Removes a device from the dashboard entirely.
+ *
+ * POST rather than GET, and validated like every other route: a link that deletes on being
+ * followed is a link a browser's prefetch, or anything that crawls the page, can follow by
+ * itself. The admin page asks for confirmation before it posts here.
+ */
+app.post('/admin/devices/:mac/delete', requireAdmin, async (req, res) => {
+  const mac = normalizeMac(req.params.mac);
+  if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
+  await db.deleteDevice(mac);
+  res.redirect('/admin');
+});
+
 app.get('/', (req, res) => res.send('4K Plus TV activation server is running.'));
 
 const port = process.env.PORT || 3000;

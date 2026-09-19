@@ -69,11 +69,27 @@ async function unassignDevice(mac) {
   );
 }
 
+/**
+ * Removes the device row outright.
+ *
+ * Different from unassignDevice, which keeps the row and clears its playlist. Unassigning leaves
+ * a device that will reappear in the list the next time it polls, still pending; deleting removes
+ * it entirely, so a set that has been sold, returned or replaced stops occupying the dashboard.
+ *
+ * A device that is still switched on and still polling will insert itself again as pending, which
+ * is correct: the record describes a device that exists, and that one does.
+ */
+async function deleteDevice(mac) {
+  const result = await pool.query('delete from devices where mac = $1', [mac]);
+  return result.rowCount > 0;
+}
+
 module.exports = {
   getDevice,
   upsertPendingDevice,
   listDevices,
   assignM3u,
   assignXtream,
-  unassignDevice
+  unassignDevice,
+  deleteDevice
 };

@@ -64,6 +64,8 @@ function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
   let best: HTMLElement | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
+  const fromRect = from.getBoundingClientRect();
+
   for (const candidate of document.querySelectorAll<HTMLElement>(FOCUSABLE)) {
     if (candidate === from || candidate.hasAttribute('data-focus-skip') || !visible(candidate)) continue;
     const point = centre(candidate);
@@ -80,13 +82,15 @@ function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
       if (dy <= 1) continue;
       along = dy;
       across = Math.abs(dx);
-    } else if (direction === 'left') {
-      if (dx >= -1) continue;
-      along = -dx;
-      across = Math.abs(dy);
     } else {
-      if (dx <= 1) continue;
-      along = dx;
+      if (direction === 'left' ? dx >= -1 : dx <= 1) continue;
+      // Sideways moves stay in their band. Without this, Right from the only box in a row finds
+      // the nearest thing to its right anywhere on screen - which is the navigation bar, two
+      // hundred pixels up - and the highlight leaves the page sideways. A row that has run out
+      // should simply not move; Up and Down are how you leave it.
+      const rect = candidate.getBoundingClientRect();
+      if (rect.bottom <= fromRect.top || rect.top >= fromRect.bottom) continue;
+      along = direction === 'left' ? -dx : dx;
       across = Math.abs(dy);
     }
     const score = along + across * 4;
@@ -109,16 +113,24 @@ function override(from: HTMLElement, direction: Direction): HTMLElement | null {
   return target && visible(target) ? target : null;
 }
 
-/** Entering a group lands on whichever of its children was last focused. */
-function resolveGroupEntry(target: HTMLElement): HTMLElement {
+/**
+ * *Entering* a group lands on whichever of its children was last focused.
+ *
+ * Entering, and only entering. Applied to every move, it also fires when the highlight is already
+ * inside the group and simply moving along it - Right picks the next card, the row answers "you
+ * were on the one before", and the highlight snaps back. The effect is a row that cannot be moved
+ * along at all, which is exactly what it did until this check was added.
+ */
+function resolveGroupEntry(from: HTMLElement, target: HTMLElement): HTMLElement {
   const group = target.closest<HTMLElement>('[data-focus-group]');
   if (!group) return target;
+  // Already in this group: this is movement within it, not arrival at it.
+  if (group.contains(from)) return target;
   const name = group.getAttribute('data-focus-group');
   if (!name) return target;
   const previous = lastInGroup.get(name);
   if (!previous) return target;
   const remembered = group.querySelector<HTMLElement>(`[data-focus-id="${CSS.escape(previous)}"]`);
-  // Only when it is a sibling of where we are heading, not a jump into an unrelated row.
   return remembered && visible(remembered) ? remembered : target;
 }
 
@@ -158,7 +170,7 @@ export function move(direction: Direction): boolean {
   if (declared === from) return true;
   const target = declared ?? nearest(from, effective);
   if (!target) return false;
-  focus(resolveGroupEntry(target));
+  focus(resolveGroupEntry(from, target));
   return true;
 }
 

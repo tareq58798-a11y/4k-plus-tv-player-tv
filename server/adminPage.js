@@ -24,8 +24,10 @@ function layout(body) {
   input, select { background: #0b1220; border: 1px solid #2a3a56; color: #e6edf3; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
   button { background: #2f6feb; color: white; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
   button.secondary { background: #3a4a68; }
+  button.danger { background: #8b2331; margin-top: 6px; }
   .row { display: flex; gap: 6px; }
   .muted { color: #7d8ba1; font-size: 12px; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; unicode-bidi: isolate; }
 </style>
 </head>
 <body>
@@ -50,8 +52,8 @@ function renderDevices(devices) {
     const statusClass = device.status === 'assigned' ? 'assigned' : 'pending';
     const mac = escapeHtml(device.mac);
     return `<tr>
-      <td>${mac}</td>
-      <td>${escapeHtml(device.device_key)}</td>
+      <td dir="ltr"><code>${mac}</code></td>
+      <td dir="ltr"><code>${escapeHtml(device.device_key)}</code></td>
       <td class="${statusClass}">${escapeHtml(device.status)}</td>
       <td>${device.playlist_type ? escapeHtml(device.playlist_type) : '-'}</td>
       <td class="muted">${escapeHtml(new Date(device.last_seen).toLocaleString())}</td>
@@ -70,6 +72,15 @@ function renderDevices(devices) {
             <button type="submit">Save</button>
             ${device.status === 'assigned' ? `<button type="submit" formaction="/admin/devices/${encodeURIComponent(mac)}/unassign" formnovalidate class="secondary">Unassign</button>` : ''}
           </div>
+        </form>
+        <!--
+          Its own form, deliberately outside the assign form. Sharing that one would mean the
+          delete button inherited its required fields, and formnovalidate would then be the only
+          thing standing between a mis-click and a deletion. Separate form, separate confirmation.
+        -->
+        <form method="post" action="/admin/devices/${encodeURIComponent(mac)}/delete"
+              onsubmit="return confirm('Remove ${mac} from the dashboard? The device will reappear as pending if it is still switched on and checking in.');">
+          <button type="submit" class="danger">Delete device</button>
         </form>
       </td>
     </tr>`;

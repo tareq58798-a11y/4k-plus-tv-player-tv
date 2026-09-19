@@ -13,8 +13,11 @@ html,
 body {
   margin: 0;
   padding: 0;
-  width: 3840px;
-  height: 2160px;
+  /* The canvas, and it is not a token: a Tizen app declares a fixed screen and the set scales it.
+     1920x1080 because that is what the layouts were measured against - doubling it once, by
+     accident, put three quarters of every page off the edge of the television. */
+  width: 1920px;
+  height: 1080px;
   overflow: hidden;
   font-family: 'Samsung One', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
   color: var(--tone-text-primary);
@@ -122,7 +125,7 @@ body.playing #app {
 /* ------------------------------------------------------------------ login */
 
 .panel {
-  width: 1440px;
+  width: 880px;
   margin: 80px auto 0;
   padding: var(--dim-gap-xl);
   border-radius: var(--dim-radius-panel);
@@ -200,11 +203,20 @@ body.playing #app {
   font-weight: 800;
 }
 
+/* Scrollable, not clipped: a row holds twenty cards and shows five, so the sixth has to be able
+   to come into view when the highlight reaches it. The scrollbar is hidden because a television
+   has no pointer to drag one with. */
 .row {
   display: flex;
   gap: var(--dim-gap-s);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   padding: var(--dim-card-bleed) 0;
+}
+
+.row::-webkit-scrollbar {
+  display: none;
 }
 
 .card {
@@ -241,19 +253,22 @@ body.playing #app {
   color: var(--tone-text-primary);
 }
 
+/* Four across, not five: the browser gives a column to the category list, so the grid has less
+   room than a landing row does. Height fits the canvas - 1080 less the page padding and the
+   title above it - rather than running off the bottom of the television. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(5, var(--dim-card-width));
+  grid-template-columns: repeat(4, var(--dim-card-width));
   gap: var(--dim-gap-m) var(--dim-gap-s);
   align-content: start;
-  height: 1600px;
+  height: 780px;
   overflow-y: auto;
   padding: var(--dim-card-bleed);
 }
 
 .sidebar {
-  width: 720px;
-  height: 1640px;
+  width: 440px;
+  height: 800px;
   overflow-y: auto;
   padding-right: var(--dim-gap-s);
 }
@@ -903,4 +918,11 @@ body.playing .backdrop-scrim {
 .settings-note.warn {
   color: var(--tone-star);
   line-height: 1.35;
+}
+
+/* An identifier must render identically in every language - see identity.ts. Isolating it from
+   the surrounding bidi context is what stops a right-to-left page reordering it. */
+.code-row strong {
+  unicode-bidi: isolate;
+  font-variant-numeric: lining-nums tabular-nums;
 }

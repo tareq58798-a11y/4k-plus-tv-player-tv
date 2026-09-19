@@ -1057,7 +1057,7 @@ internal fun PinDialog(
                 when {
                     pin.length !in 4..6 -> error = pinLengthError
                     mode == "set" && pin != confirmation -> error = pinsDoNotMatchError
-                    mode != "set" && pinSha256(pin) != expectedHash -> error = incorrectPinError
+                    mode != "set" && !pinMatches(pin, expectedHash) -> error = incorrectPinError
                     else -> onSuccess(pinSha256(pin))
                 }
             }) { Text(if (mode == "set") stringResource(R.string.create_action) else stringResource(R.string.unlock_action)) }
@@ -1066,6 +1066,26 @@ internal fun PinDialog(
     )
 }
 
+/**
+ * A PIN hash, formatted against [java.util.Locale.ROOT].
+ *
+ * String.format uses the device's locale, so on a set running Arabic the hexadecimal digest came
+ * out in Arabic-Indic numerals - a different string for the same PIN. The effect was that changing
+ * the app's language stopped the parental PIN working, and changing it back made it work again,
+ * which is close to impossible to diagnose from the outside.
+ */
 private fun pinSha256(value: String): String =
     MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
+        .joinToString("") { String.format(java.util.Locale.ROOT, "%02x", it) }
+
+/**
+ * How a PIN was hashed before the locale was pinned. Kept so that a PIN set on a device running a
+ * language with its own numerals still opens the lock - fixing the bug must not lock anybody out
+ * of their own categories, and there is no way past a parental PIN that does not know it.
+ */
+private fun legacyPinSha256(value: String): String =
+    MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
         .joinToString("") { "%02x".format(it) }
+
+private fun pinMatches(entered: String, expectedHash: String?): Boolean =
+    expectedHash != null && (pinSha256(entered) == expectedHash || legacyPinSha256(entered) == expectedHash)

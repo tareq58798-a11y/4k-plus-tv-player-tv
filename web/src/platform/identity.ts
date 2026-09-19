@@ -55,8 +55,19 @@ function networkMac(): string | null {
   }
 }
 
-/** Six bytes of a hash, formatted as a MAC, with the locally-administered bit set so it cannot
- *  collide with a real address. The same shape DeviceIdentity.kt produces on Android. */
+/**
+ * Six bytes of a hash, formatted as a MAC, with the locally-administered bit set so it cannot
+ * collide with a real address. The same shape DeviceIdentity.kt produces on Android.
+ *
+ * Latin digits, always, in every language. Number.toString is not locale-aware in JavaScript, so
+ * this is safe as written - but toLocaleString and Intl.NumberFormat are, and either would render
+ * these as ٠١٢٣٤٥٦٧٨٩ on a set running Arabic. That is what happened on Android, where
+ * String.format does follow the device locale: the codes looked fine on the television and were
+ * useless, because nobody could read them out, nobody could type them into the dashboard, and the
+ * value sent to the activation service no longer matched the one stored against the account.
+ *
+ * An identifier is not a number being shown to a reader. Nothing here may be localised.
+ */
 function macFrom(digest: Uint8Array): string {
   const bytes = [...digest.slice(0, 6)];
   bytes[0] = (bytes[0]! & 0xfe) | 0x02;

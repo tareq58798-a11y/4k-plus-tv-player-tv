@@ -84,8 +84,12 @@ function clear(): void {
  */
 function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLElement {
   const panel = el('div', { class: 'panel activation' });
-  const macRow = el('div', { class: 'code-row' }, el('span', {}, t('device_id')), el('strong', {}, '…'));
-  const keyRow = el('div', { class: 'code-row' }, el('span', {}, t('device_key')), el('strong', {}, '…'));
+  // dir=ltr on the value, not on the row. In Arabic the page runs right to left, and the bidi
+  // algorithm handed "9A:D5:DA:DB:33:4D" inside a right-to-left paragraph is entitled to reorder
+  // the segments around the colons - so the code on screen reads back differently from the one
+  // the app sent. The label follows the page; only the identifier is pinned.
+  const macRow = el('div', { class: 'code-row' }, el('span', {}, t('device_id')), el('strong', { dir: 'ltr' }, '…'));
+  const keyRow = el('div', { class: 'code-row' }, el('span', {}, t('device_key')), el('strong', { dir: 'ltr' }, '…'));
   const status = el('div', { class: 'message' }, t('waiting_for_activation'));
 
   panel.append(

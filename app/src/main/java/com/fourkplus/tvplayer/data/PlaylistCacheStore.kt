@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer.data
+package com.fourkplus.tvplayer.data
 
 import android.content.Context
 import java.io.BufferedOutputStream
@@ -6,6 +6,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 import java.security.MessageDigest
 import java.util.zip.Deflater
 import java.util.zip.GZIPInputStream
@@ -181,10 +182,20 @@ internal class PlaylistCacheStore(context: Context) {
         if (legacyCacheFile.exists()) legacyCacheFile.delete()
     }
 
+    /**
+     * A filename is an identifier, so its digits are formatted against [Locale.ROOT] rather than
+     * the device's locale. String.format follows the default locale, and on a device running
+     * Arabic this produced a name in Arabic-Indic numerals - a different file for the same
+     * playlist, so changing the app's language silently orphaned the cache and cost a full
+     * re-download.
+     *
+     * A cache written under the old name is simply not found and is replaced, which costs one
+     * download. That is why this needs no fallback, unlike the parental PIN.
+     */
     private fun cacheFileFor(source: PlaylistInput) = appContext.filesDir.resolve(
         "playlist_cache_" + MessageDigest.getInstance("SHA-256")
             .digest(source.sourceId().toByteArray(StandardCharsets.UTF_8))
-            .take(12).joinToString("") { "%02x".format(it) } + ".bin.gz"
+            .take(12).joinToString("") { String.format(Locale.ROOT, "%02x", it) } + ".bin.gz"
     )
 
     private fun DataOutputStream.writeSizedString(value: String) {

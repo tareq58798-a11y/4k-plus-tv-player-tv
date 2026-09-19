@@ -51,6 +51,11 @@ export function renderNav(host: HTMLElement, options: NavOptions): HTMLElement {
     // Up from the bar goes nowhere. Without this the highlight escapes to whatever the browser
     // considers above it, which on these pages is nothing at all.
     tab.setAttribute('data-focus-up', 'none');
+    // Down enters the page at its first box, not at whichever card happens to sit nearest below
+    // the tab. Geometry gets this wrong: the Home tab is centred over the gap between the first
+    // and second card, so nearest-neighbour picks the second and the page appears to start in the
+    // middle of a row.
+    tab.setAttribute('data-focus-down', '.row [data-focus]');
     tab.setAttribute('aria-selected', String(section.id === options.current));
     tab.addEventListener('focus', () => {
       for (const other of bar.querySelectorAll('.nav-tab')) {
