@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
@@ -98,6 +99,26 @@ internal fun SeriesScreen(
     // itself (the applyCategoryOrder input) hasn't changed.
     var categoryOrderVersion by remember { mutableIntStateOf(0) }
     val categories = remember(seriesItems, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.SERIES, seriesItems.map { it.group }.distinct()) }
+    // The shelf whose long-press menu is open on the touch layout. Held here rather than inside
+    // the shelf so the dialog outlives the row that opened it - a shelf that gets hidden or moved
+    // is recomposed out from under its own menu.
+    var shelfMenuFor by remember { mutableStateOf<String?>(null) }
+    shelfMenuFor?.let { menuCategory ->
+        CategoryActionsDialog(
+            category = localizedSectionTitle(menuCategory),
+            onHide = {
+                val updated = hiddenCategories + menuCategory
+                hiddenCategories = updated
+                parental.edit().putStringSet("hidden_series_categories", updated).apply()
+            },
+            // No hand-move on a touch layout: nudging one place at a time is a D-pad gesture and
+            // there is nothing on a phone that performs it.
+            onMoveManually = null,
+            onMoveToTop = { moveCategoryToEnd(context, MediaKind.SERIES, categories, menuCategory, toTop = true); categoryOrderVersion++ },
+            onMoveToBottom = { moveCategoryToEnd(context, MediaKind.SERIES, categories, menuCategory, toTop = false); categoryOrderVersion++ },
+            onDismiss = { shelfMenuFor = null }
+        )
+    }
     val store = remember { context.getSharedPreferences("series_library", Context.MODE_PRIVATE) }
     // Opened straight into a named category - the Favorites box on the landing page uses this -
     // instead of landing on the browse view and making the viewer find it again. This has to be the
@@ -401,6 +422,14 @@ internal fun SeriesScreen(
                 onFavorite = ::toggleFavorite,
                 onSeries = ::openDetails,
                 onCategoriesReordered = { categoryOrderVersion++ },
+                // Hiding lives here rather than in the browser, because the set of hidden
+                // categories is this screen's state - the browser only knows which row was
+                // long-pressed.
+                onHideCategory = { hidden ->
+                    val updated = hiddenCategories + hidden
+                    hiddenCategories = updated
+                    parental.edit().putStringSet("hidden_series_categories", updated).apply()
+                },
                 categoryListState = categoryListState,
                 onBack = {
                     if (view == SeriesView.CATEGORY) view = SeriesView.BROWSE else onBack()
@@ -490,6 +519,9 @@ internal fun SeriesScreen(
                                             hiddenCategories = updated
                                             parental.edit().putStringSet("hidden_series_categories", updated).apply()
                                         }},
+                                        onLongPressTitle = if (title in setOf("Continue watching", "Recently watched", "Favorites")) null else {{
+                                            shelfMenuFor = title
+                                        }},
                                         onFavorite = ::toggleFavorite,
                                         onSeries = ::openDetails
                                     )
@@ -564,6 +596,9 @@ private fun LandscapeSeriesBrowser(
     onFavorite: (PlaylistItem) -> Unit,
     onSeries: (PlaylistItem) -> Unit,
     onCategoriesReordered: () -> Unit,
+    /** Hides a category from the main screens. Null on views that are not categories at all -
+     *  Continue watching, Recently watched and Favorites have nothing behind them to hide. */
+    onHideCategory: ((String) -> Unit)? = null,
     onBack: () -> Unit,
     // Owned by the caller, which outlives this browser - see the matching comment in
     // LandscapeMovieBrowser.
@@ -586,6 +621,19 @@ private fun LandscapeSeriesBrowser(
     val isTv = remember { context.isTvDevice() }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
     var reorderingCategory by remember { mutableStateOf<String?>(null) }
+    // The category whose long-press menu is open, if any. The gesture opens a menu now rather
+    // than committing straight to hand-moving, which was one of four things somebody might want.
+    var categoryMenuFor by remember { mutableStateOf<String?>(null) }
+    categoryMenuFor?.let { menuCategory ->
+        CategoryActionsDialog(
+            category = menuCategory,
+            onHide = onHideCategory?.let { hide -> { hide(menuCategory) } },
+            onMoveManually = { reorderingCategory = menuCategory },
+            onMoveToTop = { moveCategoryToEnd(context, MediaKind.SERIES, allCategories, menuCategory, toTop = true); onCategoriesReordered() },
+            onMoveToBottom = { moveCategoryToEnd(context, MediaKind.SERIES, allCategories, menuCategory, toTop = false); onCategoriesReordered() },
+            onDismiss = { categoryMenuFor = null }
+        )
+    }
     // Keeps the moving category in view as it's nudged past the edge of the visible list -
     // otherwise it scrolls out from under the user with no sign of where it went.
     LaunchedEffect(reorderingCategory, allCategories) {
@@ -665,7 +713,7 @@ private fun LandscapeSeriesBrowser(
                                 )
                                 .focusableClickable(
                                     cornerRadius = 11.dp,
-                                    onLongClick = if (category in special) null else { { reorderingCategory = category } }
+                                    onLongClick = if (category in special) null else { { categoryMenuFor = category } }
                                 ) {
                                     categorySelectionTick++
                                     onCategory(category)
@@ -767,18 +815,33 @@ private fun SeriesSearch(value: String, onChange: (String) -> Unit) {
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun SeriesShelf(
     title: String,
     seriesItems: List<PlaylistItem>,
     favoriteIds: Set<String>,
     onSeeAll: () -> Unit,
     onHide: (() -> Unit)?,
+    /** Held finger on the shelf's title, which opens the category menu. Null on the rows that are
+     *  views rather than categories, where there is nothing to hide or reorder. */
+    onLongPressTitle: (() -> Unit)? = null,
     onFavorite: (PlaylistItem) -> Unit,
     onSeries: (PlaylistItem) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(localizedSectionTitle(title), Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(
+                localizedSectionTitle(title),
+                Modifier.weight(1f)
+                    .then(
+                        if (onLongPressTitle == null) Modifier
+                        else Modifier.combinedClickable(onLongClick = onLongPressTitle, onClick = onSeeAll)
+                    )
+                    .padding(vertical = 4.dp),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
             onHide?.let {
                 AnimatedIconButton(onClick = it, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, localizedSectionTitle(title)), tint = MaterialTheme.colorScheme.onSurfaceVariant)

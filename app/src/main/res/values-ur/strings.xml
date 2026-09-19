@@ -155,7 +155,12 @@
     <string name="settings_playlists">پلے لسٹس</string>
     <string name="settings_app_info">ایپ اور پلے لسٹ کی معلومات</string>
     <string name="settings_playback">پلے بیک</string>
-    <string name="settings_appearance">ظاہری شکل</string>
+    <string name="settings_appearance">ظاہری شکل</string>
+    <string name="background_mode">پس منظر</string>
+    <string name="background_modern">جدید</string>
+    <string name="background_classic">کلاسک</string>
+    <string name="background_modern_desc">آپ جو دیکھ رہے ہیں پس منظر اسی کی تصویر میں بدل جاتا ہے۔</string>
+    <string name="background_classic_desc">ایپ کی اپنی تصویر ہر جگہ رہتی ہے اور کبھی نہیں بدلتی۔</string>
     <string name="settings_privacy_history">رازداری اور تاریخ</string>
     <string name="settings_category_visibility">قسم کی نمائش</string>
     <string name="settings_parental_controls">والدین کا کنٹرول</string>

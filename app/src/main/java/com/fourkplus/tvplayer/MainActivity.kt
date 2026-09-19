@@ -311,6 +311,17 @@ private fun App() {
         }
     }
     val appPreferences = remember { context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE) }
+
+    // Classic keeps the app's own artwork up everywhere; Modern lets the background follow
+    // whatever the viewer is looking at. Read on every composition of this screen rather than once,
+    // so changing it in Settings takes effect on the way back out instead of at the next launch.
+    val classicBackground = appPreferences.getBoolean("classic_background", false)
+    LaunchedEffect(classicBackground) {
+        backdrop.followsFocus = !classicBackground
+        // Whatever artwork is already up has to go, or turning Classic on leaves the last title's
+        // picture behind and it looks as though nothing happened.
+        if (classicBackground) backdrop.reset()
+    }
     val currentLanguage = remember { LocaleHelper.getLanguage(context) }
     val onLanguageChange: (AppLanguage) -> Unit = {
         LocaleHelper.setLanguage(context, it)
@@ -1755,6 +1766,26 @@ private fun MoviesScreen(
     // (the applyCategoryOrder input) hasn't changed.
     var categoryOrderVersion by remember { mutableIntStateOf(0) }
     val categories = remember(movies, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.MOVIE, movies.map { it.group }.distinct()) }
+    // The shelf whose long-press menu is open on the touch layout. Held here rather than inside
+    // the shelf so the dialog outlives the row that opened it - a shelf that gets hidden or moved
+    // is recomposed out from under its own menu.
+    var shelfMenuFor by remember { mutableStateOf<String?>(null) }
+    shelfMenuFor?.let { menuCategory ->
+        CategoryActionsDialog(
+            category = localizedSectionTitle(menuCategory),
+            onHide = {
+                val updated = hiddenCategories + menuCategory
+                hiddenCategories = updated
+                parental.edit().putStringSet("hidden_movie_categories", updated).apply()
+            },
+            // No hand-move on a touch layout: nudging one place at a time is a D-pad gesture and
+            // there is nothing on a phone that performs it.
+            onMoveManually = null,
+            onMoveToTop = { moveCategoryToEnd(context, MediaKind.MOVIE, categories, menuCategory, toTop = true); categoryOrderVersion++ },
+            onMoveToBottom = { moveCategoryToEnd(context, MediaKind.MOVIE, categories, menuCategory, toTop = false); categoryOrderVersion++ },
+            onDismiss = { shelfMenuFor = null }
+        )
+    }
     val store = remember { context.getSharedPreferences("movie_library", android.content.Context.MODE_PRIVATE) }
     // Opened straight into a named category - the Favorites box on the landing page uses this -
     // instead of landing on the browse view and making the viewer find it again. This has to be the
@@ -2026,6 +2057,9 @@ private fun MoviesScreen(
                                                 val updated = hiddenCategories + title
                                                 hiddenCategories = updated
                                                 parental.edit().putStringSet("hidden_movie_categories", updated).apply()
+                                            }},
+                                            onLongPressTitle = if (title in setOf("Continue watching", "Recently watched", "Favorites")) null else {{
+                                                shelfMenuFor = title
                                             }},
                                             onFavorite = ::toggleFavorite,
                                             onMovie = ::openDetails,
@@ -2399,7 +2433,11 @@ private fun LandscapeLiveBrowser(
                 Modifier.width(categoryColumnWidth).fillMaxHeight()
                     .onFocusChanged { categoryColumnFocused = it.hasFocus },
                 shape = RoundedCornerShape(16.dp),
-                color = Color.Transparent
+                // Tinted rather than clear. These two columns are white text straight over the
+                // app's artwork, and a pale patch of that artwork behind them took the channel
+                // names with it. A flat darkening is enough to hold the text without turning the
+                // page into a panel.
+                color = LiveColumnTint
             ) {
                 Column(Modifier.padding(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2447,7 +2485,7 @@ private fun LandscapeLiveBrowser(
             Surface(
                 Modifier.width(channelColumnWidth).fillMaxHeight(),
                 shape = RoundedCornerShape(16.dp),
-                color = Color.Transparent
+                color = LiveColumnTint
             ) {
                 Column {
                     DarkTvSearchField(
@@ -2582,19 +2620,34 @@ private fun LandscapeLiveBrowser(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun MovieShelf(
     title: String,
     movies: List<PlaylistItem>,
     favoriteIds: Set<String>,
     onSeeAll: () -> Unit,
     onHide: (() -> Unit)?,
+    /** Held finger on the shelf's title, which opens the category menu. Null on the rows that are
+     *  views rather than categories, where there is nothing to hide or reorder. */
+    onLongPressTitle: (() -> Unit)? = null,
     onFavorite: (PlaylistItem) -> Unit,
     onMovie: (PlaylistItem) -> Unit,
     progress: Map<String, Long> = emptyMap()
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(localizedSectionTitle(title), Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(
+                localizedSectionTitle(title),
+                Modifier.weight(1f)
+                    .then(
+                        if (onLongPressTitle == null) Modifier
+                        else Modifier.combinedClickable(onLongClick = onLongPressTitle, onClick = onSeeAll)
+                    )
+                    .padding(vertical = 4.dp),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
             onHide?.let {
                 AnimatedIconButton(onClick = it, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, localizedSectionTitle(title)), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3104,6 +3157,26 @@ private fun LiveTvScreen(
     // (the applyCategoryOrder input) hasn't changed.
     var categoryOrderVersion by remember { mutableIntStateOf(0) }
     val categories = remember(channels, categoryOrderVersion) { applyCategoryOrder(context, MediaKind.LIVE, channels.map { it.group }.distinct()) }
+    // The section whose long-press menu is open on the touch layout. Held here rather than inside
+    // the section so the dialog outlives the row that opened it - a section that gets hidden or
+    // moved is recomposed out from under its own menu.
+    var shelfMenuFor by remember { mutableStateOf<String?>(null) }
+    shelfMenuFor?.let { menuCategory ->
+        CategoryActionsDialog(
+            category = localizedSectionTitle(menuCategory),
+            onHide = {
+                val updated = hiddenCategories + menuCategory
+                hiddenCategories = updated
+                parental.edit().putStringSet("hidden_live_categories", updated).apply()
+            },
+            // No hand-move on a touch layout: nudging one place at a time is a D-pad gesture and
+            // there is nothing on a phone that performs it.
+            onMoveManually = null,
+            onMoveToTop = { moveCategoryToEnd(context, MediaKind.LIVE, categories, menuCategory, toTop = true); categoryOrderVersion++ },
+            onMoveToBottom = { moveCategoryToEnd(context, MediaKind.LIVE, categories, menuCategory, toTop = false); categoryOrderVersion++ },
+            onDismiss = { shelfMenuFor = null }
+        )
+    }
     val recentlyWatched = "Recently watched"
     val favorites = "Favorites"
     // Opened straight into a named category - the Favorites box on the landing page uses this -
@@ -3392,6 +3465,9 @@ private fun LiveTvScreen(
                                             val updated = hiddenCategories + title
                                             hiddenCategories = updated
                                             parental.edit().putStringSet("hidden_live_categories", updated).apply()
+                                        }},
+                                        onLongPressTitle = if (title in setOf(recentlyWatched, favorites)) null else {{
+                                            shelfMenuFor = title
                                         }},
                                         onChannel = {
                                             selectedCategory = it.group
@@ -3690,18 +3766,33 @@ internal fun DarkTvSearchField(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun ChannelCategorySection(
     title: String,
     channels: List<PlaylistItem>,
     favoriteIds: Set<String>,
     onSeeAll: () -> Unit,
     onHide: (() -> Unit)?,
+    /** Held finger on the section's title, which opens the category menu. Null on the rows that
+     *  are views rather than categories, where there is nothing to hide or reorder. */
+    onLongPressTitle: (() -> Unit)? = null,
     onChannel: (PlaylistItem) -> Unit,
     onFavorite: (PlaylistItem) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(localizedSectionTitle(title), Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
+            Text(
+                localizedSectionTitle(title),
+                Modifier.weight(1f)
+                    .then(
+                        if (onLongPressTitle == null) Modifier
+                        else Modifier.combinedClickable(onLongClick = onLongPressTitle, onClick = onSeeAll)
+                    )
+                    .padding(vertical = 4.dp),
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                maxLines = 1
+            )
             onHide?.let {
                 AnimatedIconButton(onClick = it, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, localizedSectionTitle(title)), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3746,7 +3837,7 @@ private fun ChannelPoster(
     Column(modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick)) {
         Surface(
             modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-            color = MaterialTheme.colorScheme.surfaceVariant,
+            color = channelSurface(),
             shape = RoundedCornerShape(14.dp),
             border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
         ) {
@@ -3803,13 +3894,13 @@ private fun CompactChannelRow(
     val nowNext = if (loadEpg != null) rememberEpgNowNext(channel, loadEpg) else null
     Surface(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick),
-        color = if (selected) BrandBlue.copy(alpha = .34f) else MaterialTheme.colorScheme.surface.copy(alpha = .9f),
+        color = if (selected) BrandBlue.copy(alpha = .34f) else channelSurface().copy(alpha = .92f),
         border = BorderStroke(1.dp, if (selected) Cyan.copy(alpha = .55f) else Color.Transparent),
         shape = RoundedCornerShape(14.dp)
     ) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+                Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(channelSurface()),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.LiveTv, null, tint = Cyan.copy(alpha = .65f), modifier = Modifier.size(22.dp))
@@ -3897,7 +3988,10 @@ internal fun moveCategory(context: Context, kind: MediaKind, categories: List<St
 internal fun CategoryActionsDialog(
     category: String,
     onHide: (() -> Unit)?,
-    onMoveManually: () -> Unit,
+    /** Null where hand-moving has no controls behind it. Nudging a row one place at a time is
+     *  Up and Down on a remote; a shelf on a phone has no equivalent gesture, so that screen
+     *  offers the two jumps and leaves this out rather than showing a row that does nothing. */
+    onMoveManually: (() -> Unit)?,
     onMoveToTop: () -> Unit,
     onMoveToBottom: () -> Unit,
     onDismiss: () -> Unit
@@ -3907,8 +4001,10 @@ internal fun CategoryActionsDialog(
         title = { Text(category, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = {
             Column {
-                CategoryAction(Icons.Default.SwapVert, stringResource(R.string.move_manually)) {
-                    onDismiss(); onMoveManually()
+                if (onMoveManually != null) {
+                    CategoryAction(Icons.Default.SwapVert, stringResource(R.string.move_manually)) {
+                        onDismiss(); onMoveManually()
+                    }
                 }
                 CategoryAction(Icons.Default.VerticalAlignTop, stringResource(R.string.move_to_top)) {
                     onDismiss(); onMoveToTop()
@@ -3979,6 +4075,11 @@ internal fun moveCategoryToEnd(
  *  would leave the content beside them a sliver. Below this width the columns shrink so the content
  *  keeps a usable share; above it nothing changes. */
 internal val COMPACT_TV_WIDTH = 820.dp
+
+/** How much the Live TV browser's two columns darken the artwork behind them. Black rather than a
+ *  surface colour, so it reads as a shadow over whatever picture is up rather than a panel laid on
+ *  top of it, and so Classic and Modern backgrounds both end up equally readable. */
+private val LiveColumnTint = Color.Black.copy(alpha = .42f)
 
 /** Poster width the media grids aim for. Column count is derived from the space actually available
  *  rather than fixed, so a narrow box gets fewer, readable posters instead of a row of slivers and
@@ -4121,13 +4222,13 @@ private fun ChannelRow(channel: PlaylistItem, favorite: Boolean, onFavorite: () 
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .96f)),
+        colors = CardDefaults.elevatedCardColors(containerColor = channelSurface().copy(alpha = .96f)),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
     ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(width = 64.dp, height = 52.dp).clip(RoundedCornerShape(13.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(channelSurface()),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.LiveTv, null, tint = Cyan.copy(alpha = .7f))

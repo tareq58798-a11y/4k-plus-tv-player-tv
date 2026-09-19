@@ -14,6 +14,18 @@ val Cyan = Color(0xFF23D7EE)
 val Orange = Color(0xFFFFB547)
 val Ice = Color(0xFFF4F8FF)
 
+/**
+ * The backing behind a live channel - the square its logo sits on, and the row that carries it.
+ *
+ * Deliberately darker than the ordinary surface. A channel logo is nearly always a bright mark on
+ * a transparent background, so the lighter surfaceVariant left pale logos washing into their own
+ * tile; dropping the tile closer to the page's own navy gives every one of them an edge. Kept here
+ * beside the scheme rather than inlined at each of the five places that draw a channel, so they
+ * cannot drift apart.
+ */
+@Composable
+fun channelSurface(): Color = if (isSystemInDarkTheme()) Color(0xFF071628) else Color(0xFFC8DCF0)
+
 private val DarkColors = darkColorScheme(
     primary = BrandBlue,
     onPrimary = Color.White,

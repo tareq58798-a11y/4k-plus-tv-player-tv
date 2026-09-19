@@ -155,7 +155,12 @@
     <string name="settings_playlists">Плейлисты</string>
     <string name="settings_app_info">Информация о приложении и плейлисте</string>
     <string name="settings_playback">Воспроизведение</string>
-    <string name="settings_appearance">Оформление</string>
+    <string name="settings_appearance">Оформление</string>
+    <string name="background_mode">Фон</string>
+    <string name="background_modern">Современный</string>
+    <string name="background_classic">Классический</string>
+    <string name="background_modern_desc">Фон меняется на изображение того, что вы просматриваете.</string>
+    <string name="background_classic_desc">Собственное изображение приложения остаётся везде и не меняется.</string>
     <string name="settings_privacy_history">Конфиденциальность и история</string>
     <string name="settings_category_visibility">Видимость категорий</string>
     <string name="settings_parental_controls">Родительский контроль</string>

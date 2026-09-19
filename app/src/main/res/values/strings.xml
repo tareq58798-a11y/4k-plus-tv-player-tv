@@ -162,7 +162,12 @@
     <string name="settings_playlists">Playlists</string>
     <string name="settings_app_info">App &amp; playlist information</string>
     <string name="settings_playback">Playback</string>
-    <string name="settings_appearance">Appearance</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="background_mode">Background</string>
+    <string name="background_modern">Modern</string>
+    <string name="background_classic">Classic</string>
+    <string name="background_modern_desc">The background changes to artwork from whatever you are looking at.</string>
+    <string name="background_classic_desc">The app\'s own artwork stays up everywhere and never changes.</string>
     <string name="settings_privacy_history">Privacy and history</string>
     <string name="settings_category_visibility">Category visibility</string>
     <string name="settings_parental_controls">Parental controls</string>

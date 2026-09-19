@@ -155,7 +155,12 @@
     <string name="settings_playlists">Oynatma Listeleri</string>
     <string name="settings_app_info">Uygulama ve oynatma listesi bilgisi</string>
     <string name="settings_playback">Oynatma</string>
-    <string name="settings_appearance">Görünüm</string>
+    <string name="settings_appearance">Görünüm</string>
+    <string name="background_mode">Arka plan</string>
+    <string name="background_modern">Modern</string>
+    <string name="background_classic">Klasik</string>
+    <string name="background_modern_desc">Arka plan, baktığınız içeriğin görseline dönüşür.</string>
+    <string name="background_classic_desc">Uygulamanın kendi görseli her yerde kalır ve hiç değişmez.</string>
     <string name="settings_privacy_history">Gizlilik ve geçmiş</string>
     <string name="settings_category_visibility">Kategori görünürlüğü</string>
     <string name="settings_parental_controls">Ebeveyn denetimleri</string>

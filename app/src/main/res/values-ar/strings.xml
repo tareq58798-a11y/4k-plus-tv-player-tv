@@ -160,7 +160,12 @@
     <string name="settings_playlists">قوائم التشغيل</string>
     <string name="settings_app_info">معلومات التطبيق وقائمة التشغيل</string>
     <string name="settings_playback">التشغيل</string>
-    <string name="settings_appearance">المظهر</string>
+    <string name="settings_appearance">المظهر</string>
+    <string name="background_mode">الخلفية</string>
+    <string name="background_modern">عصري</string>
+    <string name="background_classic">كلاسيكي</string>
+    <string name="background_modern_desc">تتغير الخلفية إلى صورة العمل الذي تنظر إليه.</string>
+    <string name="background_classic_desc">تبقى صورة التطبيق الأصلية في كل مكان ولا تتغير أبدًا.</string>
     <string name="settings_privacy_history">الخصوصية والسجل</string>
     <string name="settings_category_visibility">إظهار الفئات</string>
     <string name="settings_parental_controls">الرقابة الأبوية</string>

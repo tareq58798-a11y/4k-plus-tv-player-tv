@@ -155,7 +155,12 @@
     <string name="settings_playlists">Listas de reproducción</string>
     <string name="settings_app_info">Información de la app y la lista</string>
     <string name="settings_playback">Reproducción</string>
-    <string name="settings_appearance">Apariencia</string>
+    <string name="settings_appearance">Apariencia</string>
+    <string name="background_mode">Fondo</string>
+    <string name="background_modern">Moderno</string>
+    <string name="background_classic">Clásico</string>
+    <string name="background_modern_desc">El fondo cambia a la imagen de lo que estés mirando.</string>
+    <string name="background_classic_desc">La imagen propia de la aplicación se mantiene en todas partes y nunca cambia.</string>
     <string name="settings_privacy_history">Privacidad e historial</string>
     <string name="settings_category_visibility">Visibilidad de categorías</string>
     <string name="settings_parental_controls">Control parental</string>

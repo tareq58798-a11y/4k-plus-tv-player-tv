@@ -155,7 +155,12 @@
     <string name="settings_playlists">प्लेलिस्ट</string>
     <string name="settings_app_info">ऐप और प्लेलिस्ट जानकारी</string>
     <string name="settings_playback">प्लेबैक</string>
-    <string name="settings_appearance">रूप-रंग</string>
+    <string name="settings_appearance">रूप-रंग</string>
+    <string name="background_mode">पृष्ठभूमि</string>
+    <string name="background_modern">आधुनिक</string>
+    <string name="background_classic">क्लासिक</string>
+    <string name="background_modern_desc">आप जो देख रहे हैं उसकी तस्वीर पृष्ठभूमि बन जाती है।</string>
+    <string name="background_classic_desc">ऐप की अपनी तस्वीर हर जगह बनी रहती है और कभी नहीं बदलती।</string>
     <string name="settings_privacy_history">गोपनीयता और इतिहास</string>
     <string name="settings_category_visibility">श्रेणी दृश्यता</string>
     <string name="settings_parental_controls">अभिभावक नियंत्रण</string>

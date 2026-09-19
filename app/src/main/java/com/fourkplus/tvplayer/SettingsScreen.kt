@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer
+package com.fourkplus.tvplayer
 
 import android.content.Context
 import java.security.MessageDigest
@@ -31,7 +31,7 @@ import com.fourkplus.tvplayer.data.MediaKind
 import com.fourkplus.tvplayer.data.PlaylistInput
 import com.fourkplus.tvplayer.ui.theme.*
 
-private enum class SettingsPage { ROOT, PLAYLIST, INFO, PLAYBACK, LANGUAGE, HISTORY, CATEGORIES, PARENTAL, LOCK_CATEGORIES, LOCK_CHANNELS }
+private enum class SettingsPage { ROOT, PLAYLIST, INFO, PLAYBACK, APPEARANCE, LANGUAGE, HISTORY, CATEGORIES, PARENTAL, LOCK_CATEGORIES, LOCK_CHANNELS }
 
 @Composable
 private fun settingsPageTitle(page: SettingsPage): String = when (page) {
@@ -39,6 +39,7 @@ private fun settingsPageTitle(page: SettingsPage): String = when (page) {
     SettingsPage.PLAYLIST -> stringResource(R.string.settings_playlists)
     SettingsPage.INFO -> stringResource(R.string.settings_app_info)
     SettingsPage.PLAYBACK -> stringResource(R.string.settings_playback)
+    SettingsPage.APPEARANCE -> stringResource(R.string.settings_appearance)
     SettingsPage.LANGUAGE -> stringResource(R.string.cd_language)
     SettingsPage.HISTORY -> stringResource(R.string.settings_privacy_history)
     SettingsPage.CATEGORIES -> stringResource(R.string.settings_category_visibility)
@@ -86,6 +87,8 @@ internal fun SettingsScreen(
         }.getOrNull().orEmpty().ifBlank { unknownLabel }
     }
     val playback = remember { context.getSharedPreferences("playback_settings", Context.MODE_PRIVATE) }
+    val appSettings = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
+    var classicBackground by remember { mutableStateOf(appSettings.getBoolean("classic_background", false)) }
     val parental = remember { context.getSharedPreferences("parental_settings", Context.MODE_PRIVATE) }
     var playlistName by remember(source?.name, playlist?.name) { mutableStateOf(source?.name ?: playlist?.name.orEmpty()) }
     var skipSeconds by remember { mutableIntStateOf(playback.getInt("skip_seconds", 10)) }
@@ -190,6 +193,7 @@ internal fun SettingsScreen(
                         SettingsMenuRow(Icons.Default.PlaylistPlay, stringResource(R.string.settings_playlists), Orange) { settingsPage = SettingsPage.PLAYLIST }
                         SettingsMenuRow(Icons.Default.Info, stringResource(R.string.settings_app_info), BrandBlue) { settingsPage = SettingsPage.INFO }
                         SettingsMenuRow(Icons.Default.PlayCircle, stringResource(R.string.settings_playback), Cyan) { settingsPage = SettingsPage.PLAYBACK }
+                        SettingsMenuRow(Icons.Default.Wallpaper, stringResource(R.string.settings_appearance), Orange) { settingsPage = SettingsPage.APPEARANCE }
                         SettingsMenuRow(Icons.Default.Language, stringResource(R.string.cd_language), Cyan) { settingsPage = SettingsPage.LANGUAGE }
                     }
                 }
@@ -448,7 +452,33 @@ internal fun SettingsScreen(
                 }
             }
 
-            if (settingsPage == SettingsPage.LANGUAGE) item {
+            if (settingsPage == SettingsPage.APPEARANCE) item {
+                SettingsSection(stringResource(R.string.settings_appearance), Icons.Default.Wallpaper) {
+                    Text(stringResource(R.string.background_mode), fontWeight = FontWeight.Bold)
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        listOf(
+                            false to stringResource(R.string.background_modern),
+                            true to stringResource(R.string.background_classic)
+                        ).forEachIndexed { index, option ->
+                            SegmentedButton(
+                                selected = classicBackground == option.first,
+                                onClick = {
+                                    classicBackground = option.first
+                                    appSettings.edit().putBoolean("classic_background", option.first).apply()
+                                },
+                                shape = SegmentedButtonDefaults.itemShape(index, 2)
+                            ) { Text(option.second) }
+                        }
+                    }
+                    Text(
+                        stringResource(
+                            if (classicBackground) R.string.background_classic_desc
+                            else R.string.background_modern_desc
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
+                    )
+                }
                 SettingsSection(stringResource(R.string.cd_language), Icons.Default.Language) {
                     AppLanguage.entries.forEach { language ->
                         RadioSetting(

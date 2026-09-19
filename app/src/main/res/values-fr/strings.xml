@@ -155,7 +155,12 @@
     <string name="settings_playlists">Listes de lecture</string>
     <string name="settings_app_info">Informations sur l’application et la liste</string>
     <string name="settings_playback">Lecture</string>
-    <string name="settings_appearance">Apparence</string>
+    <string name="settings_appearance">Apparence</string>
+    <string name="background_mode">Arrière-plan</string>
+    <string name="background_modern">Moderne</string>
+    <string name="background_classic">Classique</string>
+    <string name="background_modern_desc">L\'arrière-plan devient l\'image de ce que vous regardez.</string>
+    <string name="background_classic_desc">L\'image de l\'application reste partout et ne change jamais.</string>
     <string name="settings_privacy_history">Confidentialité et historique</string>
     <string name="settings_category_visibility">Visibilité des catégories</string>
     <string name="settings_parental_controls">Contrôle parental</string>

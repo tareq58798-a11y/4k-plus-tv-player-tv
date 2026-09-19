@@ -50,11 +50,26 @@ class BackdropState {
         private set
 
     /**
+     * Whether the background follows what the viewer is looking at.
+     *
+     * False is Classic: the app's own artwork stays up everywhere and nothing replaces it. Some
+     * people want the room to hold still - a picture that changes every time the highlight moves
+     * is the single busiest thing on screen, and on a television that is across the room from you
+     * it is movement in the corner of your eye all evening.
+     *
+     * Gated here rather than at the callers. Every page asks for artwork in the ordinary way and
+     * this decides whether the request is honoured, so Classic cannot be defeated by a screen that
+     * forgot to check.
+     */
+    var followsFocus by mutableStateOf(true)
+
+    /**
      * Ask for [model] (a URL) to become the background. A blank or null [model] is a no-op: an item
      * with no artwork keeps whatever is already there instead of dropping the viewer onto the
      * default image, which would read as a flash every time an untagged title is focused.
      */
     fun show(key: String?, model: String?) {
+        if (!followsFocus) return
         if (model.isNullOrBlank() || key.isNullOrBlank()) return
         if (model == requestedModel) return
         requestedModel = model
