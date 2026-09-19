@@ -14,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.core.Animatable
@@ -2890,6 +2891,56 @@ private fun MoviePoster(
     }
 }
 
+/**
+ * The Play button on a title's page: an outline until the remote is on it, solid blue when it is.
+ *
+ * A filled button that looks the same whether or not it holds focus tells the viewer nothing, and
+ * this one is the brightest thing on the page - so it read as "selected" at all times, and the one
+ * moment that actually mattered looked identical to every other. Inverting it makes focus the loud
+ * state and rest the quiet one.
+ *
+ * The colour is driven by the button's own focus rather than by the app's focus ring, because this
+ * sits over artwork that changes with every title: a ring has to win against whatever frame is
+ * behind it, while a fill replaces that background entirely.
+ */
+@Composable
+private fun PlayActionButton(
+    resumePosition: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var focused by remember { mutableStateOf(false) }
+    val container by animateColorAsState(
+        if (focused) BrandBlue else Color.Transparent,
+        animationSpec = tween(140),
+        label = "playFill"
+    )
+    val content by animateColorAsState(
+        if (focused) Color.White else Cyan,
+        animationSpec = tween(140),
+        label = "playContent"
+    )
+    Button(
+        onClick = onClick,
+        modifier = modifier.onFocusChanged { focused = it.isFocused },
+        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content),
+        // Only while resting. Focused, the fill is the outline's job as well, and keeping both
+        // puts a hard edge around a solid block for no reason.
+        border = if (focused) null else BorderStroke(2.dp, Cyan.copy(alpha = .8f)),
+        // A transparent surface that still casts a shadow looks like a pane of glass floating over
+        // the artwork, which is not what this is.
+        elevation = null
+    ) {
+        Icon(if (resumePosition > 0L) Icons.Default.Replay else Icons.Default.PlayArrow, null)
+        Spacer(Modifier.width(7.dp))
+        Text(
+            if (resumePosition > 0L) stringResource(R.string.resume_time, formatPlaybackTime(resumePosition))
+            else stringResource(R.string.play_action),
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
 @Composable
 private fun MovieDetails(
     movie: PlaylistItem,
@@ -2935,11 +2986,11 @@ private fun MovieDetails(
                 ) {
                     if (!poster.isNullOrBlank()) AsyncImage(poster, movie.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
-                Button(onClick = onPlay, modifier = Modifier.fillMaxWidth().height(46.dp).focusRequester(playFocusRequester)) {
-                    Icon(if (resumePosition > 0L) Icons.Default.Replay else Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(7.dp))
-                    Text(if (resumePosition > 0L) stringResource(R.string.resume_time, formatPlaybackTime(resumePosition)) else stringResource(R.string.play_action))
-                }
+                PlayActionButton(
+                    resumePosition = resumePosition,
+                    onClick = onPlay,
+                    modifier = Modifier.fillMaxWidth().height(46.dp).focusRequester(playFocusRequester)
+                )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     trailerId?.let { id ->
                         OutlinedButton(onClick = { openTrailer(context, id) }, modifier = Modifier.weight(1f).height(44.dp)) {
@@ -3043,11 +3094,11 @@ private fun MovieDetails(
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onPlay, modifier = Modifier.weight(1f).height(54.dp)) {
-                Icon(if (resumePosition > 0L) Icons.Default.Replay else Icons.Default.PlayArrow, null)
-                Spacer(Modifier.width(7.dp))
-                Text(if (resumePosition > 0L) stringResource(R.string.resume_time, formatPlaybackTime(resumePosition)) else stringResource(R.string.play_action))
-            }
+            PlayActionButton(
+                resumePosition = resumePosition,
+                onClick = onPlay,
+                modifier = Modifier.weight(1f).height(54.dp)
+            )
             AnimatedFilledTonalIconButton(onClick = onFavorite, modifier = Modifier.size(54.dp)) {
                 Icon(
                     if (favorite) Icons.Default.Star else Icons.Default.StarBorder,
