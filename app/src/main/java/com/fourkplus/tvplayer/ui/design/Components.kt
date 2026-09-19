@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer.ui.design
+package com.fourkplus.tvplayer.ui.design
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -36,12 +36,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -70,6 +76,7 @@ import kotlinx.coroutines.delay
  * an indicator of its own - each component decides how focus looks. The ripple is suppressed
  * because there is no touch on a TV and it reads as a stray flash.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun Modifier.tvFocusable(
     onFocusChanged: (Boolean) -> Unit,
@@ -77,13 +84,61 @@ fun Modifier.tvFocusable(
     onClick: (() -> Unit)? = null
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
+    val requester = remember { FocusRequester() }
+    // Android puts a window into "touch mode" the moment a finger touches it, and in touch mode
+    // nothing takes focus at all - a focus request is simply refused. Asking for keyboard input
+    // mode is what lifts that, and is what lets a tap select a card the way a remote does.
+    val inputMode = LocalInputModeManager.current
+    // Leaving touch mode makes Compose hand focus to whatever it considers first - on a landing
+    // page, the navigation bar - and it does that after this click returns. Asking for focus in the
+    // same breath therefore loses the race and the ring ends up on the tab. Waiting a frame puts
+    // this request after that assignment, so the card ends up holding it.
+    var pendingFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingFocus) {
+        if (!pendingFocus) return@LaunchedEffect
+        withFrameNanos {}
+        runCatching { requester.requestFocus() }
+        pendingFocus = false
+    }
+    // Whether this is the thing the viewer has chosen - which is not the same question as whether
+    // it holds focus this instant. Every touch puts the window back into touch mode and empties
+    // focus, so by the time a tap becomes a click the card it landed on is no longer focused, and
+    // asking about focus alone means a card can only ever be selected and never opened.
+    //
+    // Losing focus while the window is in touch mode is therefore that flip and nothing more, and
+    // the choice stands. Losing it in keyboard mode is the highlight genuinely moving somewhere
+    // else - another card, a button, a tab - and the choice is over.
+    var selected by remember { mutableStateOf(false) }
     return this
-        .onFocusChanged { onFocusChanged(it.isFocused) }
+        .focusRequester(requester)
+        .onFocusChanged {
+            if (it.isFocused) {
+                selected = true
+            } else if (inputMode.inputMode != InputMode.Touch) {
+                selected = false
+            }
+            onFocusChanged(it.isFocused)
+        }
         .clickable(
             interactionSource = interaction,
             indication = null,
             enabled = enabled,
-            onClick = { onClick?.invoke() }
+            onClick = {
+                // A press acts on what is already selected, and otherwise selects.
+                //
+                // On a remote this changes nothing: the D-pad has already moved the ring onto this
+                // card before OK is pressed, so OK opens it as it always did. On a touch screen
+                // there is no ring and nothing has been selected, so the first tap puts it here -
+                // which is what grows the card, raises its artwork behind the page and brings up
+                // its information - and the second tap opens it. Without this a finger skipped
+                // straight past everything the page has to say about a title.
+                if (selected) {
+                    onClick?.invoke()
+                } else {
+                    inputMode.requestInputMode(InputMode.Keyboard)
+                    pendingFocus = true
+                }
+            }
         )
 }
 

@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer
+package com.fourkplus.tvplayer
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.snap
@@ -45,6 +45,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -259,6 +262,14 @@ internal fun LandingScaffold(
         }
     }
 
+    // Home shows the app's own artwork until the viewer actually moves onto something. A card is
+    // focused for them as the page opens, and letting that stand in for a choice would replace the
+    // background before they had touched the remote. Every other section starts true: arriving
+    // there is itself the choice to look at that section's titles.
+    var viewerHasMoved by remember(destination) {
+        mutableStateOf(destination != NavDestination.HOME)
+    }
+
     // Keyed on the focused entry, so moving on cancels the wait before it ever becomes a request:
     // running a row costs one lookup for the title you stop at, not one for every title you pass.
     LaunchedEffect(focused, loadBio) {
@@ -271,6 +282,11 @@ internal fun LandingScaffold(
         // The poster went up the moment this card was focused, so the page was never blank; now
         // the title's proper landscape artwork has arrived, the backdrop upgrades to it. The
         // crossfade handles the swap, and if the two are the same image nothing happens at all.
+        //
+        // Gated exactly like the poster was. Without this the details arriving for the card Home
+        // opens on put that title behind the page anyway, a second late - which is the astronaut
+        // being replaced by a title the viewer never chose.
+        if (!viewerHasMoved) return@LaunchedEffect
         bio.backdropUrl?.takeIf { it.isNotBlank() }?.let { backdrop.show(entry.key, it) }
     }
     // A handle on each focusable position in the top row, in the order they are laid out: its
@@ -343,14 +359,6 @@ internal fun LandingScaffold(
         }
     }
 
-    // Home shows the app's own artwork until the viewer actually moves onto something. A card is
-    // focused for them as the page opens, and letting that stand in for a choice would replace the
-    // background before they had touched the remote. Every other section starts true: arriving
-    // there is itself the choice to look at that section's titles.
-    var viewerHasMoved by remember(destination) {
-        mutableStateOf(destination != NavDestination.HOME)
-    }
-
     Column(
         Modifier
             .fillMaxSize()
@@ -359,6 +367,23 @@ internal fun LandingScaffold(
             .onPreviewKeyEvent { event ->
                 if (event.isInitialKeyDown && event.key in directionKeys) viewerHasMoved = true
                 false
+            }
+            // A touch counts as moving too. On a phone there is no direction key to press: the
+            // viewer picks a card by putting a finger on it, and that is the same choice - so the
+            // background should follow it, rather than the page sitting on its own artwork until
+            // a key that will never be pressed arrives. Watched in the initial pass so it is known
+            // before the tap turns into a focus change, and never consumed.
+            //
+            // Presses only. A pointer merely moving across the page - which on a desktop or an
+            // emulator happens without anyone touching anything - is not a choice, and counting it
+            // replaced Home's own artwork before the viewer had done a thing.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Press) viewerHasMoved = true
+                    }
+                }
             }
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Dims.GapM)

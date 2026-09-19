@@ -61,6 +61,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -4273,7 +4276,10 @@ private fun DrawScope.drawContrastRoundRect(alpha: Float, cornerRadius: Dp, stro
     drawRoundRect(color = Cyan.copy(alpha = alpha), topLeft = topLeft, size = boxSize, cornerRadius = radius, style = Stroke(width = stroke))
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    ExperimentalComposeUiApi::class
+)
 @Composable
 internal fun Modifier.focusableClickable(
     cornerRadius: Dp = 12.dp,
@@ -4291,6 +4297,26 @@ internal fun Modifier.focusableClickable(
     // node's own Enter-key click handling does) and calls onLongClick when it's held past the
     // threshold, consuming the key-up so a plain onClick doesn't also fire right after.
     var keyDownAt by remember { mutableLongStateOf(0L) }
+    val clickFocus = remember { FocusRequester() }
+    // See the note in Modifier.tvFocusable: in touch mode nothing takes focus until this is asked
+    // for, so without it a tap could never select anything.
+    val inputMode = LocalInputModeManager.current
+    // Deferred a frame for the same reason as in Modifier.tvFocusable - see the note there.
+    var pendingFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingFocus) {
+        if (!pendingFocus) return@LaunchedEffect
+        withFrameNanos {}
+        runCatching { clickFocus.requestFocus() }
+        pendingFocus = false
+    }
+    // What the viewer has chosen, which outlives holding focus - see the note in
+    // Modifier.tvFocusable. Every touch drops the window back into touch mode and empties focus,
+    // so a tap arrives at a card that is no longer focused; only a focus loss that happens while
+    // the window is in keyboard mode is the highlight really moving elsewhere.
+    var selected by remember { mutableStateOf(false) }
+    LaunchedEffect(focused) {
+        if (focused) selected = true else if (inputMode.inputMode != InputMode.Touch) selected = false
+    }
     return this
         .graphicsLayer(scaleX = scale, scaleY = scale)
         .drawWithContent {
@@ -4319,12 +4345,23 @@ internal fun Modifier.focusableClickable(
                 }
             } else Modifier
         )
+        .focusRequester(clickFocus)
         .combinedClickable(
             interactionSource = interaction,
             indication = LocalIndication.current,
             onLongClick = onLongClick,
             onDoubleClick = onDoubleClick,
-            onClick = onClick
+            // Selects first, acts second - see the matching note in Modifier.tvFocusable. A remote
+            // has already moved the ring here before OK, so nothing changes there; a finger has
+            // not, so its first tap is what selects.
+            onClick = {
+                if (selected) {
+                    onClick()
+                } else {
+                    inputMode.requestInputMode(InputMode.Keyboard)
+                    pendingFocus = true
+                }
+            }
         )
 }
 
