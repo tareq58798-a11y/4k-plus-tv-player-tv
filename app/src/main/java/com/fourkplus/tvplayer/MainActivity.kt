@@ -353,11 +353,17 @@ private fun App() {
         )
     }
 
-    // Meaningless on TV: there's no touch screen to rotate and the device is permanently
-    // landscape, so a hint about portrait/landscape differences would just be confusing.
+    // Nothing left to hint at. Both builds are locked to landscape in their manifests - a
+    // television because it is one, a phone because it runs the television's screens - so there is
+    // no portrait to rotate out of, and telling someone to rotate a phone that will not rotate is
+    // worse than saying nothing. Kept rather than deleted because the hint itself is still correct
+    // for any build that does allow portrait.
     val isTvApp = remember { context.isTvDevice() }
+    @Suppress("SimplifyBooleanWithConstants")
+    val orientationCanChange = false
     LaunchedEffect(screen, playlistUiState.bootstrapping) {
-        if (!isTvApp && screen == Screen.HOME && !playlistUiState.bootstrapping &&
+        if (orientationCanChange && !isTvApp && screen == Screen.HOME &&
+            !playlistUiState.bootstrapping &&
             !appPreferences.getBoolean("rotate_hint_seen", false)
         ) {
             delay(700)

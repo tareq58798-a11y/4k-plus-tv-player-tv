@@ -2,13 +2,13 @@
 <!--
   The phone and tablet build.
 
-  Leanback is declared but not required. Requiring it hides the app from every phone and tablet in
-  the Play Store; leaving it out altogether would drop the app from the Android TV listing, which
-  this build does not appear in anyway - so declaring it optional is the honest description of a
-  build that runs on either.
+  The phone and tablet build runs the same screens as the television, in landscape, on a touch
+  screen. It differs from the television build only in what it declares here and in its application
+  id, so the two can sit on one device as separate apps.
 
-  screenOrientation is deliberately absent, so a phone held upright stays upright. The TV build
-  declares landscape in src/tv and is unaffected by this file.
+  Leanback is declared but not required. Requiring it hides the app from every phone and tablet in
+  the Play Store; leaving it out altogether would drop it from the Android TV listing, which this
+  build does not appear in anyway - so optional is the honest description.
 -->
 <manifest
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -22,11 +22,12 @@
         android:required="true"
         tools:replace="android:required" />
     <application>
-        <!-- Playback carries on in a floating window while something else is used. Declared here
-             rather than in the shared manifest: the television build has its own arrangement for
-             this, driven by its own player. -->
+        <!-- Landscape, like the television build. The screens are the television's, laid out for a
+             wide picture with the artwork beside the text; held upright a phone would be showing a
+             television screen turned on its side, which is what portrait looked like. -->
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="landscape"
             android:supportsPictureInPicture="true" />
     </application>
 </manifest>
