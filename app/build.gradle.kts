@@ -43,8 +43,8 @@ android {
         //
         // versionCode is what Android compares to decide whether something is an update. It must
         // only ever increase, and is deliberately not reset to match versionName.
-        versionCode = 119
-        versionName = "6.8"
+        versionCode = 120
+        versionName = "6.9"
     }
 
     // Two builds from one source tree, and never one build pretending to be both. They carry
@@ -62,10 +62,16 @@ android {
             dimension = "formFactor"
             // Unchanged: this is the id the published TV app already uses and must keep.
             applicationId = "com.fourkplus.tvplayer.tv"
+            // Which build this is, answered when it is compiled rather than when it runs. Shared
+            // code that is only for a fingertip sits behind this, so the television keeps the
+            // behaviour it already has no matter what the phone work does next. Declared here
+            // rather than as a source file under src/tv, so no file of the television's is touched.
+            buildConfigField("boolean", "TOUCH_BUILD", "false")
         }
         create("phone") {
             dimension = "formFactor"
             applicationId = "com.fourkplus.tvplayer.phone"
+            buildConfigField("boolean", "TOUCH_BUILD", "true")
         }
     }
 
@@ -98,7 +104,11 @@ android {
         checkReleaseBuilds = false
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        // Generates BuildConfig, which carries TOUCH_BUILD above. Off by default since AGP 8.
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.fourkplus.tvplayer.BuildConfig
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.delay
@@ -71,77 +72,74 @@ import kotlinx.coroutines.delay
  * their own boxes, which is what keeps spacing, focus behaviour and timing identical everywhere.
  */
 
+/** One card's identity, and the card the finger has settled on. See [tvFocusable]. */
+private val touchSelection = androidx.compose.runtime.mutableStateOf<Any?>(null)
+
 /**
  * Makes anything focusable and clickable by remote, and reports its focus state, without drawing
  * an indicator of its own - each component decides how focus looks. The ripple is suppressed
  * because there is no touch on a TV and it reads as a stray flash.
+ *
+ * [selectFirstOnTouch] is for artwork cards and nothing else. A card is worth stopping on: it has a
+ * picture to put behind the page, a plot, a year, a cast. A tab, a button, a category row and the
+ * box that opens a fuller list are not - they are the way to somewhere, and asking for a second tap
+ * on them only makes the app feel unresponsive. So cards take two taps, one to look and one to
+ * open, and everything else takes one, exactly as it always did.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun Modifier.tvFocusable(
     onFocusChanged: (Boolean) -> Unit,
     enabled: Boolean = true,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    selectFirstOnTouch: Boolean = false
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
-    val requester = remember { FocusRequester() }
-    // Android puts a window into "touch mode" the moment a finger touches it, and in touch mode
-    // nothing takes focus at all - a focus request is simply refused. Asking for keyboard input
-    // mode is what lifts that, and is what lets a tap select a card the way a remote does.
-    val inputMode = LocalInputModeManager.current
-    // Leaving touch mode makes Compose hand focus to whatever it considers first - on a landing
-    // page, the navigation bar - and it does that after this click returns. Asking for focus in the
-    // same breath therefore loses the race and the ring ends up on the tab. Waiting a frame puts
-    // this request after that assignment, so the card ends up holding it.
-    var pendingFocus by remember { mutableStateOf(false) }
-    LaunchedEffect(pendingFocus) {
-        if (!pendingFocus) return@LaunchedEffect
-        withFrameNanos {}
-        runCatching { requester.requestFocus() }
-        pendingFocus = false
+    // A press acts. This is every caller on the television, and everything but an artwork card on
+    // the phone.
+    if (!BuildConfig.TOUCH_BUILD || !selectFirstOnTouch) {
+        return this
+            .onFocusChanged { onFocusChanged(it.isFocused) }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = { onClick?.invoke() }
+            )
     }
-    // Whether this is the thing the viewer has chosen - which is not the same question as whether
-    // it holds focus this instant. Every touch puts the window back into touch mode and empties
-    // focus, so by the time a tap becomes a click the card it landed on is no longer focused, and
-    // asking about focus alone means a card can only ever be selected and never opened.
+    // An artwork card on the phone, where the first tap chooses and the second opens.
     //
-    // Losing focus while the window is in touch mode is therefore that flip and nothing more, and
-    // the choice stands. Losing it in keyboard mode is the highlight genuinely moving somewhere
-    // else - another card, a button, a tab - and the choice is over.
-    var selected by remember { mutableStateOf(false) }
+    // Deliberately nothing to do with Compose focus. A window is in touch mode whenever a finger is
+    // on it and refuses focus outright, and the obvious answer - ask for keyboard input mode, then
+    // ask for focus - is a trap: leaving touch mode makes Compose hand focus to whatever it
+    // considers first, which on these pages is the navigation bar, and the bar having focus is what
+    // chooses the page. Every tap went to Home. So the choice is kept here instead, beside the
+    // focus system rather than inside it, and the card simply reports itself as highlighted.
+    //
+    // One card at a time, so it lives in one place rather than in each card: a card holds an
+    // identity object of its own and is the chosen one only while the selection points at it.
+    // Taking focus for real - a keyboard or a remote plugged into a phone - claims it too, so the
+    // two ways of moving the highlight can never both be lit at once.
+    val identity = remember { Any() }
+    var hasFocus by remember { mutableStateOf(false) }
+    val chosen = hasFocus || touchSelection.value === identity
+    LaunchedEffect(chosen) { onFocusChanged(chosen) }
     return this
-        .focusRequester(requester)
         .onFocusChanged {
-            if (it.isFocused) {
-                selected = true
-            } else if (inputMode.inputMode != InputMode.Touch) {
-                selected = false
-            }
-            onFocusChanged(it.isFocused)
+            hasFocus = it.isFocused
+            if (it.isFocused) touchSelection.value = identity
         }
         .clickable(
             interactionSource = interaction,
             indication = null,
             enabled = enabled,
             onClick = {
-                // A press acts on what is already selected, and otherwise selects.
-                //
-                // On a remote this changes nothing: the D-pad has already moved the ring onto this
-                // card before OK is pressed, so OK opens it as it always did. On a touch screen
-                // there is no ring and nothing has been selected, so the first tap puts it here -
-                // which is what grows the card, raises its artwork behind the page and brings up
-                // its information - and the second tap opens it. Without this a finger skipped
-                // straight past everything the page has to say about a title.
-                if (selected) {
-                    onClick?.invoke()
-                } else {
-                    inputMode.requestInputMode(InputMode.Keyboard)
-                    pendingFocus = true
-                }
+                // Chosen already, so this is the viewer acting on it; otherwise this is them
+                // choosing it, which is what grows the card, raises its artwork behind the page and
+                // brings up everything the page has to say about the title.
+                if (chosen) onClick?.invoke() else touchSelection.value = identity
             }
         )
 }
-
 /**
  * Fades and lifts its content into place the first time it appears, optionally after [delayMs].
  *
@@ -282,7 +280,10 @@ fun ArtCard(
                     focused = it
                     onFocusChanged(it)
                 },
-                onClick = onClick
+                onClick = onClick,
+                // The one place a second tap is asked for: a film, a series or a channel, which has
+                // a picture and a story behind it worth seeing before deciding to open it.
+                selectFirstOnTouch = true
             )
     ) {
         Box(

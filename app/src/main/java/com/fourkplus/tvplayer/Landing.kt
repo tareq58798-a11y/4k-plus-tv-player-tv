@@ -283,10 +283,11 @@ internal fun LandingScaffold(
         // the title's proper landscape artwork has arrived, the backdrop upgrades to it. The
         // crossfade handles the swap, and if the two are the same image nothing happens at all.
         //
-        // Gated exactly like the poster was. Without this the details arriving for the card Home
-        // opens on put that title behind the page anyway, a second late - which is the astronaut
-        // being replaced by a title the viewer never chose.
-        if (!viewerHasMoved) return@LaunchedEffect
+        // On the phone, gated exactly like the poster was: without this the details arriving for
+        // the card Home opens on put that title behind the page anyway, a second late, which is
+        // the astronaut being replaced by a title the viewer never chose. The television is left
+        // as it is.
+        if (BuildConfig.TOUCH_BUILD && !viewerHasMoved) return@LaunchedEffect
         bio.backdropUrl?.takeIf { it.isNotBlank() }?.let { backdrop.show(entry.key, it) }
     }
     // A handle on each focusable position in the top row, in the order they are laid out: its
@@ -377,14 +378,19 @@ internal fun LandingScaffold(
             // Presses only. A pointer merely moving across the page - which on a desktop or an
             // emulator happens without anyone touching anything - is not a choice, and counting it
             // replaced Home's own artwork before the viewer had done a thing.
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (event.type == PointerEventType.Press) viewerHasMoved = true
+            //
+            // Phone only. A television has no finger to watch for, and this is not part of what it
+            // was doing before.
+            .then(
+                if (!BuildConfig.TOUCH_BUILD) Modifier else Modifier.pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            if (event.type == PointerEventType.Press) viewerHasMoved = true
+                        }
                     }
                 }
-            }
+            )
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Dims.GapM)
     ) {
