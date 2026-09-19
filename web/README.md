@@ -79,3 +79,36 @@ play a channel.
 
 Not built yet: Home, Movies, Series, search, settings, favourites, resume, EPG, the backdrop, and
 the catalogue cache. Not yet run on Samsung hardware or the emulator.
+
+## Installing on a Samsung emulator or television
+
+Three things here are not what the general Tizen documentation says, and each cost an hour:
+
+1. **`sdb install` does not work on a Samsung TV image.** Its sdbd rejects the path outright
+   (`is_pkg_file_path`) and the connection drops, which surfaces only as `closed`. A Samsung set
+   installs through its own web app service: `sdb shell 0 vd_appinstall <name> <path>`.
+2. **The push destination matters.** `sdb push` defaults to `/home/owner/share/tmp/sdk_tools`,
+   which the installer cannot read - `org.tizen.webappservice has no permission to access this
+   file`. The same place as `/opt/usr/home/owner/share/tmp/sdk_tools` is readable.
+3. **No spaces in the package filename.** sdbd refuses a path containing any, again reported as
+   the connection closing. `package-tizen.mjs` writes `FourKPlusTVPlayer.wgt` for this reason.
+
+`npm run package:tizen` and then `node scripts/package-tizen.mjs --sign <profile>` prints the two
+commands with the right paths already filled in.
+
+### The remaining blocker: a Samsung certificate
+
+A Tizen author certificate is **not** enough, even on the emulator. Signed with one, the install
+gets as far as 27% and then:
+
+```
+install failed[118, -12], reason: Check certificate error :
+Invalid certificate chain with certificate in signature.
+```
+
+Tried with both distributor certificates the SDK ships (`tizen-distributor-signer.p12` and
+`tizen-distributor-signer-new.p12`); same result. A Samsung set will only accept a **Samsung**
+certificate, which Certificate Manager creates after signing in with a Samsung account.
+
+That sign-in is the one step that cannot be automated here. Once the profile exists, sign with it
+and the two commands above should complete.

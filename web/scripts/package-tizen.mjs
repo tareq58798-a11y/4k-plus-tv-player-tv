@@ -13,7 +13,7 @@
  *   node scripts/package-tizen.mjs --sign NAME   stage, then package and sign with that profile
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +21,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const dist = join(root, 'dist');
 const staging = join(root, 'tizen-package');
+
+/** No spaces: sdbd refuses a package path that has any. */
+const PACKAGE_BASENAME = 'FourKPlusTVPlayer';
+const TV_INSTALL_PATH = `/opt/usr/home/owner/share/tmp/sdk_tools/${PACKAGE_BASENAME}.wgt`;
 
 if (!existsSync(dist)) {
   console.error('dist/ is missing. Run `npm run build` first.');
@@ -66,7 +70,23 @@ try {
     stdio: 'inherit',
     shell: true,
   });
-  console.log(`\nPackaged. Install with:\n  sdb install ${join(staging, '*.wgt')}`);
+  // `tizen package` names the file after <name> in config.xml, which has spaces in it. Copy it to
+  // a name without any: sdbd rejects a package path containing spaces outright, and the failure
+  // surfaces as the connection closing rather than as anything about the name.
+  const named = join(staging, `${PACKAGE_BASENAME}.wgt`);
+  const produced = readdirSync(staging).find((file) => file.endsWith('.wgt') && file !== `${PACKAGE_BASENAME}.wgt`);
+  if (produced) cpSync(join(staging, produced), named);
+
+  // A Samsung television - emulator included - does not install through `sdb install`. Its sdbd
+  // rejects the path (is_pkg_file_path), and the set installs through its own web app service
+  // instead. That service also cannot read /home/owner/share/tmp/sdk_tools, which is where sdb
+  // puts a push by default; /opt/usr/home/... is the same place by a path it is allowed to open.
+  console.log(
+    `\nPackaged: ${named}\n\n` +
+      'Install on a Samsung television or emulator:\n' +
+      `  sdb push "${named}" ${TV_INSTALL_PATH}\n` +
+      `  sdb shell 0 vd_appinstall ${PACKAGE_BASENAME} ${TV_INSTALL_PATH}\n`,
+  );
 } catch {
   console.error(
     '\n`tizen` is not on PATH. It lives in <tizen-studio>/tools/ide/bin - add that folder to PATH,\n' +
