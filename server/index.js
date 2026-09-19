@@ -19,25 +19,7 @@ app.post('/api/activate', async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'Invalid mac or deviceKey.' });
   }
 
-  // Whether a person asked for this check, or the app is just polling in the background while the
-  // activation screen sits open.
-  //
-  // Only the first kind may put a device on the dashboard. Deleting a device has to mean it is
-  // gone, and it cannot if the five-second poll behind the activation screen re-creates the row a
-  // moment later - the reseller deletes it, it reappears, and the button looks broken. Opening the
-  // activation screen or pressing Refresh counts as asking; the repeats after that do not.
-  //
-  // An older app that sends neither flag is treated as asking, because that is what every one of
-  // its requests used to do. A device that never updates therefore behaves exactly as before
-  // rather than quietly becoming impossible to register.
-  const userInitiated = req.body.userInitiated !== false && req.body.userInitiated !== 'false';
-  if (userInitiated) {
-    await db.registerDevice(mac, deviceKey);
-  } else if (!await db.touchDevice(mac)) {
-    // Not on the dashboard: never registered, or deleted. Either way there is nothing assigned to
-    // it, and a background poll is not allowed to create it.
-    return res.json({ status: 'pending' });
-  }
+  await db.upsertPendingDevice(mac, deviceKey);
   const device = await db.getDevice(mac);
 
   if (!device || device.status !== 'assigned' || device.device_key !== deviceKey) {
@@ -87,17 +69,8 @@ app.post('/admin/devices/:mac/assign', requireAdmin, async (req, res) => {
   res.redirect('/admin');
 });
 
-/**
- * Clears the playlist assigned to a device, leaving the device in the list as pending.
- *
- * Validated and POST-only for the same reason the delete route below is: this throws away stored
- * credentials, and anything that can be triggered by following a link can be triggered by
- * something that follows links on its own.
- */
-app.post('/admin/devices/:mac/delete-profile', requireAdmin, async (req, res) => {
-  const mac = normalizeMac(req.params.mac);
-  if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
-  await db.deleteProfile(mac);
+app.post('/admin/devices/:mac/unassign', requireAdmin, async (req, res) => {
+  await db.unassignDevice(normalizeMac(req.params.mac));
   res.redirect('/admin');
 });
 
@@ -117,11 +90,5 @@ app.post('/admin/devices/:mac/delete', requireAdmin, async (req, res) => {
 
 app.get('/', (req, res) => res.send('4K Plus TV activation server is running.'));
 
-// Started only when this file is run directly, so the test can require the app and listen on a
-// port of its own instead of racing the real one.
-if (require.main === module) {
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => console.log(`Activation server listening on port ${port}`));
-}
-
-module.exports = app;
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Activation server listening on port ${port}`));

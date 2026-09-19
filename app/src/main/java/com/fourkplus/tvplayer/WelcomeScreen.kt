@@ -80,9 +80,7 @@ internal fun ActivationScreen(
     onLanguageChange: (AppLanguage) -> Unit,
     onManual: () -> Unit,
     onMessage: (String) -> Unit,
-    /** The Boolean says whether the viewer asked for this check or the screen is polling by
-     *  itself - see the poll loop in RemoteActivationPanel. */
-    loadPlaylist: suspend (PlaylistInput, Boolean) -> Result<LoadedPlaylist>,
+    loadPlaylist: suspend (PlaylistInput) -> Result<LoadedPlaylist>,
     onConnected: (LoadedPlaylist) -> Unit
 ) {
     var showLanguage by remember { mutableStateOf(false) }
@@ -161,7 +159,7 @@ internal fun ActivationScreen(
 private fun RemoteActivationPanel(
     modifier: Modifier,
     onMessage: (String) -> Unit,
-    loadPlaylist: suspend (PlaylistInput, Boolean) -> Result<LoadedPlaylist>,
+    loadPlaylist: suspend (PlaylistInput) -> Result<LoadedPlaylist>,
     onConnected: (LoadedPlaylist) -> Unit
 ) {
     val context = LocalContext.current
@@ -181,22 +179,11 @@ private fun RemoteActivationPanel(
     LaunchedEffect(mac, deviceKey, lifecycleOwner, refreshSignal) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
             var failures = 0
-            // Only the first attempt of a run is on the viewer's behalf - they opened this screen,
-            // or they pressed Refresh, which restarts this effect. The repeats after it are the app
-            // checking by itself, and the activation service will not let those put the device back
-            // on the reseller's dashboard once it has been deleted there. Without the distinction,
-            // deleting a device that is sitting on this screen would undo itself within five
-            // seconds.
-            var userInitiated = true
             while (!assigned) {
                 refreshing = true
                 val result = try {
-                    currentLoad(
-                        PlaylistInput(activatedPlaylistName, PlaylistKind.DEVICE_ACTIVATION, "", mac, deviceKey),
-                        userInitiated
-                    )
+                    currentLoad(PlaylistInput(activatedPlaylistName, PlaylistKind.DEVICE_ACTIVATION, "", mac, deviceKey))
                 } finally { refreshing = false }
-                userInitiated = false
                 if (result.isSuccess) {
                     assigned = true
                     currentConnected(result.getOrThrow())

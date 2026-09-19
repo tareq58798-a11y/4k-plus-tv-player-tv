@@ -135,15 +135,10 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
       );
     }
 
-    // Only the first attempt of a run is on the viewer's behalf - they opened this screen, or they
-    // pressed Refresh, which restarts this whole loop. See activate() for why the distinction
-    // matters: without it, deleting a device that is sitting on this screen undoes itself within
-    // five seconds.
-    let userInitiated = true;
     while (!stopped) {
       status.textContent = t('waiting_for_activation');
       try {
-        const result = await activate(mac, key, userInitiated);
+        const result = await activate(mac, key);
         if (stopped) return;
         if (result.kind === 'm3u') {
           // An M3U has no account behind it, so there is nothing to sign in to and nothing to
@@ -171,9 +166,6 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
           status.textContent = error instanceof Error ? error.message : String(error);
         }
       }
-      // Reached on every path that does not leave the loop, so every attempt after the first is
-      // marked as the app checking by itself.
-      userInitiated = false;
       // Waits, or gives up waiting the moment Refresh is pressed.
       await new Promise<void>((resolve) => {
         const delay = failures === 0 ? 5000 : Math.min(30000, 5000 * failures);
