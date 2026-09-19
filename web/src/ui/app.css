@@ -691,3 +691,39 @@ body.playing .backdrop-scrim {
 .settings-row.danger {
   color: var(--tone-live-red);
 }
+
+/* -------------------------------------------------------------------- EPG */
+
+.browser-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide {
+  margin-top: var(--dim-gap-s);
+  padding: var(--dim-gap-s) var(--dim-gap-m);
+  border-radius: var(--dim-radius-card);
+  background: var(--tone-glass);
+  min-height: 108px;
+}
+
+.guide-now {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.guide-next {
+  margin-top: 6px;
+  font-size: 22px;
+  color: var(--tone-text-muted);
+}
+
+.guide .progress {
+  margin: 8px 0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill.live {
+  background: var(--tone-accent);
+}

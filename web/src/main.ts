@@ -9,7 +9,7 @@ import { detectPlatform, keyOf, registerPlatformKeys, type RemoteKey } from './p
 import { createPlayer, type MediaPlayer } from './platform/video';
 import { readJson, writeJson, remove as removeStored } from './platform/storage';
 import { cacheKey, clearCatalogue, readCatalogue, writeCatalogue } from './platform/cache';
-import { setLocale, isRtl, t } from './shared/i18n';
+import { setLocale, isRtl, locale, t } from './shared/i18n';
 import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
@@ -21,6 +21,7 @@ import { renderNav, trackNavHighlight, type Section } from './ui/nav';
 import { renderSeries } from './ui/series';
 import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
+import { createEpgLoader, clockTime } from './ui/epg';
 
 const platform = detectPlatform();
 const app = document.getElementById('app') as HTMLElement;
@@ -325,6 +326,42 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   const grid = el('div', { class: 'grid', 'data-focus-group': 'browser-grid' });
   const sidebar = el('div', { class: 'sidebar', 'data-focus-group': 'browser-categories' });
 
+  // What is on the focused channel now and next. Only Live TV has listings, and only for the one
+  // channel the viewer settles on - see createEpgLoader.
+  const guide = el('div', { class: 'guide' });
+  const epg = createEpgLoader(login, (channel, result) => {
+    if (focusedChannelId !== channel.channelId) return;
+    guide.textContent = '';
+    if (!result.now && !result.next) {
+      guide.append(el('div', { class: 'guide-now' }, t('epg_no_info')));
+      return;
+    }
+    if (result.now) {
+      guide.append(
+        el(
+          'div',
+          { class: 'guide-now' },
+          t('epg_now_format', `${clockTime(result.now.startEpochSeconds, locale())}  ${result.now.title}`),
+        ),
+      );
+      if (result.progress !== null) {
+        guide.append(
+          el('div', { class: 'progress' }, el('div', { class: 'progress-fill live', style: `width:${result.progress * 100}%` })),
+        );
+      }
+    }
+    if (result.next) {
+      guide.append(
+        el(
+          'div',
+          { class: 'guide-next' },
+          t('epg_next_format', `${clockTime(result.next.startEpochSeconds, locale())}  ${result.next.title}`),
+        ),
+      );
+    }
+  });
+  let focusedChannelId: string | null = null;
+
   function renderGrid(): void {
     grid.textContent = '';
     for (const item of pool.filter((entry) => entry.group === selected).slice(0, 400)) {
@@ -335,6 +372,13 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       card.append(art, el('div', { class: 'label' }, item.name));
       card.addEventListener('focus', () => {
         if (item.kind !== 'live') backdrop.show(item.logoUrl);
+        focusedChannelId = item.channelId;
+        if (item.kind === 'live') {
+          // The name first, so the panel is never empty while the listings are on their way.
+          guide.textContent = '';
+          guide.append(el('div', { class: 'guide-now' }, item.name));
+          epg.request(item);
+        }
       });
       card.addEventListener('click', () => playScreen(item));
       grid.append(card);
@@ -360,7 +404,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   }
 
   const back = el('div', { class: 'browser-title' }, t(current === 'live' ? 'nav_live_tv' : current === 'movies' ? 'nav_movies' : 'nav_series'));
-  app.append(back, el('div', { class: 'browser' }, sidebar, grid));
+  app.append(back, el('div', { class: 'browser' }, sidebar, el('div', { class: 'browser-main' }, grid, current === 'live' ? guide : el('div'))));
   renderGrid();
   focus(sidebar.querySelector<HTMLElement>('[data-focus]'));
 
