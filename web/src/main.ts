@@ -7,8 +7,8 @@
  */
 import { detectPlatform, keyOf, registerPlatformKeys, type RemoteKey } from './platform/keys';
 import { createPlayer, type MediaPlayer } from './platform/video';
-import { readJson, writeJson } from './platform/storage';
-import { cacheKey, readCatalogue, writeCatalogue } from './platform/cache';
+import { readJson, writeJson, remove as removeStored } from './platform/storage';
+import { cacheKey, clearCatalogue, readCatalogue, writeCatalogue } from './platform/cache';
 import { setLocale, isRtl, t } from './shared/i18n';
 import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, PlaylistItem, ProviderLogin } from './shared/models';
@@ -19,6 +19,8 @@ import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
 import { renderNav, trackNavHighlight, type Section } from './ui/nav';
 import { renderSeries } from './ui/series';
+import { renderSearch } from './ui/search';
+import { renderSettings } from './ui/settings';
 
 const platform = detectPlatform();
 const app = document.getElementById('app') as HTMLElement;
@@ -242,6 +244,8 @@ function showSection(next: Section): void {
     current: next,
     onSection: (chosen) => showSection(chosen),
     onEnter: () => focusPageStart(app),
+    onSearch: () => searchScreen(),
+    onSettings: () => settingsScreen(),
     subtitle: `${catalogue.items.length} ${t('items_label')}`,
   });
   detachNav = trackNavHighlight(bar);
@@ -257,6 +261,53 @@ function showSection(next: Section): void {
   // Focus starts on the bar, so the section tab is lit and Down enters the page - the same place
   // the television app starts.
   focus(bar.querySelector<HTMLElement>(`[data-focus-id="tab-${next}"]`));
+}
+
+/* --------------------------------------------------- search and settings */
+
+function searchScreen(): void {
+  if (!catalogue) return;
+  clear();
+  renderSearch(app, {
+    items: catalogue.items,
+    backdrop,
+    onOpen: (item) => playScreen(item),
+    onBack: () => showSection(section),
+  });
+}
+
+function settingsScreen(): void {
+  clear();
+  renderSettings(app, {
+    // Every word on screen changes, so the page behind is rebuilt rather than patched.
+    onLanguageChanged: () => {
+      setFocusDirection(isRtl());
+      settingsScreen();
+    },
+    onClearCache: () => {
+      if (!login) return;
+      // Drop what is stored and fetch again, which is what a viewer means by "refresh": the
+      // provider has added channels and the copy on the set is behind.
+      void clearCatalogue(cacheKey(login)).then(() => {
+        const saved = login!;
+        catalogue = null;
+        clear();
+        const status = el('div', { class: 'status' }, t('loading_your_playlist'));
+        app.append(status);
+        void connectAndLoad(saved, status);
+      });
+    },
+    onSignOut: () => {
+      // The catalogue goes with the account. Leaving one behind would mean the next sign-in
+      // opened on somebody else's playlist.
+      if (login) void clearCatalogue(cacheKey(login));
+      removeStored(SAVED_LOGIN);
+      login = null;
+      catalogue = null;
+      loginScreen();
+    },
+    onBack: () => showSection(section),
+  });
 }
 
 /* ---------------------------------------------------------------- browser */

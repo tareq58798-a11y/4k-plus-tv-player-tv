@@ -625,3 +625,69 @@ body.playing .backdrop-scrim {
   font-size: 20px;
   color: var(--tone-text-muted);
 }
+
+/* ------------------------------------------------------- search, settings */
+
+.tool {
+  font-size: 40px;
+  line-height: 1;
+  padding: 10px 18px;
+  border-radius: var(--dim-radius-pill);
+  color: var(--tone-text-secondary);
+  cursor: pointer;
+}
+
+.tool:focus {
+  color: var(--tone-text-primary);
+  background: var(--tone-glass-strong);
+}
+
+.search-field {
+  width: 1200px;
+  height: 84px;
+  padding: 0 var(--dim-gap-l);
+  font-size: 32px;
+  color: var(--tone-text-primary);
+  background: var(--tone-glass-strong);
+  border: 1px solid var(--tone-glass-border);
+  border-radius: var(--dim-radius-pill);
+}
+
+.search-count {
+  margin: var(--dim-gap-s) 0 var(--dim-gap-m);
+  font-size: 24px;
+  color: var(--tone-text-muted);
+}
+
+.search .grid {
+  height: 700px;
+  grid-template-columns: repeat(5, var(--dim-card-width));
+}
+
+.settings {
+  display: flex;
+  gap: 120px;
+}
+
+.settings-group {
+  width: 560px;
+}
+
+.settings-row {
+  padding: 18px var(--dim-gap-l);
+  margin-bottom: var(--dim-gap-s);
+  border-radius: var(--dim-radius-card);
+  background: var(--tone-glass);
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.settings-row[aria-selected='true'] {
+  background: var(--tone-category-gradient);
+  color: #04131f;
+  font-weight: 700;
+}
+
+.settings-row.danger {
+  color: var(--tone-live-red);
+}

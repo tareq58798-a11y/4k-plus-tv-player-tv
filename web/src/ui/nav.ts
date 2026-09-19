@@ -26,6 +26,8 @@ export interface NavOptions {
   onSection: (section: Section) => void;
   /** OK on a tab: go into the page that is already showing. */
   onEnter: () => void;
+  onSearch: () => void;
+  onSettings: () => void;
   subtitle?: string;
 }
 
@@ -63,6 +65,28 @@ export function renderNav(host: HTMLElement, options: NavOptions): HTMLElement {
   const spacer = document.createElement('div');
   spacer.className = 'spacer';
   bar.append(spacer);
+
+  // Search and settings, as glyphs rather than words: they sit beside four tabs that are words,
+  // and at this size two more would read as another four sections rather than as tools.
+  const tools: [string, string, () => void][] = [
+    ['⌕', t('cd_search'), options.onSearch],
+    ['⚙', t('cd_settings'), options.onSettings],
+  ];
+  for (const [glyph, label, action] of tools) {
+    const button = document.createElement('div');
+    button.className = 'tool';
+    button.tabIndex = -1;
+    button.textContent = glyph;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('data-focus', '');
+    button.setAttribute('data-focus-id', `tool-${label}`);
+    button.setAttribute('data-focus-up', 'none');
+    // Unlike a tab, these do nothing on arrival - moving past the search icon should not open
+    // search. They need the press.
+    button.addEventListener('click', action);
+    bar.append(button);
+  }
 
   if (options.subtitle) {
     const note = document.createElement('div');
