@@ -624,15 +624,36 @@ private fun LandscapeSeriesBrowser(
     // The category whose long-press menu is open, if any. The gesture opens a menu now rather
     // than committing straight to hand-moving, which was one of four things somebody might want.
     var categoryMenuFor by remember { mutableStateOf<String?>(null) }
+    // The category a jump to the top or bottom just moved, which the ring has to be carried to -
+    // see the matching comment in LandscapeMovieBrowser.
+    var followCategory by remember { mutableStateOf<String?>(null) }
+    val movedCategoryFocusRequester = remember { FocusRequester() }
     categoryMenuFor?.let { menuCategory ->
         CategoryActionsDialog(
             category = menuCategory,
             onHide = onHideCategory?.let { hide -> { hide(menuCategory) } },
             onMoveManually = { reorderingCategory = menuCategory },
-            onMoveToTop = { moveCategoryToEnd(context, MediaKind.SERIES, allCategories, menuCategory, toTop = true); onCategoriesReordered() },
-            onMoveToBottom = { moveCategoryToEnd(context, MediaKind.SERIES, allCategories, menuCategory, toTop = false); onCategoriesReordered() },
+            onMoveToTop = {
+                moveCategoryToEnd(context, MediaKind.SERIES, allCategories, menuCategory, toTop = true)
+                followCategory = menuCategory
+                onCategoriesReordered()
+            },
+            onMoveToBottom = {
+                moveCategoryToEnd(context, MediaKind.SERIES, allCategories, menuCategory, toTop = false)
+                followCategory = menuCategory
+                onCategoriesReordered()
+            },
             onDismiss = { categoryMenuFor = null }
         )
+    }
+    LaunchedEffect(followCategory, allCategories) {
+        val target = followCategory ?: return@LaunchedEffect
+        val index = allCategories.indexOf(target)
+        if (index >= 0) {
+            runCatching { categoryListState.scrollToItem(index) }
+            requestFocusWithRetry(movedCategoryFocusRequester)
+        }
+        followCategory = null
     }
     // Keeps the moving category in view as it's nudged past the edge of the visible list -
     // otherwise it scrolls out from under the user with no sign of where it went.
@@ -706,6 +727,7 @@ private fun LandscapeSeriesBrowser(
                             modifier = Modifier.fillMaxWidth()
                                 .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
                                 .then(if (category == selectedCategory) Modifier.focusRequester(selectedCategoryFocusRequester) else Modifier)
+                                .then(if (category == followCategory) Modifier.focusRequester(movedCategoryFocusRequester) else Modifier)
                                 .categoryReorderKeys(
                                     active = isReordering,
                                     onMove = { up -> moveCategory(context, MediaKind.SERIES, categories, category, up); onCategoriesReordered() },

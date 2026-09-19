@@ -78,6 +78,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -288,9 +289,12 @@ private fun RelatedItemsStrip(
                 LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
             }
             Column(
-                Modifier.width(88.dp).focusRequester(focusRequester)
+                // Wide enough for the thumbnail to read as a still from the episode rather than a
+                // stamp. At 88dp these were about the size of a postage stamp on a television
+                // across a room, and the title under them had space for three or four words.
+                Modifier.width(158.dp).focusRequester(focusRequester)
                     .focusableClickable(cornerRadius = 8.dp) { if (!active) onSelect(related) },
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.Start
             ) {
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp))
@@ -304,13 +308,18 @@ private fun RelatedItemsStrip(
                         Icon(Icons.Default.PlayCircle, null, tint = Color.White.copy(alpha = .6f))
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(5.dp))
                 Text(
                     related.name,
                     color = if (active) Cyan else Color.White,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1,
+                    // Two lines, because an episode's name is "Series • S01E04 • Title" and one
+                    // line of that is all series and no episode - exactly the part being chosen
+                    // between.
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -398,6 +407,10 @@ internal fun MoviePlayer(
     }
     var controllerVisible by remember { mutableStateOf(true) }
     var relatedStripExpanded by remember { mutableStateOf(false) }
+    // Read from inside the PlayerView's key handling, which is built once. A plain capture of
+    // relatedItems there would freeze at whatever the episode list was when the view was created,
+    // so switching episodes could leave Down opening a strip that no longer has anything in it.
+    val relatedItemCount by rememberUpdatedState(relatedItems.size)
     // Portrait boxes the video to 16:9 with the episode switcher below it instead of overlaid on
     // top of it (see the dispatch at the end of this function) — skipped while in a
     // picture-in-picture window, which is always shown as a plain edge-to-edge rectangle.
@@ -575,6 +588,22 @@ internal fun MoviePlayer(
                     // child or the system's default back handling ever sees it.
                     object : PlayerView(it) {
                         override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                            // Down walks the controls from top to bottom in the order they are
+                            // drawn: the timeline, then the settings gear beneath it, then the
+                            // episode strip below that. Handled here for the same reason Back is -
+                            // once the controller is up one of media3's own buttons holds Android
+                            // focus, so a listener on this view alone would never fire.
+                            if (isTv && event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN &&
+                                event.action == android.view.KeyEvent.ACTION_DOWN &&
+                                event.repeatCount == 0 && controllerVisible && !relatedStripExpanded
+                            ) {
+                                if (advanceDownThroughControls(this, relatedItemCount > 1) { relatedStripExpanded = true }) {
+                                    // Each step counts as interaction, or the controls time out
+                                    // halfway down and the next press starts over from nothing.
+                                    showController()
+                                    return true
+                                }
+                            }
                             if (isTv && event.keyCode == android.view.KeyEvent.KEYCODE_BACK && controllerVisible) {
                                 // Both halves of the press are consumed, and only its opening
                                 // key-down acts: letting the key-up through after the controls are
@@ -901,20 +930,75 @@ private fun FullscreenPlayerDialog(
     }
 }
 
-/** Paints a blue D-pad focus ring on media3's native controller buttons (play/pause, rewind,
- *  fast-forward) - plain Android Views, so they can't use the app's usual cyan Compose
- *  drawFocusRing modifier. Safe to call repeatedly: findViewById just returns null for any ID
- *  the current controller layout doesn't have. */
+/** Paints the D-pad focus ring on media3's native controller buttons (play/pause, rewind,
+ *  fast-forward, and the settings gear that holds audio track and playback speed) - plain Android
+ *  Views, so they can't use the app's usual Compose drawFocusRing modifier. Safe to call
+ *  repeatedly: findViewById just returns null for any ID the current controller layout doesn't
+ *  have. */
 private fun applyTvControlFocusHighlight(view: PlayerView) {
     val ids = intArrayOf(
         androidx.media3.ui.R.id.exo_play_pause,
         androidx.media3.ui.R.id.exo_rew_with_amount,
         androidx.media3.ui.R.id.exo_ffwd_with_amount,
         androidx.media3.ui.R.id.exo_rew,
-        androidx.media3.ui.R.id.exo_ffwd
+        androidx.media3.ui.R.id.exo_ffwd,
+        // The gear is now a stop on the way down from the timeline, so it has to show focus as
+        // plainly as the transport buttons do - it is a small grey icon in a corner otherwise.
+        androidx.media3.ui.R.id.exo_settings,
+        androidx.media3.ui.R.id.exo_subtitle,
+        androidx.media3.ui.R.id.exo_audio_track
     )
     for (id in ids) {
         view.findViewById<android.view.View>(id)?.background = view.context.getDrawable(R.drawable.exo_control_focus_selector)
+    }
+    applyTvTimeBarFocusHighlight(view)
+}
+
+/**
+ * Turns the seek bar's scrubber cyan while the remote is on it.
+ *
+ * The bar is a line the full width of the screen with a small dot on it, and a dot that does not
+ * change cannot say whether the next press will seek or go somewhere else entirely. media3 grows
+ * the scrubber while it is being dragged but does nothing for focus, so the colour is set here.
+ *
+ * Guarded on the view actually being a DefaultTimeBar, because a custom controller layout is free
+ * to put anything at all under that ID.
+ */
+private fun applyTvTimeBarFocusHighlight(view: PlayerView) {
+    val bar = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress) as? DefaultTimeBar ?: return
+    bar.isFocusable = true
+    bar.setOnFocusChangeListener { _, hasFocus ->
+        bar.setScrubberColor(if (hasFocus) TimeBarFocusedScrubber else TimeBarRestingScrubber)
+        bar.setPlayedColor(if (hasFocus) TimeBarFocusedScrubber else TimeBarRestingScrubber)
+    }
+}
+
+/** Cyan, the colour focus is everywhere else in the app. */
+private const val TimeBarFocusedScrubber = 0xFF23D7EE.toInt()
+private const val TimeBarRestingScrubber = 0xFFFFFFFF.toInt()
+
+/**
+ * Moves focus one step down through the player's controls, and says whether it did.
+ *
+ * Three stops, in the order they appear on screen: the timeline, the settings gear under it, then
+ * the episode strip below that. [hasStrip] is false for a film, which has no other episodes to go
+ * to - the third press then simply does nothing rather than opening an empty drawer.
+ *
+ * Derived from where focus actually is rather than from a counter of presses. A counter drifts the
+ * moment anything else moves focus - the options row hands off to play/pause, the controller hides
+ * and comes back - and then Down starts doing the wrong thing with no way for the viewer to get it
+ * back in step.
+ */
+private fun advanceDownThroughControls(view: PlayerView, hasStrip: Boolean, onOpenStrip: () -> Unit): Boolean {
+    val timeBar = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)
+    val settings = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)
+    return when (view.findFocus()) {
+        null -> timeBar?.requestFocus() ?: false
+        timeBar -> settings?.requestFocus() ?: false
+        settings -> if (hasStrip) { onOpenStrip(); true } else false
+        // Anywhere else in the controller - play/pause, rewind, fast-forward - is the top row, so
+        // the first press down from it lands on the timeline like it does from nowhere at all.
+        else -> timeBar?.requestFocus() ?: false
     }
 }
 
