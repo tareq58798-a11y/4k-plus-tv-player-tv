@@ -9,6 +9,7 @@
     "dev": "npm run shared && vite",
     "build": "npm run shared && tsc --noEmit && vite build",
     "preview": "vite preview",
+    "package:tizen": "npm run build && node scripts/package-tizen.mjs",
     "typecheck": "npm run shared && tsc --noEmit"
   },
   "devDependencies": {
