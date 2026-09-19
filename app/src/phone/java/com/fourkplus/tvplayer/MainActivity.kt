@@ -33,6 +33,14 @@ import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.RadioButton
+import androidx.compose.runtime.rememberCoroutineScope
+import com.fourkplus.tvplayer.data.ActivationPendingException
+import com.fourkplus.tvplayer.data.PlaylistInput
+import com.fourkplus.tvplayer.data.PlaylistKind
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -92,6 +100,12 @@ import com.fourkplus.tvplayer.viewmodel.PlaylistViewModel
  * A fix to any of them reaches both apps; a change on this screen reaches neither.
  */
 class MainActivity : ComponentActivity() {
+    // Same as the television build: the chosen language has to be applied before any resource is
+    // read, which is here and nowhere later.
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -103,10 +117,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class PhoneTab(val label: String, val kind: MediaKind) {
+/** A null [kind] is the settings page rather than a catalogue of something. */
+private enum class PhoneTab(val label: String, val kind: MediaKind?) {
     MOVIES("Movies", MediaKind.MOVIE),
     SERIES("Series", MediaKind.SERIES),
-    LIVE("Live TV", MediaKind.LIVE)
+    LIVE("Live TV", MediaKind.LIVE),
+    SETTINGS("Settings", null)
 }
 
 @Composable
@@ -292,6 +308,7 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
                                     PhoneTab.MOVIES -> Icons.Default.Movie
                                     PhoneTab.SERIES -> Icons.Default.Tv
                                     PhoneTab.LIVE -> Icons.Default.LiveTv
+                                    PhoneTab.SETTINGS -> Icons.Default.Settings
                                 },
                                 null
                             )
@@ -309,6 +326,10 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
             }
         }
     ) { padding ->
+        if (tab.kind == null) {
+            PhoneSettings(playlist, viewModel, Modifier.padding(padding))
+            return@Scaffold
+        }
         Column(Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(
                 value = query,
@@ -435,6 +456,217 @@ private fun PosterTile(item: PlaylistItem, portraitArt: Boolean, onClick: () -> 
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+/**
+ * Settings.
+ *
+ * Only what a phone can act on. Everything here goes through the shared layer, so a playlist
+ * refreshed, replaced or checked for here is the same operation the television performs - the two
+ * apps keep their own copies of it, because they are separate installs with separate storage.
+ */
+@Composable
+private fun PhoneSettings(
+    playlist: LoadedPlaylist,
+    viewModel: PlaylistViewModel,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var busy by remember { mutableStateOf<String?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var language by remember { mutableStateOf(LocaleHelper.getLanguage(context)) }
+
+    LazyColumn(
+        modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text("Settings", color = Tone.TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        }
+
+        note?.let { text ->
+            item {
+                Text(
+                    text,
+                    color = Tone.Accent,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Tone.Glass)
+                        .padding(12.dp)
+                )
+            }
+        }
+
+        item {
+            SettingsCard("Playlist") {
+                InfoLine("Name", state.activeSource?.name ?: playlist.name)
+                state.activeSource?.username?.takeIf(String::isNotBlank)?.let {
+                    InfoLine("Account", it)
+                }
+                playlist.accountStatus?.takeIf(String::isNotBlank)?.let { InfoLine("Status", it) }
+                InfoLine("Channels", playlist.liveCount.toString())
+                InfoLine("Films", playlist.movieCount.toString())
+                InfoLine("Series", playlist.seriesCount.toString())
+            }
+        }
+
+        item {
+            SettingsCard("Actions") {
+                SettingsButton(
+                    Icons.Default.Refresh,
+                    "Refresh playlist",
+                    "Fetch the newest channels, films and series",
+                    busy == null
+                ) {
+                    busy = "refresh"
+                    scope.launch {
+                        viewModel.refreshActive()
+                            .onSuccess { note = "Playlist refreshed" }
+                            .onFailure { note = it.message ?: "Playlist refresh failed" }
+                        busy = null
+                    }
+                }
+                // The same question the television's Settings asks: this device's codes are already
+                // registered, so the only thing left to find out is whether anything has been put
+                // against them. "Nothing yet" is an answer, not a failure.
+                SettingsButton(
+                    Icons.Default.Sync,
+                    "Check for a playlist",
+                    if (busy == "activation") "Checking with the activation service…"
+                    else "Ask whether a playlist has been assigned to this device",
+                    busy == null
+                ) {
+                    busy = "activation"
+                    scope.launch {
+                        viewModel.addPlaylist(
+                            PlaylistInput(
+                                name = "Activated playlist",
+                                kind = PlaylistKind.DEVICE_ACTIVATION,
+                                address = "",
+                                username = DeviceIdentity.mac(context),
+                                password = DeviceIdentity.deviceKey(context)
+                            )
+                        )
+                            .onSuccess { note = "A playlist was assigned to this device" }
+                            .onFailure { error ->
+                                note = if (error is ActivationPendingException) {
+                                    "No playlist has been assigned to this device yet"
+                                } else {
+                                    error.message ?: "The activation service could not be reached"
+                                }
+                            }
+                        busy = null
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard("This device") {
+                InfoLine("Device ID", DeviceIdentity.mac(context))
+                InfoLine("Device Key", DeviceIdentity.deviceKey(context))
+            }
+        }
+
+        item {
+            SettingsCard("Language") {
+                // Applied at attachBaseContext, so the activity is recreated to pick it up rather
+                // than half the screen re-reading strings and half not.
+                AppLanguage.entries.forEach { option ->
+                    val label = option.nativeName.ifBlank { "System default" }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                LocaleHelper.setLanguage(context, option)
+                                language = option
+                                (context as? android.app.Activity)?.recreate()
+                            }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = option == language, onClick = null)
+                        Spacer(Modifier.height(0.dp))
+                        Text("  $label", color = Tone.TextPrimary, fontSize = 15.sp)
+                    }
+                }
+            }
+        }
+
+        item {
+            Text(
+                "4K Plus TV Player • phone",
+                color = Tone.TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsCard(title: String, content: @Composable () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            // Darker than the glass used elsewhere. A poster grid can afford a light wash because
+            // the artwork is the content; a column of small labels and values cannot, with the
+            // astronaut's helmet behind it.
+            .background(Color(0xD9060E1C))
+            .padding(16.dp)
+    ) {
+        Text(title, color = Tone.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(10.dp))
+        content()
+    }
+}
+
+@Composable
+private fun InfoLine(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, color = Tone.TextMuted, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        Text(
+            value,
+            color = Tone.TextPrimary,
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SettingsButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            null,
+            tint = if (enabled) Tone.Accent else Tone.TextMuted,
+            modifier = Modifier.size(22.dp)
+        )
+        Column(Modifier.padding(start = 12.dp)) {
+            Text(title, color = Tone.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text(description, color = Tone.TextMuted, fontSize = 12.sp)
+        }
     }
 }
 
