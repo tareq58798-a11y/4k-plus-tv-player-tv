@@ -33,10 +33,16 @@ jobs:
       - name: Build test APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Upload test APK
+      # Both flavours, by wildcard. assembleDebug has built two APKs since the tv/phone split, and
+      # they land under apk/tv/debug/ and apk/phone/debug/ - the old single apk/debug/app-debug.apk
+      # has not existed since. With if-no-files-found: error that turned every push into a failing
+      # check, which is worse than a missing artifact: Render's "After CI Checks Pass" auto-deploy
+      # refuses to deploy a commit whose checks failed, so a broken upload path here quietly
+      # stopped the activation service from ever updating.
+      - name: Upload test APKs
         uses: actions/upload-artifact@v4
         with:
-          name: 4K-Plus-TV-Player-test-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: 4K-Plus-TV-Player-test-apks
+          path: app/build/outputs/apk/*/debug/*.apk
           if-no-files-found: error
           retention-days: 30
