@@ -1,0 +1,40 @@
+# Deployment configuration for the activation service.
+#
+# Written down here rather than left in Render's dashboard because the service was configured by
+# hand, and a hand-configured service is one nobody can check. The running instance had drifted
+# several commits behind the repository with no sign of it anywhere in the code, and the only way
+# to find out was to probe the live URL and see which routes answered.
+#
+# The two settings that actually matter are rootDir and the commands. package.json lives in
+# server/, not at the repository root - a build that looks at the root finds a Gradle project, no
+# package.json, and fails.
+#
+# Note this does not reconfigure an existing service on its own. Render applies a blueprint when a
+# service is created from it, or when an existing Blueprint instance is synced; a service created
+# by hand carries on using its dashboard settings until it is replaced or attached to this file.
+services:
+  - type: web
+    name: fourk-plus-tv-player
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    # Where package.json is. Everything below runs inside this directory.
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
+    # A push to main should deploy. The whole problem being fixed here is that one did not.
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      # Both are secrets and are deliberately not in this file. sync:false makes Render ask for the
+      # value when the service is created and keeps whatever is already set on an existing one, so
+      # neither the database URL nor the admin password is ever committed.
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # server/test/dashboard.test.js needs fetch, which is built in from Node 18. The app itself
+      # runs on anything current; this only pins the floor.
+      - key: NODE_VERSION
+        value: "22"
