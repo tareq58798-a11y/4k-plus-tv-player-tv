@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
@@ -141,7 +143,51 @@ private fun PhoneApp() {
  */
 private sealed interface Overlay {
     data class Episodes(val series: PlaylistItem) : Overlay
-    data class Playing(val title: String, val url: String) : Overlay
+
+    /**
+     * [progressKey] is where this title's resume position is kept, and [progressPrefs] which store
+     * holds it - films and episodes are recorded separately, exactly as the television build does,
+     * so the two never overwrite one another. Null for live channels, which have no position to
+     * return to.
+     */
+    data class Playing(
+        val title: String,
+        val url: String,
+        val progressPrefs: String? = null,
+        val progressKey: String? = null
+    ) : Overlay
+}
+
+/** Films. Matches the television build's store and key, so a position means the same thing in both. */
+private const val MOVIE_PREFS = "movie_library"
+
+/** Series episodes, kept apart from films for the same reason. */
+private const val SERIES_PREFS = "series_library"
+
+/**
+ * Anything within half a minute of the end counts as finished rather than paused, so starting it
+ * again begins at the beginning instead of the closing seconds.
+ */
+private const val NEARLY_FINISHED_MS = 30_000L
+
+private fun readProgress(context: android.content.Context, prefs: String?, key: String?): Long {
+    if (prefs == null || key == null) return 0L
+    return context.getSharedPreferences(prefs, android.content.Context.MODE_PRIVATE)
+        .getLong(key, 0L)
+}
+
+private fun writeProgress(
+    context: android.content.Context,
+    prefs: String?,
+    key: String?,
+    position: Long,
+    duration: Long
+) {
+    if (prefs == null || key == null) return
+    val store = context.getSharedPreferences(prefs, android.content.Context.MODE_PRIVATE)
+    val finished = duration > 0L && position >= duration - NEARLY_FINISHED_MS
+    if (finished || position <= 0L) store.edit().remove(key).apply()
+    else store.edit().putLong(key, position).apply()
 }
 
 @Composable
@@ -217,10 +263,18 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
     var tab by remember { mutableStateOf(PhoneTab.MOVIES) }
     var query by remember { mutableStateOf("") }
     var overlay by remember { mutableStateOf<Overlay?>(null) }
+    // Null means every category. Reset whenever the tab changes, because a category belongs to the
+    // kind it was picked in and carrying it across would filter the next tab down to nothing.
+    var category by remember(tab) { mutableStateOf<String?>(null) }
 
-    val items = remember(playlist, tab, query) {
-        val ofKind = playlist.items.filter { it.kind == tab.kind }
-        if (query.isBlank()) ofKind
+    val ofKind = remember(playlist, tab) { playlist.items.filter { it.kind == tab.kind } }
+    val categories = remember(ofKind) { ofKind.map { it.group }.distinct().sorted() }
+
+    val items = remember(ofKind, category, query) {
+        val inCategory = if (category == null) ofKind else ofKind.filter { it.group == category }
+        // A search reaches the whole kind, not just the open category: someone typing a title wants
+        // the title, and having to find the right category first would defeat the point of typing.
+        if (query.isBlank()) inCategory
         else ofKind.filter { it.name.contains(query.trim(), ignoreCase = true) }
     }
 
@@ -265,6 +319,33 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             )
+            // A catalogue runs to thousands of titles, so a flat grid is only usable with a search
+            // term already in mind. The categories the provider ships are the way through it, and a
+            // scrolling row of chips is the touch equivalent of the television's category column.
+            // Hidden while searching, which reaches across all of them anyway.
+            if (query.isBlank() && categories.size > 1) {
+                LazyRow(
+                    Modifier.fillMaxWidth(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = category == null,
+                            onClick = { category = null },
+                            label = { Text("All") }
+                        )
+                    }
+                    items(categories, key = { it }) { name ->
+                        FilterChip(
+                            selected = category == name,
+                            onClick = { category = if (category == name) null else name },
+                            label = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             // Live channels are wide logos, films and series are tall posters, so the two are laid
             // out differently rather than forced into one shape.
             val portraitArt = tab != PhoneTab.LIVE
@@ -282,10 +363,16 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
                         // A film or a channel is one stream and plays straight away. A series is a
                         // list of episodes, so it opens that list first - there is nothing to play
                         // until one of them has been picked.
-                        overlay = if (item.kind == MediaKind.SERIES) {
-                            Overlay.Episodes(item)
-                        } else {
-                            Overlay.Playing(item.name, item.streamUrl)
+                        overlay = when (item.kind) {
+                            MediaKind.SERIES -> Overlay.Episodes(item)
+                            MediaKind.MOVIE -> Overlay.Playing(
+                                item.name,
+                                item.streamUrl,
+                                MOVIE_PREFS,
+                                "progress_${channelKey(item)}"
+                            )
+                            // A live channel has no position to keep: it is wherever it is now.
+                            MediaKind.LIVE -> Overlay.Playing(item.name, item.streamUrl)
                         }
                     }
                 }
@@ -298,12 +385,21 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
         is Overlay.Episodes -> EpisodeList(
             series = current.series,
             viewModel = viewModel,
-            onPlay = { title, url -> overlay = Overlay.Playing(title, url) },
+            onPlay = { episode ->
+                overlay = Overlay.Playing(
+                    "${current.series.name} • S${episode.seasonNumber} E${episode.episodeNumber}",
+                    episode.streamUrl,
+                    SERIES_PREFS,
+                    "episode_progress_${episode.id}"
+                )
+            },
             onDismiss = { overlay = null }
         )
         is Overlay.Playing -> PhonePlayer(
             title = current.title,
             url = current.url,
+            progressPrefs = current.progressPrefs,
+            progressKey = current.progressKey,
             onDismiss = { overlay = null }
         )
     }
@@ -350,7 +446,7 @@ private fun PosterTile(item: PlaylistItem, portraitArt: Boolean, onClick: () -> 
 private fun EpisodeList(
     series: PlaylistItem,
     viewModel: PlaylistViewModel,
-    onPlay: (String, String) -> Unit,
+    onPlay: (SeriesEpisode) -> Unit,
     onDismiss: () -> Unit
 ) {
     var episodes by remember(series) { mutableStateOf<List<SeriesEpisode>?>(null) }
@@ -405,7 +501,7 @@ private fun EpisodeList(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .clickable { onPlay("${series.name} • S${episode.seasonNumber} E${episode.episodeNumber}", episode.streamUrl) }
+                            .clickable { onPlay(episode) }
                             .padding(horizontal = 20.dp, vertical = 14.dp)
                     ) {
                         Text(
@@ -433,16 +529,43 @@ private fun EpisodeList(
  * controls differ: media3's own touch controls, rather than the focus-driven overlay a remote needs.
  */
 @Composable
-private fun PhonePlayer(title: String, url: String, onDismiss: () -> Unit) {
+private fun PhonePlayer(
+    title: String,
+    url: String,
+    progressPrefs: String?,
+    progressKey: String?,
+    onDismiss: () -> Unit
+) {
     val context = LocalContext.current
     val player = remember(url) {
         buildFourKPlusExoPlayer(context, skipSeconds = 10, muted = false).apply {
             setMediaItem(MediaItem.fromUri(url))
+            // Read before prepare, so a resumed title opens at its position rather than starting
+            // from the beginning and jumping a moment later.
+            readProgress(context, progressPrefs, progressKey).takeIf { it > 0L }?.let(::seekTo)
             prepare()
             playWhenReady = true
         }
     }
     var failure by remember(url) { mutableStateOf<String?>(null) }
+
+    // Written while playing rather than only on the way out, so a position survives the app being
+    // killed in the background - which on a phone is the ordinary way a video ends.
+    LaunchedEffect(player, progressKey) {
+        if (progressKey == null) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(5_000)
+            val position = player.currentPosition
+            if (position > 0L) writeProgress(context, progressPrefs, progressKey, position, player.duration)
+        }
+    }
+    DisposableEffect(player, progressKey) {
+        onDispose {
+            if (progressKey != null && player.currentPosition > 0L) {
+                writeProgress(context, progressPrefs, progressKey, player.currentPosition, player.duration)
+            }
+        }
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {

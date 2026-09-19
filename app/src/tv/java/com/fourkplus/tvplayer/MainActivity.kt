@@ -3768,7 +3768,7 @@ private fun CompactChannelRow(
     }
 }
 
-internal fun channelKey(channel: PlaylistItem): String = channel.channelId ?: "${channel.group}:${channel.name}"
+// channelKey now lives in src/main so the phone build shares one definition of it - see ItemKeys.kt.
 
 private const val CATEGORY_ORDER_PREFS = "category_order_settings"
 
