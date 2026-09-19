@@ -5,3 +5,4 @@ src/shared/strings.generated.ts
 src/shared/tokens.generated.ts
 src/shared/tokens.generated.css
 tizen-package/
+public/

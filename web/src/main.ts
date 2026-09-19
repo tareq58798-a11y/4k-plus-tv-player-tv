@@ -1,28 +1,36 @@
 /**
- * The vertical slice: sign in, load the catalogue, browse Live TV by category, play a channel.
+ * Routing and screens.
  *
- * Deliberately the narrow path rather than the whole app. It exercises every layer that the rest
- * depends on - the provider client, the focus engine, the key map, storage and AVPlay - so that
- * anything structurally wrong shows up on a real television before the remaining screens are
- * built on top of it.
+ * Sign in, then four landing pages over one catalogue, a category browser, and playback. The
+ * screens are deliberately thin: the rules they follow live in ui/landing.ts and ui/focus.ts, and
+ * the provider quirks in shared/xtream.ts, so there is one place to change each.
  */
 import { detectPlatform, keyOf, registerPlatformKeys, type RemoteKey } from './platform/keys';
 import { createPlayer, type MediaPlayer } from './platform/video';
 import { readJson, writeJson } from './platform/storage';
 import { setLocale, isRtl, t } from './shared/i18n';
-import { loadProvider } from './shared/xtream';
+import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
+import { continueWatching, favoriteItems, recentlyAdded, rememberPosition } from './shared/library';
 import { focus, handleKey, pushKeyHandler, setFocusDirection } from './ui/focus';
+import { Backdrop } from './ui/backdrop';
+import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
+import { renderNav, trackNavHighlight, type Section } from './ui/nav';
 
 const platform = detectPlatform();
 const app = document.getElementById('app') as HTMLElement;
 const video = document.getElementById('video') as HTMLVideoElement;
+const backdropHost = document.getElementById('video-plane') as HTMLElement;
 let player: MediaPlayer;
+let backdrop: Backdrop;
 
 const SAVED_LOGIN = 'login';
 
-/* ------------------------------------------------------------------ utils */
+let login: ProviderLogin | null = null;
+let catalogue: LoadedPlaylist | null = null;
+let section: Section = 'home';
+let detachNav: (() => void) | null = null;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -36,6 +44,12 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 function clear(): void {
+  // Both pages hang listeners on the document rather than on their own elements, so emptying the
+  // app is not enough to be rid of them - a landing left behind would keep answering focus moves
+  // on the page that replaced it.
+  disposeLanding();
+  detachNav?.();
+  detachNav = null;
   app.textContent = '';
 }
 
@@ -44,28 +58,28 @@ function clear(): void {
 function loginScreen(message = ''): void {
   clear();
   document.body.classList.remove('playing');
+  backdrop.reset();
 
   const name = el('input', { type: 'text', value: '4K Plus TV', 'data-focus': '', 'data-focus-id': 'name' });
   const address = el('input', { type: 'text', placeholder: 'http://example.com:80', 'data-focus': '', 'data-focus-id': 'address' });
   const username = el('input', { type: 'text', 'data-focus': '', 'data-focus-id': 'username' });
-  // A password field, so the characters are masked on a screen other people can see. Nothing
-  // typed here is logged anywhere.
+  // Masked, so the characters are not readable across a room. Nothing typed here is logged.
   const password = el('input', { type: 'password', 'data-focus': '', 'data-focus-id': 'password' });
   const status = el('div', { class: 'message' }, message);
 
   const connect = el('button', { class: 'button', 'data-focus': '', 'data-focus-id': 'connect' }, t('connect'));
   connect.addEventListener('click', () => {
-    const login: ProviderLogin = {
+    const entered: ProviderLogin = {
       name: name.value.trim() || '4K Plus TV',
       address: address.value.trim(),
       username: username.value.trim(),
       password: password.value,
     };
-    if (!login.address || !login.username || !login.password) {
+    if (!entered.address || !entered.username || !entered.password) {
       status.textContent = t('enter_all_fields');
       return;
     }
-    void connectAndLoad(login, status);
+    void connectAndLoad(entered, status);
   });
 
   const field = (label: string, input: HTMLElement) =>
@@ -88,154 +102,231 @@ function loginScreen(message = ''): void {
   focus(name);
 }
 
-async function connectAndLoad(login: ProviderLogin, status: HTMLElement): Promise<void> {
+async function connectAndLoad(entered: ProviderLogin, status: HTMLElement): Promise<void> {
   status.textContent = t('loading_your_playlist');
   try {
-    const playlist = await loadProvider(login, {
+    const loaded = await loadProvider(entered, {
       liveContainer: player.liveContainer,
-      // Live TV is usable before the on-demand catalogues arrive, so it is shown the moment it
+      // Live TV is usable before the on-demand catalogues arrive, so it is shown as soon as it
       // lands rather than made to wait for tens of thousands of films and series.
       onPartial: (partial) => {
-        status.textContent = t('loading_playlist_from_network') + ` (${partial.items.length})`;
+        status.textContent = `${t('loading_playlist_from_network')} (${partial.items.length})`;
       },
     });
-    writeJson(SAVED_LOGIN, login);
-    browseScreen(login, playlist);
+    writeJson(SAVED_LOGIN, entered);
+    login = entered;
+    catalogue = loaded;
+    showSection('home');
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : String(error);
   }
 }
 
-/* ----------------------------------------------------------------- browse */
+/* --------------------------------------------------------------- sections */
 
-function browseScreen(login: ProviderLogin, playlist: LoadedPlaylist): void {
+function detailsLoader(item: PlaylistItem) {
+  if (!login || !item.channelId) return Promise.resolve(null);
+  if (item.kind === 'movie') {
+    return movieDetails(login, item.channelId).then((d) => ({ description: d.description, backdropUrl: d.backdropUrl }));
+  }
+  if (item.kind === 'series') {
+    return seriesDetails(login, item.channelId, item.logoUrl).then((d) => ({ description: d.description, backdropUrl: d.backdropUrl }));
+  }
+  return Promise.resolve(null);
+}
+
+function rowsFor(current: Section, items: PlaylistItem[]): LandingRow[] {
+  const openAll = () => browseScreen(current);
+  const openFavorites = () => browseScreen(current, true);
+
+  if (current === 'home') {
+    return [
+      {
+        id: 'home-recent',
+        title: t('landing_recently_added'),
+        items: recentlyAdded(items),
+        minSlots: 5,
+      },
+      {
+        id: 'home-continue',
+        title: t('continue_watching_title'),
+        items: continueWatching(items),
+        minSlots: 5,
+        hint: t('continue_watching_placeholder_subtitle'),
+      },
+    ];
+  }
+
+  const kind = current === 'live' ? 'live' : current === 'movies' ? 'movie' : 'series';
+  // Each section names its own box and its own hint. The television app writes them out in full
+  // rather than composing "All " + section, because several of the eight languages do not build
+  // that phrase by putting two words next to each other.
+  const allCategories =
+    current === 'live'
+      ? t('landing_all_channel_categories')
+      : current === 'movies'
+        ? t('landing_all_movie_categories')
+        : t('landing_all_series_categories');
+  const favoritesHint =
+    current === 'live'
+      ? t('landing_hint_favorites_channels')
+      : current === 'movies'
+        ? t('landing_hint_favorites_movies')
+        : t('landing_hint_favorites_series');
+  const mine = items.filter((item) => item.kind === kind);
+  return [
+    {
+      id: `${current}-recent`,
+      title: current === 'live' ? t('home_recently_watched_live') : t('section_recently_watched'),
+      items: continueWatching(mine),
+      minSlots: 5,
+      tile: {
+        title: allCategories,
+        caption: t(current === 'live' ? 'landing_browse_channels' : 'landing_browse_library'),
+        onOpen: openAll,
+      },
+      hint: t('landing_hint_recent'),
+    },
+    {
+      id: `${current}-favorites`,
+      title: t('section_favorites'),
+      items: favoriteItems(mine),
+      minSlots: 5,
+      tile: { title: t('section_favorites'), caption: t('landing_open_favorites'), onOpen: openFavorites },
+      hint: favoritesHint,
+    },
+  ];
+}
+
+function showSection(next: Section): void {
+  if (!catalogue) return;
+  section = next;
   clear();
   document.body.classList.remove('playing');
+  // Home starts over on the app's own artwork rather than whichever title was last looked at.
+  if (next === 'home') backdrop.reset();
 
-  const live = playlist.items.filter((item) => item.kind === 'live');
-  const groups = [...new Set(live.map((item) => item.group))].sort((a, b) => a.localeCompare(b));
+  const bar = renderNav(app, {
+    current: next,
+    onSection: (chosen) => showSection(chosen),
+    onEnter: () => focusPageStart(app),
+    subtitle: `${catalogue.items.length} ${t('items_label')}`,
+  });
+  detachNav = trackNavHighlight(bar);
+
+  renderLanding(app, {
+    rows: rowsFor(next, catalogue.items),
+    backdrop,
+    followBackdropImmediately: next !== 'home',
+    onPlay: (item) => playScreen(item),
+    loadDetails: detailsLoader,
+  });
+
+  // Focus starts on the bar, so the section tab is lit and Down enters the page - the same place
+  // the television app starts.
+  focus(bar.querySelector<HTMLElement>(`[data-focus-id="tab-${next}"]`));
+}
+
+/* ---------------------------------------------------------------- browser */
+
+function browseScreen(current: Section, favoritesOnly = false): void {
+  if (!catalogue) return;
+  clear();
+  const kind = current === 'live' ? 'live' : current === 'movies' ? 'movie' : 'series';
+  let pool = catalogue.items.filter((item) => item.kind === kind);
+  if (favoritesOnly) pool = favoriteItems(pool, Number.MAX_SAFE_INTEGER);
+
+  const groups = [...new Set(pool.map((item) => item.group))].sort((a, b) => a.localeCompare(b));
   let selected = groups[0] ?? '';
 
-  const grid = el('div', { class: 'grid', 'data-focus-group': 'channels' });
-  const sidebar = el('div', { class: 'sidebar', 'data-focus-group': 'categories' });
+  const grid = el('div', { class: 'grid', 'data-focus-group': 'browser-grid' });
+  const sidebar = el('div', { class: 'sidebar', 'data-focus-group': 'browser-categories' });
 
   function renderGrid(): void {
     grid.textContent = '';
-    const channels = live.filter((item) => item.group === selected).slice(0, 300);
-    for (const channel of channels) {
-      grid.append(card(channel, () => playScreen(login, playlist, channel)));
-    }
-  }
-
-  function renderSidebar(): void {
-    sidebar.textContent = '';
-    for (const group of groups) {
-      const row = el(
-        'div',
-        {
-          class: 'category',
-          'data-focus': '',
-          'data-focus-id': group,
-          'aria-selected': String(group === selected),
-        },
-        group,
-      );
-      // Focus selects, the way the television app does: moving the highlight down the list
-      // changes what the grid shows, without needing a press for each one.
-      row.addEventListener('focus', () => {
-        selected = group;
-        for (const other of sidebar.children) {
-          other.setAttribute('aria-selected', String(other.getAttribute('data-focus-id') === group));
-        }
-        renderGrid();
+    for (const item of pool.filter((entry) => entry.group === selected).slice(0, 400)) {
+      const card = el('div', { class: 'card', tabindex: '-1', 'data-focus': '', 'data-focus-id': itemKey(item) });
+      const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
+      if (item.logoUrl) art.src = item.logoUrl;
+      art.addEventListener('error', () => art.removeAttribute('src'));
+      card.append(art, el('div', { class: 'label' }, item.name));
+      card.addEventListener('focus', () => {
+        if (item.kind !== 'live') backdrop.show(item.logoUrl);
       });
-      sidebar.append(row);
+      card.addEventListener('click', () => playScreen(item));
+      grid.append(card);
     }
   }
 
-  app.append(topBar(playlist), el('div', { class: 'browser' }, sidebar, grid));
-  renderSidebar();
+  for (const group of groups) {
+    const row = el(
+      'div',
+      { class: 'category', 'data-focus': '', 'data-focus-id': group, 'aria-selected': String(group === selected) },
+      group,
+    );
+    // Focus selects, as on the television: moving down the list changes what the grid shows
+    // without needing a press for each one.
+    row.addEventListener('focus', () => {
+      selected = group;
+      for (const other of sidebar.children) {
+        other.setAttribute('aria-selected', String(other.getAttribute('data-focus-id') === group));
+      }
+      renderGrid();
+    });
+    sidebar.append(row);
+  }
+
+  const back = el('div', { class: 'browser-title' }, t(current === 'live' ? 'nav_live_tv' : current === 'movies' ? 'nav_movies' : 'nav_series'));
+  app.append(back, el('div', { class: 'browser' }, sidebar, grid));
   renderGrid();
   focus(sidebar.querySelector<HTMLElement>('[data-focus]'));
-}
 
-function card(item: PlaylistItem, onSelect: () => void): HTMLElement {
-  const node = el('div', {
-    class: 'card',
-    tabindex: '-1',
-    'data-focus': '',
-    'data-focus-id': itemKey(item),
+  const release = pushKeyHandler((key: RemoteKey) => {
+    if (key !== 'back') return false;
+    release();
+    showSection(current);
+    return true;
   });
-  const art = el('img', { class: 'art', alt: '', loading: 'lazy' }) as HTMLImageElement;
-  if (item.logoUrl) art.src = item.logoUrl;
-  // A provider's artwork host is not always reachable; a broken image icon in a grid of four
-  // hundred is worse than a plain tile.
-  art.addEventListener('error', () => art.removeAttribute('src'));
-  node.append(art, el('div', { class: 'label' }, item.name));
-  node.addEventListener('click', onSelect);
-  return node;
-}
-
-function topBar(playlist: LoadedPlaylist): HTMLElement {
-  return el(
-    'div',
-    { class: 'top-bar' },
-    el('div', { class: 'brand' }, '4K', el('span', {}, ' PLUS TV')),
-    el('div', { class: 'tab', 'aria-selected': 'true' }, t('nav_live_tv')),
-    el('div', { class: 'spacer' }),
-    el('div', { class: 'clock' }, `${playlist.items.length} ${t('items_label')}`),
-  );
 }
 
 /* ------------------------------------------------------------------- play */
 
-function playScreen(login: ProviderLogin, playlist: LoadedPlaylist, channel: PlaylistItem): void {
+function playScreen(item: PlaylistItem): void {
+  if (item.kind === 'series') {
+    // A series is opened, not played - the episode list is the next screen, and it is not built
+    // yet. Saying so is better than starting a stream from a `series://` url that cannot play.
+    return;
+  }
   clear();
   document.body.classList.add('playing');
 
-  const bar = el(
-    'div',
-    { class: 'player-bar' },
-    channel.name,
-    el('div', { class: 'hint' }, t('press_back_to_return')),
-  );
+  const bar = el('div', { class: 'player-bar' }, item.name, el('div', { class: 'hint' }, t('press_back_to_return')));
   app.append(bar);
 
-  const rect = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  let durationMs = 0;
+  let positionMs = 0;
   player.on((event) => {
-    if (event.type === 'error') {
-      bar.textContent = event.message;
-    }
+    if (event.type === 'error') bar.firstChild!.textContent = event.message;
+    if (event.type === 'ready') durationMs = event.durationMs;
+    if (event.type === 'progress') positionMs = event.positionMs;
   });
-  void player.play(channel.streamUrl, rect).catch((error: unknown) => {
-    bar.textContent = error instanceof Error ? error.message : String(error);
+  void player.play(item.streamUrl, new DOMRect(0, 0, window.innerWidth, window.innerHeight)).catch((error: unknown) => {
+    bar.firstChild!.textContent = error instanceof Error ? error.message : String(error);
   });
 
   const release = pushKeyHandler((key: RemoteKey) => {
     if (key === 'back') {
+      rememberPosition(item, positionMs, durationMs);
       player.stop();
       release();
-      browseScreen(login, playlist);
+      showSection(section);
       return true;
     }
-    if (key === 'playpause' || key === 'pause') {
-      player.pause();
-      return true;
-    }
-    if (key === 'play') {
-      player.resume();
-      return true;
-    }
-    if (key === 'rewind') {
-      player.seekBy(-10_000);
-      return true;
-    }
-    if (key === 'forward') {
-      player.seekBy(10_000);
-      return true;
-    }
-    // Nothing else reaches the page while playing: an arrow key must not move a highlight that
-    // is no longer on screen.
+    if (key === 'playpause' || key === 'pause') { player.pause(); return true; }
+    if (key === 'play') { player.resume(); return true; }
+    if (key === 'rewind') { player.seekBy(-10_000); return true; }
+    if (key === 'forward') { player.seekBy(10_000); return true; }
+    // Nothing else reaches the page: an arrow key must not move a highlight that is off screen.
     return true;
   });
 }
@@ -247,15 +338,30 @@ function boot(): void {
   setLocale(navigator.language?.slice(0, 2) ?? 'en');
   setFocusDirection(isRtl());
   player = createPlayer(platform, video);
+  backdrop = new Backdrop(backdropHost);
 
   window.addEventListener('keydown', (event) => {
     const key = keyOf(event, platform);
     if (!key) return;
     // Back is the one key a television acts on itself when the app ignores it - Samsung closes
-    // the app outright - so it is always consumed here and answered by the screen on top.
+    // the app - so it is always consumed here and answered by whatever is on top.
     event.preventDefault();
     handleKey(key);
   });
+
+  // A way to exercise the pages without a provider account. Stripped from a production build by
+  // the import.meta.env.DEV check, so it cannot reach a television: the screens can be checked
+  // against made-up data instead of against somebody's real playlist and credentials.
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>).__dev = {
+      load(sample: LoadedPlaylist) {
+        catalogue = sample;
+        login = null;
+        showSection('home');
+      },
+      section: (next: Section) => showSection(next),
+    };
+  }
 
   const saved = readJson<ProviderLogin | null>(SAVED_LOGIN, null);
   if (saved) {

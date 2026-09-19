@@ -16,6 +16,13 @@ sources at build time rather than by copying:
 |---|---|---|
 | 310 strings × 8 languages | `app/src/main/res/values[-locale]/strings.xml` | `scripts/extract-strings.mjs` |
 | Colours, spacing, radii, timings | `ui/design/Tokens.kt` | `scripts/extract-tokens.mjs` |
+| The artwork | `res/drawable-nodpi` | `scripts/extract-assets.mjs` |
+
+**dp is not a CSS pixel.** An Android television at 1080p runs at density 2, so its layout is
+960dp across while this page is a real 1920. Copied one for one, every measurement comes out at
+half the size it was designed at - the cards `Tokens.kt` says fit five across a panel fitted
+eleven, which is how this was caught. `DP_TO_PX` in the extractor is that factor, and it has to
+change if the canvas in `index.html` ever stops being 1920x1080.
 
 Both run on every `npm run dev` and `npm run build`. Fix a translation or a colour on Android and
 it lands here at the next build. The generated files are gitignored so there is only ever one
@@ -77,8 +84,12 @@ Working: the shared extraction, the Xtream client, the D-pad engine, the key map
 AVPlay and browser players, and a vertical slice — sign in, load, browse Live TV by category,
 play a channel.
 
-Not built yet: Home, Movies, Series, search, settings, favourites, resume, EPG, the backdrop, and
-the catalogue cache. Not yet run on Samsung hardware or the emulator.
+Also working: Home, Live TV, Movies and Series as landing pages with rows, the category box first
+in its row, empty places that hold a row's shape, the information block, the layered backdrop,
+favourites and resume points.
+
+Not built yet: the series episode list, search, settings, EPG, parental controls and the
+catalogue cache. Not yet run on Samsung hardware or the emulator - see the certificate below.
 
 ## Installing on a Samsung emulator or television
 

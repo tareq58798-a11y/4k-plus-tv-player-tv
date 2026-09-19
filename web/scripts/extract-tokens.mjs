@@ -9,9 +9,15 @@
  * the wrong opacity, which is exactly the kind of thing nobody notices until the whole app looks
  * slightly washed out.
  *
- * Sizes are in dp against Android's 160dpi baseline. A 1080p television is 1920 CSS pixels wide
- * for the layouts these numbers were measured on, so dp maps to px one for one here.
+ * Sizes are in dp, and dp is NOT a CSS pixel. An Android television at 1080p runs at density 2,
+ * so its layout is 960dp across, not 1920 - and this page is a real 1920 wide. Copied one for one,
+ * every measurement comes out at half the size it was designed at: the cards Tokens.kt says fit
+ * five across a panel fitted eleven, which is what gave this away.
+ *
+ * DP_TO_PX is that density. If the canvas in index.html ever stops being 1920x1080, this is the
+ * number that has to change with it.
  */
+const DP_TO_PX = 2;
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,7 +66,7 @@ const gradients = [...tone.matchAll(/val (\w+) = listOf\((.+)\)/g)].map(([, name
 
 const sizes = [...dims.matchAll(/val (\w+): Dp = (\d+(?:\.\d+)?)\.dp/g)].map(([, name, value]) => ({
   name,
-  px: Number(value),
+  px: Number(value) * DP_TO_PX,
 }));
 
 /* Anchored to end of line so `const val PosterFocusScale = 1.06f` is not read as the integer 1 -
@@ -114,7 +120,7 @@ export const Gradient = {
 ${gradients.map((g) => `  ${g.name}: ['${g.stops.join("', '")}'],`).join('\n')}
 } as const;
 
-/** Android dp, which is one CSS pixel each at the 1080p layout these were measured for. */
+/** Android dp converted to CSS pixels for a 1920x1080 canvas - see DP_TO_PX in the extractor. */
 export const Dims = {
 ${sizes.map((s) => `  ${s.name}: ${s.px},`).join('\n')}
 } as const;

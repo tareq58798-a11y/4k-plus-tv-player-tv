@@ -5,7 +5,7 @@
   "description": "4K Plus TV Player — web core. One codebase for Samsung Tizen, LG webOS, Hisense VIDAA and Windows.",
   "type": "module",
   "scripts": {
-    "shared": "node scripts/extract-strings.mjs && node scripts/extract-tokens.mjs",
+    "shared": "node scripts/extract-strings.mjs && node scripts/extract-tokens.mjs && node scripts/extract-assets.mjs",
     "dev": "npm run shared && vite",
     "build": "npm run shared && tsc --noEmit && vite build",
     "preview": "vite preview",
