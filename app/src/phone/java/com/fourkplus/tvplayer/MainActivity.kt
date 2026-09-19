@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.rememberCoroutineScope
 import com.fourkplus.tvplayer.data.ActivationPendingException
@@ -176,7 +178,14 @@ private sealed interface Overlay {
         val progressPrefs: String? = null,
         val progressKey: String? = null,
         /** Set by "Start over", which ignores the saved position without forgetting it. */
-        val startOver: Boolean = false
+        val startOver: Boolean = false,
+        /**
+         * The channels this one was opened from, and where in them it sits. Live only: it is what
+         * lets the player move to the next channel without going back to the grid to find it, and
+         * what the guide is fetched for. Empty for films and episodes, which have no neighbours.
+         */
+        val channels: List<PlaylistItem> = emptyList(),
+        val channelIndex: Int = 0
     ) : Overlay
 }
 
@@ -477,7 +486,13 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
                         // a series has something to read first, and a position to decide what to do
                         // about, so it opens its own page.
                         overlay = if (item.kind == MediaKind.LIVE) {
-                            Overlay.Playing(item.name, item.streamUrl)
+                            // Carries the list it was picked from, so the player can move along it.
+                            Overlay.Playing(
+                                item.name,
+                                item.streamUrl,
+                                channels = items,
+                                channelIndex = items.indexOf(item).coerceAtLeast(0)
+                            )
                         } else {
                             Overlay.Details(item)
                         }
@@ -520,6 +535,9 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
             progressPrefs = current.progressPrefs,
             progressKey = current.progressKey,
             startOver = current.startOver,
+            channels = current.channels,
+            startIndex = current.channelIndex,
+            viewModel = viewModel,
             onDismiss = { overlay = null; libraryVersion++ }
         )
     }
@@ -968,12 +986,21 @@ private fun PhonePlayer(
     progressPrefs: String?,
     progressKey: String?,
     startOver: Boolean,
+    channels: List<PlaylistItem>,
+    startIndex: Int,
+    viewModel: PlaylistViewModel,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    // Which channel is playing, for a live list. Films and episodes never move off their own item.
+    var index by remember(url) { mutableIntStateOf(startIndex) }
+    val channel = channels.getOrNull(index)
+    val playingTitle = channel?.name ?: title
+    val playingUrl = channel?.streamUrl ?: url
+
     val player = remember(url) {
         buildFourKPlusExoPlayer(context, skipSeconds = 10, muted = false).apply {
-            setMediaItem(MediaItem.fromUri(url))
+            setMediaItem(MediaItem.fromUri(playingUrl))
             // Read before prepare, so a resumed title opens at its position rather than starting
             // from the beginning and jumping a moment later. Skipped when the viewer asked to start
             // over, which ignores the saved position without erasing it.
@@ -985,6 +1012,30 @@ private fun PhonePlayer(
         }
     }
     var failure by remember(url) { mutableStateOf<String?>(null) }
+
+    // Moving along the channel list re-points the same player rather than building another, so the
+    // warm connection and decoder are kept and the change costs only the new stream.
+    LaunchedEffect(playingUrl) {
+        if (channel == null) return@LaunchedEffect
+        failure = null
+        player.setMediaItem(MediaItem.fromUri(playingUrl))
+        player.prepare()
+        player.play()
+    }
+
+    // What is on now and next. Fetched per channel; a provider with no guide for it simply leaves
+    // the line off rather than showing an apology for it.
+    var guide by remember(channel?.let(::channelKey)) { mutableStateOf<String?>(null) }
+    LaunchedEffect(channel?.let(::channelKey)) {
+        guide = null
+        val current = channel ?: return@LaunchedEffect
+        viewModel.shortEpg(current).onSuccess { epg ->
+            guide = listOfNotNull(
+                epg.now?.title?.takeIf(String::isNotBlank)?.let { "Now  $it" },
+                epg.next?.title?.takeIf(String::isNotBlank)?.let { "Next  $it" }
+            ).joinToString("     ").takeIf(String::isNotBlank)
+        }
+    }
 
     // Written while playing rather than only on the way out, so a position survives the app being
     // killed in the background - which on a phone is the ordinary way a video ends.
@@ -1044,20 +1095,41 @@ private fun PhonePlayer(
             },
             modifier = Modifier.fillMaxSize()
         )
-        Row(
-            Modifier.fillMaxWidth().systemBarsPadding().padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+        Column(Modifier.fillMaxWidth().systemBarsPadding().padding(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                }
+                Text(
+                    playingTitle,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                // Only where there is somewhere to go. One channel on its own gets no arrows.
+                if (channels.size > 1) {
+                    IconButton(
+                        onClick = { index = (index - 1 + channels.size) % channels.size }
+                    ) {
+                        Icon(Icons.Default.SkipPrevious, "Previous channel", tint = Color.White)
+                    }
+                    IconButton(onClick = { index = (index + 1) % channels.size }) {
+                        Icon(Icons.Default.SkipNext, "Next channel", tint = Color.White)
+                    }
+                }
             }
-            Text(
-                title,
-                color = Color.White,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            guide?.let {
+                Text(
+                    it,
+                    color = Color.White.copy(alpha = .8f),
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp)
+                )
+            }
         }
         failure?.let {
             Text(
