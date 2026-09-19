@@ -727,3 +727,124 @@ body.playing .backdrop-scrim {
 .progress-fill.live {
   background: var(--tone-accent);
 }
+
+/* -------------------------------------------------------------------- PIN */
+
+.pin-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 3, 10, 0.86);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.pin-panel {
+  width: 720px;
+  padding: var(--dim-gap-xl);
+  border-radius: var(--dim-radius-panel);
+  background: var(--tone-glass-strong);
+  border: 1px solid var(--tone-glass-border);
+  text-align: center;
+}
+
+.pin-panel h2 {
+  margin: 0 0 var(--dim-gap-xs);
+  font-size: 40px;
+  font-weight: 800;
+}
+
+.pin-hint {
+  font-size: 22px;
+  color: var(--tone-text-muted);
+}
+
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--dim-gap-s);
+  margin: var(--dim-gap-l) 0;
+}
+
+.dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--tone-glass-border);
+}
+
+.dot.filled {
+  background: var(--tone-accent);
+  border-color: var(--tone-accent);
+}
+
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--dim-gap-s);
+}
+
+.pin-key {
+  padding: 18px 0;
+  border-radius: var(--dim-radius-card);
+  background: var(--tone-glass);
+  font-size: 34px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pin-key.wide {
+  grid-column: span 2;
+}
+
+.pin-key.go {
+  grid-column: span 3;
+  background: var(--tone-action-gradient);
+  color: #04131f;
+}
+
+.pin-message {
+  margin-top: var(--dim-gap-m);
+  min-height: 30px;
+  font-size: 22px;
+  color: var(--tone-live-red);
+}
+
+.locked-mark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 28px;
+}
+
+.card {
+  position: relative;
+}
+
+.settings-note {
+  padding: 18px var(--dim-gap-l);
+  font-size: 22px;
+  color: var(--tone-text-muted);
+}
+
+.sidebar.wide {
+  width: 900px;
+  height: 760px;
+}
+
+.locked-panel {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dim-gap-m);
+  padding: 120px 0;
+  font-size: 28px;
+  color: var(--tone-text-secondary);
+}
+
+.locked-mark-big {
+  font-size: 72px;
+}

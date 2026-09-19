@@ -7,6 +7,7 @@
  * does and a viewer might need to change.
  */
 import { availableLocales, locale, setLocale, t } from '../shared/i18n';
+import { cryptoAvailable, hasPin, parental, update } from '../shared/parental';
 import { focus, pushKeyHandler } from './focus';
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -52,6 +53,11 @@ export interface SettingsOptions {
   /** Redraws whatever is underneath, because changing language changes every word on screen. */
   onLanguageChanged: () => void;
   onSignOut: () => void;
+  onSetPin: () => void;
+  onRemovePin: () => void;
+  onLockCategories: () => void;
+  /** Redraws this page after a toggle, so the row shows its new state. */
+  onChanged: () => void;
   onClearCache: () => void;
   onBack: () => void;
 }
@@ -98,7 +104,55 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   signOut.addEventListener('click', options.onSignOut);
 
   actions.append(clear, signOut);
-  page.append(languages, actions);
+
+  const guard = el('div', { class: 'settings-group', 'data-focus-group': 'parental' });
+  guard.append(el('h3', { class: 'section-title' }, t('settings_parental_controls')));
+
+  if (!cryptoAvailable()) {
+    // Said plainly rather than offering a control that would store the digits in the clear.
+    guard.append(el('div', { class: 'settings-note' }, t('epg_no_info')));
+  } else {
+    const state = parental();
+    const pinRow = el(
+      'div',
+      { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'pin-set' },
+      hasPin() ? t('change_pin_desc') : t('create_parental_pin'),
+    );
+    pinRow.addEventListener('click', options.onSetPin);
+    guard.append(pinRow);
+
+    if (hasPin()) {
+      const toggle = (id: string, label: string, on: boolean, act: () => void) => {
+        const row = el(
+          'div',
+          { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': id, 'aria-selected': String(on) },
+          label,
+        );
+        row.addEventListener('click', act);
+        return row;
+      };
+      guard.append(
+        toggle('parental-enabled', t('enable_parental_control'), state.enabled, () => {
+          update({ enabled: !parental().enabled });
+          options.onChanged();
+        }),
+        toggle('parental-startup', t('ask_pin_on_startup'), state.askOnStartup, () => {
+          update({ askOnStartup: !parental().askOnStartup });
+          options.onChanged();
+        }),
+        toggle('parental-categories', t('lock_categories'), state.lockedCategories.length > 0, options.onLockCategories),
+      );
+      const removeRow = el(
+        'div',
+        { class: 'settings-row danger', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'pin-remove' },
+        t('parental_pin_removed'),
+      );
+      removeRow.addEventListener('click', options.onRemovePin);
+      guard.append(removeRow);
+    }
+  }
+
+  page.append(languages, actions, guard);
   host.append(el('div', { class: 'browser-title' }, t('settings_title')), page);
   focus(languages.querySelector<HTMLElement>('[data-focus]'));
 

@@ -22,6 +22,11 @@ import { renderSeries } from './ui/series';
 import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
+import { askPin } from './ui/pin';
+import {
+  isCategoryLocked, isChannelLocked, isUnlocked, markUnlocked, parental, relock,
+  removePin, setPin, toggleCategoryLock,
+} from './shared/parental';
 
 const platform = detectPlatform();
 const app = document.getElementById('app') as HTMLElement;
@@ -307,7 +312,98 @@ function settingsScreen(): void {
       catalogue = null;
       loginScreen();
     },
+    onChanged: () => settingsScreen(),
+    onSetPin: () => {
+      askPin({
+        title: t('create_parental_pin'),
+        mode: 'set',
+        onDone: (pin) => void setPin(pin).then(() => settingsScreen()),
+        onCancel: () => settingsScreen(),
+      });
+    },
+    onRemovePin: () => {
+      // Behind the PIN it is removing: otherwise the control protects nothing from the one person
+      // it exists to keep out.
+      askPin({
+        title: t('enter_parental_pin'),
+        mode: 'verify',
+        onDone: () => {
+          removePin();
+          relock();
+          settingsScreen();
+        },
+        onCancel: () => settingsScreen(),
+      });
+    },
+    onLockCategories: () => lockCategoriesScreen(),
     onBack: () => showSection(section),
+  });
+}
+
+/**
+ * Which categories the PIN stands in front of.
+ *
+ * Every category in the catalogue, across all three kinds, because a viewer locking adult films
+ * will also want the channels that carry them, and sending them to three separate lists to do one
+ * job is how a control goes unused.
+ */
+function lockCategoriesScreen(): void {
+  if (!catalogue) return;
+  clear();
+  const groups = [...new Set(catalogue.items.map((item) => item.group))].sort((a, b) => a.localeCompare(b));
+  const list = el('div', { class: 'sidebar wide', 'data-focus-group': 'lock-categories' });
+  for (const group of groups) {
+    const row = el(
+      'div',
+      {
+        class: 'settings-row',
+        tabindex: '-1',
+        'data-focus': '',
+        'data-focus-id': `lock-${group}`,
+        'aria-selected': String(isCategoryLocked(group)),
+      },
+      group,
+    );
+    row.addEventListener('click', () => {
+      const locked = toggleCategoryLock(group);
+      row.setAttribute('aria-selected', String(locked));
+    });
+    list.append(row);
+  }
+  app.append(
+    el('div', { class: 'browser-title' }, t('lock_categories')),
+    el('div', { class: 'settings-note' }, t('lock_categories_desc')),
+    list,
+  );
+  focus(list.querySelector<HTMLElement>('[data-focus]'));
+
+  const release = pushKeyHandler((key: RemoteKey) => {
+    if (key !== 'back') return false;
+    release();
+    settingsScreen();
+    return true;
+  });
+}
+
+/**
+ * Runs [action] once the viewer has proved they may, and does nothing if they cannot.
+ *
+ * Asked once per run rather than per item: a control that demands the PIN for every channel in a
+ * locked category is a control that gets switched off.
+ */
+function behindPin(locked: boolean, action: () => void): void {
+  if (!locked || isUnlocked()) {
+    action();
+    return;
+  }
+  askPin({
+    title: t('enter_parental_pin'),
+    mode: 'verify',
+    onDone: () => {
+      markUnlocked();
+      action();
+    },
+    onCancel: () => undefined,
   });
 }
 
@@ -364,6 +460,23 @@ function browseScreen(current: Section, favoritesOnly = false): void {
 
   function renderGrid(): void {
     grid.textContent = '';
+    // The one place a locked category can be held back. Guarding the focus handler instead would
+    // miss the category the page opens on, which is simply the first in the list - and if that
+    // one happens to be locked, the contents are on screen before anybody has moved.
+    if (isCategoryLocked(selected) && !isUnlocked()) {
+      const prompt = el('div', { class: 'locked-panel' });
+      prompt.append(el('div', { class: 'locked-mark-big' }, '\u{1F512}'), el('div', {}, t('enter_parental_pin')));
+      const unlock = el('button', { class: 'button', 'data-focus': '', 'data-focus-id': 'unlock' }, t('unlock_action'));
+      unlock.addEventListener('click', () =>
+        behindPin(true, () => {
+          renderGrid();
+          focus(grid.querySelector<HTMLElement>('[data-focus]'));
+        }),
+      );
+      prompt.append(unlock);
+      grid.append(prompt);
+      return;
+    }
     for (const item of pool.filter((entry) => entry.group === selected).slice(0, 400)) {
       const card = el('div', { class: 'card', tabindex: '-1', 'data-focus': '', 'data-focus-id': itemKey(item) });
       const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
@@ -380,7 +493,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           epg.request(item);
         }
       });
-      card.addEventListener('click', () => playScreen(item));
+      card.addEventListener('click', () =>
+        behindPin(isCategoryLocked(item.group) || isChannelLocked(itemKey(item)), () => playScreen(item)),
+      );
       grid.append(card);
     }
   }
@@ -545,6 +660,31 @@ function boot(): void {
     loginScreen();
     return;
   }
+
+  // "Ask PIN on startup" means before anything is on screen, not after. A prompt over a page that
+  // has already drawn the locked categories has not protected them.
+  const guard = parental();
+  if (guard.enabled && guard.pinHash && guard.askOnStartup) {
+    const ask = () =>
+      askPin({
+        title: t('enter_parental_pin'),
+        mode: 'verify',
+        onDone: () => {
+          markUnlocked();
+          start(saved);
+        },
+        // No way past it: cancelling asks again rather than letting the app open unlocked, which
+        // is the whole point of the setting. It re-asks rather than restarting boot, which would
+        // register a second key listener and build a second player every time round.
+        onCancel: ask,
+      });
+    ask();
+    return;
+  }
+  start(saved);
+}
+
+function start(saved: ProviderLogin): void {
   // Straight to the catalogue already on the device when there is one; otherwise the sign-in
   // page with the saved details filled in, fetching while it shows.
   void (async () => {
