@@ -58,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -206,6 +207,13 @@ private object Favourites {
     }
 }
 
+/**
+ * The two chips that are not provider categories. Prefixed so they cannot collide with a real
+ * category a panel happens to have named "Continue".
+ */
+private const val CONTINUE_CATEGORY = " continue"
+private const val FAVOURITES_CATEGORY = " favourites"
+
 /** Films. Matches the television build's store and key, so a position means the same thing in both. */
 private const val MOVIE_PREFS = "movie_library"
 
@@ -308,18 +316,43 @@ private fun CodeRow(label: String, value: String) {
 
 @Composable
 private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
+    val context = LocalContext.current
     var tab by remember { mutableStateOf(PhoneTab.MOVIES) }
     var query by remember { mutableStateOf("") }
     var overlay by remember { mutableStateOf<Overlay?>(null) }
     // Null means every category. Reset whenever the tab changes, because a category belongs to the
     // kind it was picked in and carrying it across would filter the next tab down to nothing.
     var category by remember(tab) { mutableStateOf<String?>(null) }
+    // Bumped when something is starred or watched, so the two lists below are re-read rather than
+    // staying as they were when the tab opened.
+    var libraryVersion by remember { mutableIntStateOf(0) }
 
     val ofKind = remember(playlist, tab) { playlist.items.filter { it.kind == tab.kind } }
     val categories = remember(ofKind) { ofKind.map { it.group }.distinct().sorted() }
 
-    val items = remember(ofKind, category, query) {
-        val inCategory = if (category == null) ofKind else ofKind.filter { it.group == category }
+    // The two lists that are not categories at all: what the viewer starred, and what they started
+    // and did not finish. They sit at the front of the same row because that is where someone looks
+    // first, and because a phone has no room for rows of their own above the grid.
+    val starred = remember(ofKind, libraryVersion, tab) {
+        val keys = Favourites.read(context, tab.kind ?: MediaKind.MOVIE)
+        ofKind.filter { channelKey(it) in keys }
+    }
+    val unfinished = remember(ofKind, libraryVersion, tab) {
+        if (tab.kind != MediaKind.MOVIE) emptyList()
+        else {
+            val positions = context.getSharedPreferences(MOVIE_PREFS, android.content.Context.MODE_PRIVATE)
+                .all.keys.filter { it.startsWith("progress_") }.map { it.removePrefix("progress_") }.toSet()
+            ofKind.filter { channelKey(it) in positions }
+        }
+    }
+
+    val items = remember(ofKind, category, query, starred, unfinished) {
+        val inCategory = when (category) {
+            null -> ofKind
+            CONTINUE_CATEGORY -> unfinished
+            FAVOURITES_CATEGORY -> starred
+            else -> ofKind.filter { it.group == category }
+        }
         // A search reaches the whole kind, not just the open category: someone typing a title wants
         // the title, and having to find the right category first would defeat the point of typing.
         if (query.isBlank()) inCategory
@@ -389,6 +422,30 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
                             label = { Text("All") }
                         )
                     }
+                    // Shown only when they have something in them. An empty Favourites chip is an
+                    // invitation to press something that does nothing.
+                    if (unfinished.isNotEmpty()) {
+                        item {
+                            FilterChip(
+                                selected = category == CONTINUE_CATEGORY,
+                                onClick = {
+                                    category = if (category == CONTINUE_CATEGORY) null else CONTINUE_CATEGORY
+                                },
+                                label = { Text("Continue") }
+                            )
+                        }
+                    }
+                    if (starred.isNotEmpty()) {
+                        item {
+                            FilterChip(
+                                selected = category == FAVOURITES_CATEGORY,
+                                onClick = {
+                                    category = if (category == FAVOURITES_CATEGORY) null else FAVOURITES_CATEGORY
+                                },
+                                label = { Text("Favourites") }
+                            )
+                        }
+                    }
                     items(categories, key = { it }) { name ->
                         FilterChip(
                             selected = category == name,
@@ -452,7 +509,10 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
                     "episode_progress_${episode.id}"
                 )
             },
-            onDismiss = { overlay = null }
+            // Starring something, or leaving a film part-watched, changes what the Favourites and
+            // Continue chips should hold - so they are re-read when the page closes rather than
+            // staying as they were when the tab was opened.
+            onDismiss = { overlay = null; libraryVersion++ }
         )
         is Overlay.Playing -> PhonePlayer(
             title = current.title,
@@ -460,7 +520,7 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
             progressPrefs = current.progressPrefs,
             progressKey = current.progressKey,
             startOver = current.startOver,
-            onDismiss = { overlay = null }
+            onDismiss = { overlay = null; libraryVersion++ }
         )
     }
 }
