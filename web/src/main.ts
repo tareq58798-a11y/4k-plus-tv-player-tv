@@ -23,6 +23,8 @@ import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
+import { deviceMac, deviceKey, macIsHardware } from './platform/identity';
+import { activate, ActivationPending } from './shared/activation';
 import {
   isCategoryLocked, isChannelLocked, isUnlocked, markUnlocked, parental, relock,
   removePin, setPin, toggleCategoryLock,
@@ -54,6 +56,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 function clear(): void {
+  activationStop?.();
+  activationStop = null;
   // Both pages hang listeners on the document rather than on their own elements, so emptying the
   // app is not enough to be rid of them - a landing left behind would keep answering focus moves
   // on the page that replaced it.
@@ -64,6 +68,77 @@ function clear(): void {
 }
 
 /* ------------------------------------------------------------------ login */
+
+/**
+ * The way in that needs no typing.
+ *
+ * A viewer with a remote should not have to enter a server address, a username and a password on
+ * an on-screen keyboard. The set shows its own MAC and a device key, the reseller assigns a
+ * playlist to that pair, and the app collects it - which is the whole reason this exists.
+ *
+ * Polls while the page is open, backing off after failures. "Nothing assigned yet" is the normal
+ * state here, not an error: the viewer is expected to be reading the numbers out to somebody.
+ */
+function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLElement {
+  const panel = el('div', { class: 'panel activation' });
+  const macRow = el('div', { class: 'code-row' }, el('span', {}, t('device_id')), el('strong', {}, '…'));
+  const keyRow = el('div', { class: 'code-row' }, el('span', {}, t('device_key')), el('strong', {}, '…'));
+  const status = el('div', { class: 'message' }, t('waiting_for_activation'));
+
+  panel.append(
+    el('h2', {}, t('activate_via_app')),
+    el('p', {}, t('activation_instructions')),
+    macRow,
+    keyRow,
+    status,
+  );
+
+  let stopped = false;
+  let failures = 0;
+
+  void (async () => {
+    const mac = deviceMac();
+    const key = await deviceKey();
+    macRow.lastElementChild!.textContent = mac;
+    keyRow.lastElementChild!.textContent = key;
+    // Said plainly when the number is one the app invented rather than the set's own, so nobody
+    // goes looking for it in the television's network settings and fails to find it.
+    if (!macIsHardware()) panel.append(el('div', { class: 'settings-note' }, t('not_a_media_provider')));
+
+    while (!stopped) {
+      try {
+        const result = await activate(mac, key);
+        if (stopped) return;
+        if (result.kind === 'm3u') {
+          // The M3U path needs its own loader, which is not built yet. Better to say so than to
+          // hand the Xtream client an address it cannot use.
+          status.textContent = t('playlist_could_not_be_loaded');
+          return;
+        }
+        onActivated(result.login);
+        return;
+      } catch (error) {
+        if (stopped) return;
+        if (error instanceof ActivationPending) {
+          failures = 0;
+          status.textContent = t('no_playlist_assigned_yet');
+        } else {
+          failures++;
+          status.textContent = error instanceof Error ? error.message : String(error);
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, failures === 0 ? 5000 : Math.min(30000, 5000 * failures)));
+    }
+  })();
+
+  // Stops the loop when the page goes, so a signed-in app is not still polling behind it.
+  activationStop = () => {
+    stopped = true;
+  };
+  return panel;
+}
+
+let activationStop: (() => void) | null = null;
 
 function loginScreen(message = ''): void {
   clear();
@@ -95,18 +170,31 @@ function loginScreen(message = ''): void {
   const field = (label: string, input: HTMLElement) =>
     el('label', { class: 'field' }, el('span', {}, label), input);
 
+  // Two ways in, side by side, the way the television app offers them: the one that needs no
+  // typing first, and manual entry for anyone who already has their provider details.
   app.append(
+    el('h1', { class: 'welcome-title' }, t('welcome')),
+    el('p', { class: 'welcome-sub' }, t('activation_subtitle')),
     el(
       'div',
-      { class: 'panel' },
-      el('h1', {}, t('welcome')),
-      el('p', {}, t('activation_subtitle')),
-      field(t('playlist_name_label'), name),
-      field(t('server_address_label'), address),
-      field(t('username_label'), username),
-      field(t('password_label'), password),
-      connect,
-      status,
+      { class: 'welcome' },
+      activationPanel((activated) => {
+        activationStop?.();
+        const message = app.querySelector<HTMLElement>('.manual .message');
+        if (message) void connectAndLoad(activated, message);
+      }),
+      el(
+        'div',
+        { class: 'panel manual' },
+        el('h2', {}, t('add_playlist_manually')),
+        el('p', {}, t('add_playlist_manually_desc')),
+        field(t('playlist_name_label'), name),
+        field(t('server_address_label'), address),
+        field(t('username_label'), username),
+        field(t('password_label'), password),
+        connect,
+        status,
+      ),
     ),
   );
   focus(name);

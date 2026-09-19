@@ -848,3 +848,54 @@ body.playing .backdrop-scrim {
 .locked-mark-big {
   font-size: 72px;
 }
+
+/* ----------------------------------------------------------- welcome page */
+
+.welcome-title {
+  margin: 40px 0 0;
+  font-size: 88px;
+  font-weight: 800;
+}
+
+.welcome-sub {
+  margin: 0 0 var(--dim-gap-l);
+  font-size: 34px;
+  color: var(--tone-text-secondary);
+}
+
+.welcome {
+  display: flex;
+  gap: var(--dim-gap-l);
+  align-items: flex-start;
+}
+
+.welcome .panel {
+  width: 880px;
+  margin: 0;
+}
+
+.welcome .panel h2 {
+  margin: 0 0 var(--dim-gap-xs);
+  font-size: 44px;
+  font-weight: 800;
+}
+
+.code-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px var(--dim-gap-m);
+  margin-bottom: var(--dim-gap-s);
+  border-radius: var(--dim-radius-card);
+  background: var(--tone-glass-strong);
+  font-size: 30px;
+}
+
+.code-row span {
+  color: var(--tone-text-muted);
+}
+
+.code-row strong {
+  letter-spacing: 2px;
+  color: var(--tone-accent);
+}

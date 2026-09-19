@@ -143,3 +143,34 @@ it is worth deciding deliberately rather than by default.
 
 The catalogue cache is separate and carries no credentials: its key is the host and username
 only, so a changed password does not throw away a catalogue that is still good.
+## Activation by MAC
+
+The way in that needs no typing: the set shows its MAC and a device key, the reseller assigns a
+playlist to that pair in their dashboard, and the app collects it. Ported from
+`DeviceActivationClient.kt` - same endpoint, same request shape, same pending/assigned states.
+
+**This build uses the set's real MAC.** `webapis.network.getMac()` gives the number printed in the
+television's own network settings, so a customer can read it out without the app being open.
+Android cannot do that - it has no access to the hardware address - so the television build
+synthesises one from `ANDROID_ID` instead. The device key is derived identically in both (SHA-256,
+first four bytes big-endian, modulo a million, padded to six digits), so one activation service
+answers both.
+
+Off a Samsung set - in a browser during development - there is no hardware MAC, so a stable one is
+generated once with the locally-administered bit set and kept, and the page says so rather than
+sending somebody hunting through their TV settings for a number that is not there.
+
+### The activation service sends no CORS headers
+
+Verified directly: `POST /api/activate` with an unassigned MAC returns `{"status":"pending"}` and
+**no** `Access-Control-Allow-` headers at all.
+
+That means a **browser blocks the call** and activation cannot work in development. A Tizen widget
+declares `<access origin="*" subdomains="true"/>` and is not subject to CORS, so it is expected to
+work on a set - but that is the documented platform behaviour, not something observed here, because
+this emulator image blocks shell, dlog and the web inspector alike and there is no way to read what
+the app saw.
+
+If the web core is ever to run as an ordinary web page - the Windows target in `PORTING.md` uses
+the same code - the service will need to send `Access-Control-Allow-Origin`. One header, on their
+side, and both cases work.
