@@ -43,8 +43,13 @@ android {
         //
         // versionCode is what Android compares to decide whether something is an update. It must
         // only ever increase, and is deliberately not reset to match versionName.
-        versionCode = 128
-        versionName = "7.7"
+        // 129 was 7.8, which was withdrawn - but it existed as a built APK and may have been
+        // installed on a set before it was. Android refuses any versionCode at or below the one
+        // already installed, with a bare "App not installed" and no reason given, so this skips
+        // past it rather than reusing 129 for different bytes. 7.8 is deliberately never reused
+        // as a name either: one number, one build, always.
+        versionCode = 130
+        versionName = "7.9"
     }
 
     // Two builds from one source tree, and never one build pretending to be both. They carry
