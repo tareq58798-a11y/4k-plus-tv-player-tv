@@ -3,6 +3,7 @@ package com.fourkplus.tvplayer
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
@@ -312,10 +313,22 @@ private fun App() {
     }
     val appPreferences = remember { context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE) }
 
-    // Classic keeps the app's own artwork up everywhere; Modern lets the background follow
-    // whatever the viewer is looking at. Read on every composition of this screen rather than once,
-    // so changing it in Settings takes effect on the way back out instead of at the next launch.
-    val classicBackground = appPreferences.getBoolean("classic_background", false)
+    // Classic keeps the app's own artwork up everywhere; Modern lets the background follow whatever
+    // the viewer is looking at.
+    //
+    // Driven by a listener on the store rather than a read during composition. Settings writes the
+    // preference directly, and nothing about that write makes this function recompose - reading it
+    // here would leave the switch apparently doing nothing until the next launch. The listener
+    // fires on the write itself, so the background changes underneath the settings page while it is
+    // still open, which is also the only way to see what the two modes look like.
+    var classicBackground by remember { mutableStateOf(appPreferences.getBoolean("classic_background", false)) }
+    DisposableEffect(appPreferences) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == "classic_background") classicBackground = prefs.getBoolean(key, false)
+        }
+        appPreferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { appPreferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     LaunchedEffect(classicBackground) {
         backdrop.followsFocus = !classicBackground
         // Whatever artwork is already up has to go, or turning Classic on leaves the last title's
