@@ -899,3 +899,8 @@ body.playing .backdrop-scrim {
   letter-spacing: 2px;
   color: var(--tone-accent);
 }
+
+.settings-note.warn {
+  color: var(--tone-star);
+  line-height: 1.35;
+}

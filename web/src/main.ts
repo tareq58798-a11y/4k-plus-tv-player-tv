@@ -23,7 +23,7 @@ import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
-import { deviceMac, deviceKey, macIsHardware } from './platform/identity';
+import { identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import {
   isCategoryLocked, isChannelLocked, isUnlocked, markUnlocked, parental, relock,
@@ -95,17 +95,41 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
 
   let stopped = false;
   let failures = 0;
+  /** Bumped by the Refresh button to cut a wait short. */
+  let wake: (() => void) | null = null;
+
+  const refresh = el(
+    'button',
+    { class: 'button', 'data-focus': '', 'data-focus-id': 'refresh-activation' },
+    t('cd_refresh_activation'),
+  );
+  // The loop already checks every few seconds, so this is not what makes activation work - it is
+  // what makes the waiting bearable. Somebody who has just been told "it's assigned now" wants to
+  // see it happen, not to sit watching a line of text and wonder whether anything is running.
+  refresh.addEventListener('click', () => wake?.());
+  panel.append(refresh);
 
   void (async () => {
-    const mac = deviceMac();
-    const key = await deviceKey();
+    const device = await identity();
+    const { mac, key } = device;
     macRow.lastElementChild!.textContent = mac;
     keyRow.lastElementChild!.textContent = key;
-    // Said plainly when the number is one the app invented rather than the set's own, so nobody
-    // goes looking for it in the television's network settings and fails to find it.
-    if (!macIsHardware()) panel.append(el('div', { class: 'settings-note' }, t('not_a_media_provider')));
+    // A generated address lives in the app's own storage and does not survive a reinstall, so
+    // registering a playlist against it would work today and be orphaned tomorrow. Anyone looking
+    // at this number needs to know that before they read it out to somebody.
+    if (!device.stable) {
+      panel.append(
+        el(
+          'div',
+          { class: 'settings-note warn' },
+          'This device could not be identified, so the code above is temporary and will change if '
+            + 'the app is reinstalled. Do not register it.',
+        ),
+      );
+    }
 
     while (!stopped) {
+      status.textContent = t('waiting_for_activation');
       try {
         const result = await activate(mac, key);
         if (stopped) return;
@@ -121,13 +145,23 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
         if (stopped) return;
         if (error instanceof ActivationPending) {
           failures = 0;
-          status.textContent = t('no_playlist_assigned_yet');
+          status.textContent = `${t('no_playlist_assigned_yet')}  ·  ${clockTime(Math.floor(Date.now() / 1000), locale())}`;
         } else {
           failures++;
           status.textContent = error instanceof Error ? error.message : String(error);
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, failures === 0 ? 5000 : Math.min(30000, 5000 * failures)));
+      // Waits, or gives up waiting the moment Refresh is pressed.
+      await new Promise<void>((resolve) => {
+        const delay = failures === 0 ? 5000 : Math.min(30000, 5000 * failures);
+        const timer = window.setTimeout(finish, delay);
+        wake = finish;
+        function finish(): void {
+          window.clearTimeout(timer);
+          wake = null;
+          resolve();
+        }
+      });
     }
   })();
 
