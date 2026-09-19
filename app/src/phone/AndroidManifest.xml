@@ -21,4 +21,12 @@
         android:name="android.hardware.touchscreen"
         android:required="true"
         tools:replace="android:required" />
+    <application>
+        <!-- Playback carries on in a floating window while something else is used. Declared here
+             rather than in the shared manifest: the television build has its own arrangement for
+             this, driven by its own player. -->
+        <activity
+            android:name=".MainActivity"
+            android:supportsPictureInPicture="true" />
+    </application>
 </manifest>

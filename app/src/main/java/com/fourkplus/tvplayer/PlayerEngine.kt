@@ -8,6 +8,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.PlayerView
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -146,3 +149,57 @@ private fun fourKPlusTrackSelector(context: android.content.Context, mode: Conne
                 .setForceHighestSupportedBitrate(mode == ConnectionMode.FAST)
         )
     }
+
+/**
+ * The filled box behind each cue comes from two places: the caption style this view draws with, and
+ * whatever styling the stream itself carries. Switching the box off has to beat both, so embedded
+ * styles are ignored while it is off - otherwise a stream that specifies its own background simply
+ * paints it back. The text is given a black outline in exchange, so it stays readable against
+ * bright footage without a box to sit on.
+ */
+internal fun applySubtitleBackground(view: PlayerView, background: Boolean) {
+    val subtitles = view.subtitleView ?: return
+    subtitles.setApplyEmbeddedStyles(background)
+    subtitles.setStyle(
+        if (background) {
+            CaptionStyleCompat.DEFAULT
+        } else {
+            CaptionStyleCompat(
+                android.graphics.Color.WHITE,
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                android.graphics.Color.BLACK,
+                null
+            )
+        }
+    )
+}
+
+internal fun applyRequestedAspectRatio(view: PlayerView, mode: String) {
+    val targetRatio = when (mode) {
+        "16:9" -> 16f / 9f
+        "4:3" -> 4f / 3f
+        "21:9" -> 21f / 9f
+        "1:1" -> 1f
+        else -> null
+    }
+    val surface = view.videoSurfaceView ?: return
+    if (targetRatio == null) {
+        surface.scaleX = 1f
+        surface.scaleY = 1f
+        return
+    }
+    view.post {
+        val width = view.width.toFloat().coerceAtLeast(1f)
+        val height = view.height.toFloat().coerceAtLeast(1f)
+        val containerRatio = width / height
+        if (targetRatio > containerRatio) {
+            surface.scaleX = 1f
+            surface.scaleY = containerRatio / targetRatio
+        } else {
+            surface.scaleX = targetRatio / containerRatio
+            surface.scaleY = 1f
+        }
+    }
+}

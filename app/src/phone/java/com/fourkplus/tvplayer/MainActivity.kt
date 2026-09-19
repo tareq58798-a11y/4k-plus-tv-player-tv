@@ -39,6 +39,15 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
+import com.fourkplus.tvplayer.data.sourceId
 import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.rememberCoroutineScope
 import com.fourkplus.tvplayer.data.ActivationPendingException
@@ -136,6 +145,11 @@ private fun PhoneApp() {
     val viewModel: PlaylistViewModel =
         viewModel(factory = PlaylistViewModel.Factory(context.applicationContext))
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Decided once, when the app opens. Re-checking on every recomposition would put the gate back
+    // up the moment anything else changed.
+    var locked by remember {
+        mutableStateOf(Parental.pinHash(context) != null && Parental.askOnStartup(context))
+    }
 
     Box(Modifier.fillMaxSize()) {
         // The same artwork the television build uses, so the two apps are recognisably one product
@@ -153,6 +167,11 @@ private fun PhoneApp() {
             state.bootstrapping -> Loading()
             playlist == null || playlist.items.isEmpty() -> NoPlaylist()
             else -> Catalogue(playlist, viewModel)
+        }
+
+        // Over everything, including the catalogue, so nothing is readable behind it while it is up.
+        if (locked) {
+            PinGate(onUnlocked = { locked = false })
         }
     }
 }
@@ -187,6 +206,55 @@ private sealed interface Overlay {
         val channels: List<PlaylistItem> = emptyList(),
         val channelIndex: Int = 0
     ) : Overlay
+}
+
+/**
+ * Hidden categories and the PIN, in the same store and under the same keys the television build
+ * uses. A hidden category means the same thing in both, and a PIN is held the same way: as a hash,
+ * never as the digits themselves.
+ */
+private object Parental {
+    private const val PREFS = "parental_settings"
+
+    private fun prefs(context: android.content.Context) =
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+
+    private fun hiddenKey(kind: MediaKind) = when (kind) {
+        MediaKind.MOVIE -> "hidden_movie_categories"
+        MediaKind.SERIES -> "hidden_series_categories"
+        MediaKind.LIVE -> "hidden_live_categories"
+    }
+
+    fun hidden(context: android.content.Context, kind: MediaKind): Set<String> =
+        prefs(context).getStringSet(hiddenKey(kind), emptySet()).orEmpty().toSet()
+
+    fun setHidden(context: android.content.Context, kind: MediaKind, categories: Set<String>) {
+        prefs(context).edit().putStringSet(hiddenKey(kind), categories).apply()
+    }
+
+    fun pinHash(context: android.content.Context): String? = prefs(context).getString("pin_hash", null)
+
+    /** Stored hashed, so the digits are not sitting in a preferences file in the clear. */
+    fun setPin(context: android.content.Context, pin: String?) {
+        prefs(context).edit().apply {
+            if (pin == null) remove("pin_hash") else putString("pin_hash", hashPin(pin))
+        }.apply()
+    }
+
+    fun matches(context: android.content.Context, pin: String): Boolean =
+        pinHash(context) != null && pinHash(context) == hashPin(pin)
+
+    fun askOnStartup(context: android.content.Context): Boolean =
+        prefs(context).getBoolean("ask_pin_on_startup", false)
+
+    fun setAskOnStartup(context: android.content.Context, ask: Boolean) {
+        prefs(context).edit().putBoolean("ask_pin_on_startup", ask).apply()
+    }
+
+    private fun hashPin(pin: String): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(pin.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 }
 
 /**
@@ -336,7 +404,12 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
     // staying as they were when the tab opened.
     var libraryVersion by remember { mutableIntStateOf(0) }
 
-    val ofKind = remember(playlist, tab) { playlist.items.filter { it.kind == tab.kind } }
+    // Hidden categories are taken out here rather than filtered at the chip row, so a hidden
+    // category's titles cannot reach the grid through "All" or through a search either.
+    val ofKind = remember(playlist, tab, libraryVersion) {
+        val hidden = tab.kind?.let { Parental.hidden(context, it) }.orEmpty()
+        playlist.items.filter { it.kind == tab.kind && it.group !in hidden }
+    }
     val categories = remember(ofKind) { ofKind.map { it.group }.distinct().sorted() }
 
     // The two lists that are not categories at all: what the viewer starred, and what they started
@@ -401,7 +474,7 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
         }
     ) { padding ->
         if (tab.kind == null) {
-            PhoneSettings(playlist, viewModel, Modifier.padding(padding))
+            PhoneSettings(playlist, viewModel, libraryVersion, { libraryVersion++ }, Modifier.padding(padding))
             return@Scaffold
         }
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -587,6 +660,8 @@ private fun PosterTile(item: PlaylistItem, portraitArt: Boolean, onClick: () -> 
 private fun PhoneSettings(
     playlist: LoadedPlaylist,
     viewModel: PlaylistViewModel,
+    hiddenVersion: Int,
+    onHiddenChanged: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -595,6 +670,34 @@ private fun PhoneSettings(
     var busy by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
     var language by remember { mutableStateOf(LocaleHelper.getLanguage(context)) }
+    var pinHash by remember { mutableStateOf(Parental.pinHash(context)) }
+    var askPinOnStart by remember { mutableStateOf(Parental.askOnStartup(context)) }
+    var pinPrompt by remember { mutableStateOf(false) }
+    var hiddenEditor by remember { mutableStateOf<MediaKind?>(null) }
+    val hiddenCount = remember(hiddenVersion) {
+        MediaKind.entries.sumOf { Parental.hidden(context, it).size }
+    }
+
+    if (pinPrompt) {
+        PinDialog(
+            title = "Set a PIN",
+            onConfirm = { entered ->
+                Parental.setPin(context, entered)
+                pinHash = Parental.pinHash(context)
+                pinPrompt = false
+                note = "PIN set"
+            },
+            onDismiss = { pinPrompt = false }
+        )
+    }
+
+    hiddenEditor?.let { kind ->
+        HiddenCategoriesDialog(
+            kind = kind,
+            playlist = playlist,
+            onDone = { hiddenEditor = null; onHiddenChanged() }
+        )
+    }
 
     LazyColumn(
         modifier.fillMaxSize(),
@@ -684,6 +787,89 @@ private fun PhoneSettings(
             }
         }
 
+        // More than one saved account is common - a household with two subscriptions, or a spare
+        // while one expires - so switching is a tap rather than removing and re-adding.
+        if (state.savedPlaylists.size > 1) {
+            item {
+                SettingsCard("Saved playlists") {
+                    state.savedPlaylists.forEach { saved ->
+                        val active = saved.sourceId() == state.activeSource?.sourceId()
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !active && busy == null) {
+                                    busy = "switch"
+                                    scope.launch {
+                                        viewModel.switchTo(saved)
+                                            .onSuccess { note = "Switched to ${saved.name}" }
+                                            .onFailure { note = it.message ?: "Could not switch playlist" }
+                                        busy = null
+                                    }
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = active, onClick = null)
+                            Text(
+                                "  ${saved.name}",
+                                color = Tone.TextPrimary,
+                                fontSize = 15.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Hiding a category takes it out of the chips and out of the grid. Kept in the same store
+        // the television uses, under the same keys, so the two mean the same thing by "hidden".
+        item {
+            SettingsCard("Category visibility") {
+                Text(
+                    "Hidden categories disappear from the chips and the grid.",
+                    color = Tone.TextMuted,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                SettingsButton(
+                    Icons.Default.VisibilityOff,
+                    "Hidden categories",
+                    if (hiddenCount == 0) "Nothing hidden" else "$hiddenCount hidden",
+                    true
+                ) { hiddenEditor = MediaKind.MOVIE }
+            }
+        }
+
+        item {
+            SettingsCard("Parental controls") {
+                if (pinHash == null) {
+                    Text(
+                        "Set a PIN to hide categories behind it and to lock the app on opening.",
+                        color = Tone.TextMuted,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    SettingsButton(Icons.Default.Lock, "Set a PIN", "Four digits", true) {
+                        pinPrompt = true
+                    }
+                } else {
+                    PlayerToggle("Ask for the PIN when the app opens", askPinOnStart) {
+                        askPinOnStart = !askPinOnStart
+                        Parental.setAskOnStartup(context, askPinOnStart)
+                    }
+                    SettingsButton(Icons.Default.LockOpen, "Remove the PIN", "Stops asking", true) {
+                        Parental.setPin(context, null)
+                        pinHash = null
+                        askPinOnStart = false
+                        Parental.setAskOnStartup(context, false)
+                        note = "PIN removed"
+                    }
+                }
+            }
+        }
+
         item {
             SettingsCard("This device") {
                 InfoLine("Device ID", DeviceIdentity.mac(context))
@@ -725,6 +911,175 @@ private fun PhoneSettings(
             )
         }
     }
+}
+
+/**
+ * The PIN asked for on opening. Covers the whole app, and has no way past it other than the PIN -
+ * Back leaves rather than dismisses, because a gate that can be waved away is not a gate.
+ */
+@Composable
+private fun PinGate(onUnlocked: () -> Unit) {
+    val context = LocalContext.current
+    var entry by remember { mutableStateOf("") }
+    var wrong by remember { mutableStateOf(false) }
+
+    BackHandler { (context as? android.app.Activity)?.finish() }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0xFF050B16))
+            .systemBarsPadding()
+            .padding(28.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Default.Lock, null, tint = Tone.Accent, modifier = Modifier.size(34.dp))
+        Spacer(Modifier.height(14.dp))
+        Text("Enter your PIN", color = Tone.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = entry,
+            onValueChange = {
+                if (it.length <= 4 && it.all(Char::isDigit)) {
+                    entry = it
+                    wrong = false
+                    if (it.length == 4) {
+                        if (Parental.matches(context, it)) onUnlocked() else { wrong = true; entry = "" }
+                    }
+                }
+            },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (wrong) {
+            Spacer(Modifier.height(8.dp))
+            Text("That PIN is not right.", color = Tone.LiveRed, fontSize = 13.sp)
+        }
+    }
+}
+
+/** Four digits, entered twice over - once to set, once to be sure it was not a slip. */
+@Composable
+private fun PinDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var first by remember { mutableStateOf("") }
+    var second by remember { mutableStateOf("") }
+    val ready = first.length == 4 && first == second
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = first,
+                    onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) first = it },
+                    label = { Text("PIN") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                    )
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = second,
+                    onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) second = it },
+                    label = { Text("Confirm") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                    )
+                )
+                if (second.isNotEmpty() && first != second) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("The two do not match.", color = Tone.LiveRed, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(first) }, enabled = ready) { Text("Save") }
+        },
+        dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/**
+ * Which of a kind's categories to keep out of the app. The list is the playlist's own categories,
+ * so it can only ever hide something that exists.
+ */
+@Composable
+private fun HiddenCategoriesDialog(
+    kind: MediaKind,
+    playlist: LoadedPlaylist,
+    onDone: () -> Unit
+) {
+    val context = LocalContext.current
+    var shownKind by remember { mutableStateOf(kind) }
+    var hidden by remember(shownKind) { mutableStateOf(Parental.hidden(context, shownKind)) }
+    val categories = remember(playlist, shownKind) {
+        playlist.items.filter { it.kind == shownKind }.map { it.group }.distinct().sorted()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Hidden categories") },
+        text = {
+            Column {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MediaKind.entries.forEach { option ->
+                        FilterChip(
+                            selected = option == shownKind,
+                            onClick = { shownKind = option },
+                            label = {
+                                Text(
+                                    when (option) {
+                                        MediaKind.MOVIE -> "Films"
+                                        MediaKind.SERIES -> "Series"
+                                        MediaKind.LIVE -> "Channels"
+                                    }
+                                )
+                            }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.height(320.dp)) {
+                    items(categories, key = { it }) { name ->
+                        val isHidden = name in hidden
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    hidden = if (isHidden) hidden - name else hidden + name
+                                    Parental.setHidden(context, shownKind, hidden)
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (isHidden) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                                null,
+                                tint = if (isHidden) Tone.Accent else Tone.TextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                "  $name",
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onDone) { Text("Done") } }
+    )
 }
 
 @Composable
@@ -962,6 +1317,40 @@ private fun DetailsPage(
     }
 }
 
+@Composable
+private fun PlayerToggle(label: String, on: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            if (on) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+            null,
+            tint = if (on) Tone.Accent else Tone.TextMuted,
+            modifier = Modifier.size(20.dp)
+        )
+        Text("  $label", color = Tone.TextPrimary, fontSize = 14.sp)
+    }
+}
+
+/**
+ * Shrinks the app to a floating window so playback carries on while something else is used.
+ *
+ * Guarded rather than assumed: picture-in-picture arrived in Android 8, and a device can still have
+ * it switched off per app, in which case the request throws rather than being ignored.
+ */
+private fun enterPictureInPicture(context: android.content.Context) {
+    val activity = context as? android.app.Activity ?: return
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
+    runCatching {
+        activity.enterPictureInPictureMode(
+            android.app.PictureInPictureParams.Builder()
+                .setAspectRatio(android.util.Rational(16, 9))
+                .build()
+        )
+    }
+}
+
 /** A resume position as a viewer reads it, not as milliseconds. */
 private fun formatPosition(ms: Long): String {
     val totalSeconds = ms / 1000
@@ -1081,6 +1470,38 @@ private fun PhonePlayer(
         }
     }
 
+    // Remembered across sessions, the same keys the television build writes, so a viewer who turns
+    // subtitles off does not have to turn them off again tomorrow.
+    val settings = remember {
+        context.getSharedPreferences("playback_settings", android.content.Context.MODE_PRIVATE)
+    }
+    var subtitlesOn by remember { mutableStateOf(settings.getBoolean("subtitles_enabled", true)) }
+    var subtitleBox by remember { mutableStateOf(settings.getBoolean("subtitle_background", true)) }
+    var videoMode by remember(playingUrl) {
+        mutableStateOf(settings.getString("video_mode", "fit") ?: "fit")
+    }
+    var optionsOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(player, subtitlesOn) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitlesOn)
+            .setSelectUndeterminedTextLanguage(subtitlesOn)
+            .build()
+    }
+
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    LaunchedEffect(playerView, subtitleBox, videoMode) {
+        playerView?.let {
+            applySubtitleBackground(it, subtitleBox)
+            applyRequestedAspectRatio(it, videoMode)
+            it.resizeMode = when (videoMode) {
+                "zoom" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                "stretch" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+        }
+    }
+
     BackHandler(onBack = onDismiss)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -1091,6 +1512,7 @@ private fun PhonePlayer(
                     useController = true
                     setShowPreviousButton(false)
                     setShowNextButton(false)
+                    playerView = this
                 }
             },
             modifier = Modifier.fillMaxSize()
@@ -1117,6 +1539,46 @@ private fun PhonePlayer(
                     }
                     IconButton(onClick = { index = (index + 1) % channels.size }) {
                         Icon(Icons.Default.SkipNext, "Next channel", tint = Color.White)
+                    }
+                }
+                IconButton(onClick = { enterPictureInPicture(context) }) {
+                    Icon(Icons.Default.PictureInPictureAlt, "Picture in picture", tint = Color.White)
+                }
+                IconButton(onClick = { optionsOpen = !optionsOpen }) {
+                    Icon(Icons.Default.MoreVert, "Options", tint = Color.White)
+                }
+            }
+
+            if (optionsOpen) {
+                Column(
+                    Modifier
+                        .padding(horizontal = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xE6101A2C))
+                        .padding(12.dp)
+                ) {
+                    PlayerToggle("Subtitles", subtitlesOn) {
+                        subtitlesOn = !subtitlesOn
+                        settings.edit().putBoolean("subtitles_enabled", subtitlesOn).apply()
+                    }
+                    // The filled box behind each cue: helpful over bright footage, in the way over
+                    // dark. The viewer's call, as on the television.
+                    PlayerToggle("Subtitle background", subtitleBox) {
+                        subtitleBox = !subtitleBox
+                        settings.edit().putBoolean("subtitle_background", subtitleBox).apply()
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Picture size", color = Tone.TextMuted, fontSize = 12.sp)
+                    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("fit" to "Fit", "zoom" to "Fill", "stretch" to "Stretch").forEach { (value, label) ->
+                            FilterChip(
+                                selected = videoMode == value,
+                                // Not persisted, matching the television: a stretch chosen for one
+                                // title should not follow the viewer into the next one.
+                                onClick = { videoMode = value },
+                                label = { Text(label) }
+                            )
+                        }
                     }
                 }
             }
