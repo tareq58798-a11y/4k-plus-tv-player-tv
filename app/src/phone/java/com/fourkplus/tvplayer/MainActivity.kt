@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.rememberCoroutineScope
 import com.fourkplus.tvplayer.data.ActivationPendingException
@@ -158,7 +160,8 @@ private fun PhoneApp() {
  * obvious step to take.
  */
 private sealed interface Overlay {
-    data class Episodes(val series: PlaylistItem) : Overlay
+    /** A title's own page: artwork, what it is about, and the way in to playing it. */
+    data class Details(val item: PlaylistItem) : Overlay
 
     /**
      * [progressKey] is where this title's resume position is kept, and [progressPrefs] which store
@@ -170,8 +173,37 @@ private sealed interface Overlay {
         val title: String,
         val url: String,
         val progressPrefs: String? = null,
-        val progressKey: String? = null
+        val progressKey: String? = null,
+        /** Set by "Start over", which ignores the saved position without forgetting it. */
+        val startOver: Boolean = false
     ) : Overlay
+}
+
+/**
+ * Starred titles. Same stores and keys the television build uses, so the two describe a favourite
+ * the same way - though each app keeps its own, being a separate install.
+ */
+private object Favourites {
+    private fun prefsName(kind: MediaKind) = when (kind) {
+        MediaKind.MOVIE -> MOVIE_PREFS
+        MediaKind.SERIES -> SERIES_PREFS
+        MediaKind.LIVE -> "favorite_channels"
+    }
+
+    private fun setKey(kind: MediaKind) = if (kind == MediaKind.LIVE) "ids" else "favorites"
+
+    fun read(context: android.content.Context, kind: MediaKind): Set<String> =
+        context.getSharedPreferences(prefsName(kind), android.content.Context.MODE_PRIVATE)
+            .getStringSet(setKey(kind), emptySet()).orEmpty().toSet()
+
+    fun toggle(context: android.content.Context, item: PlaylistItem): Set<String> {
+        val key = channelKey(item)
+        val current = read(context, item.kind)
+        val updated = if (key in current) current - key else current + key
+        context.getSharedPreferences(prefsName(item.kind), android.content.Context.MODE_PRIVATE)
+            .edit().putStringSet(setKey(item.kind), updated).apply()
+        return updated
+    }
 }
 
 /** Films. Matches the television build's store and key, so a position means the same thing in both. */
@@ -384,16 +416,13 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
                         // A film or a channel is one stream and plays straight away. A series is a
                         // list of episodes, so it opens that list first - there is nothing to play
                         // until one of them has been picked.
-                        overlay = when (item.kind) {
-                            MediaKind.SERIES -> Overlay.Episodes(item)
-                            MediaKind.MOVIE -> Overlay.Playing(
-                                item.name,
-                                item.streamUrl,
-                                MOVIE_PREFS,
-                                "progress_${channelKey(item)}"
-                            )
-                            // A live channel has no position to keep: it is wherever it is now.
-                            MediaKind.LIVE -> Overlay.Playing(item.name, item.streamUrl)
+                        // A channel is one thing you either watch or do not, so it plays. A film or
+                        // a series has something to read first, and a position to decide what to do
+                        // about, so it opens its own page.
+                        overlay = if (item.kind == MediaKind.LIVE) {
+                            Overlay.Playing(item.name, item.streamUrl)
+                        } else {
+                            Overlay.Details(item)
                         }
                     }
                 }
@@ -403,12 +432,21 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
 
     when (val current = overlay) {
         null -> Unit
-        is Overlay.Episodes -> EpisodeList(
-            series = current.series,
+        is Overlay.Details -> DetailsPage(
+            item = current.item,
             viewModel = viewModel,
-            onPlay = { episode ->
+            onPlayMovie = { resume ->
                 overlay = Overlay.Playing(
-                    "${current.series.name} • S${episode.seasonNumber} E${episode.episodeNumber}",
+                    current.item.name,
+                    current.item.streamUrl,
+                    MOVIE_PREFS,
+                    "progress_${channelKey(current.item)}",
+                    startOver = !resume
+                )
+            },
+            onPlayEpisode = { episode ->
+                overlay = Overlay.Playing(
+                    "${current.item.name} • S${episode.seasonNumber} E${episode.episodeNumber}",
                     episode.streamUrl,
                     SERIES_PREFS,
                     "episode_progress_${episode.id}"
@@ -421,6 +459,7 @@ private fun Catalogue(playlist: LoadedPlaylist, viewModel: PlaylistViewModel) {
             url = current.url,
             progressPrefs = current.progressPrefs,
             progressKey = current.progressKey,
+            startOver = current.startOver,
             onDismiss = { overlay = null }
         )
     }
@@ -671,86 +710,188 @@ private fun SettingsButton(
 }
 
 /**
- * A series' episodes, fetched on open. The catalogue listing carries no episodes - they arrive with
- * the details call, the same one the television build makes.
+ * A title's own page: its artwork, what it is about, and the way in to playing it.
+ *
+ * The catalogue listing carries almost none of this - a series never carries a plot, and many
+ * panels omit one for films too - so the page asks for the details the same way the television
+ * build does, once, when it opens.
+ *
+ * A film offers Resume where there is a position to resume from, and Start over beside it, because
+ * the saved position is a convenience and not a sentence. A series offers its episodes instead:
+ * there is nothing to play until one has been chosen.
  */
 @Composable
-private fun EpisodeList(
-    series: PlaylistItem,
+private fun DetailsPage(
+    item: PlaylistItem,
     viewModel: PlaylistViewModel,
-    onPlay: (SeriesEpisode) -> Unit,
+    onPlayMovie: (resume: Boolean) -> Unit,
+    onPlayEpisode: (SeriesEpisode) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var episodes by remember(series) { mutableStateOf<List<SeriesEpisode>?>(null) }
-    var failed by remember(series) { mutableStateOf(false) }
+    val context = LocalContext.current
+    var plot by remember(item) { mutableStateOf<String?>(null) }
+    var meta by remember(item) { mutableStateOf<List<String>>(emptyList()) }
+    var artwork by remember(item) { mutableStateOf(item.logoUrl) }
+    var episodes by remember(item) { mutableStateOf<List<SeriesEpisode>?>(null) }
+    var loading by remember(item) { mutableStateOf(true) }
+    var starred by remember(item) { mutableStateOf(channelKey(item) in Favourites.read(context, item.kind)) }
 
-    LaunchedEffect(series) {
-        viewModel.seriesDetails(series)
-            .onSuccess { episodes = it.episodes }
-            .onFailure { failed = true }
+    val resumeAt = remember(item) {
+        if (item.kind == MediaKind.MOVIE) {
+            readProgress(context, MOVIE_PREFS, "progress_${channelKey(item)}")
+        } else 0L
+    }
+
+    LaunchedEffect(item) {
+        if (item.kind == MediaKind.SERIES) {
+            viewModel.seriesDetails(item).onSuccess { details ->
+                plot = details.description
+                artwork = details.backdropUrl ?: details.posterUrl ?: item.logoUrl
+                meta = listOfNotNull(details.year, details.rating?.let { "$it/10" }, details.genre)
+                episodes = details.episodes
+            }.onFailure { episodes = emptyList() }
+        } else {
+            viewModel.movieDetails(item).onSuccess { details ->
+                plot = details.description
+                artwork = details.backdropUrl ?: details.posterUrl ?: item.logoUrl
+                meta = listOfNotNull(
+                    details.year,
+                    details.rating?.let { "$it/10" },
+                    details.duration,
+                    details.genre
+                )
+            }
+        }
+        loading = false
     }
 
     BackHandler(onBack = onDismiss)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xF2050B16))
-            .systemBarsPadding()
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.ArrowBack, "Back", tint = Tone.TextPrimary)
-            }
-            Text(
-                series.name,
-                color = Tone.TextPrimary,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        when {
-            failed -> Text(
-                "This series' episodes could not be loaded.",
-                color = Tone.TextSecondary,
-                modifier = Modifier.padding(24.dp)
-            )
-            episodes == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Tone.Accent)
-            }
-            episodes!!.isEmpty() -> Text(
-                "This series has no episodes listed.",
-                color = Tone.TextSecondary,
-                modifier = Modifier.padding(24.dp)
-            )
-            else -> LazyColumn(Modifier.fillMaxSize()) {
-                items(episodes!!, key = { it.id }) { episode ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onPlay(episode) }
-                            .padding(horizontal = 20.dp, vertical = 14.dp)
-                    ) {
-                        Text(
-                            "S${episode.seasonNumber} E${episode.episodeNumber}  ${episode.title}",
-                            color = Tone.TextPrimary,
-                            fontSize = 15.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+    // Opaque, not translucent. This is a page about one title, and the grid showing faintly through
+    // its synopsis reads as a rendering fault rather than as depth.
+    Box(Modifier.fillMaxSize().background(Color(0xFF050B16))) {
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                    if (!artwork.isNullOrBlank()) {
+                        AsyncImage(
+                            model = artwork,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
                         )
-                        episode.duration?.takeIf(String::isNotBlank)?.let {
-                            Text(it, color = Tone.TextMuted, fontSize = 12.sp)
+                    }
+                    // The title sits on the artwork, so the artwork has to give way under it.
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    0f to Color(0x66050B16),
+                                    1f to Color(0xFF050B16)
+                                )
+                            )
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.systemBarsPadding().padding(4.dp)
+                    ) {
+                        Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                    }
+                }
+            }
+
+            item {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    Text(
+                        item.name,
+                        color = Tone.TextPrimary,
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (meta.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(meta.joinToString("  •  "), color = Tone.TextMuted, fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(14.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (item.kind == MediaKind.MOVIE) {
+                            Button(onClick = { onPlayMovie(resumeAt > 0L) }) {
+                                Text(if (resumeAt > 0L) "Resume  ${formatPosition(resumeAt)}" else "Play")
+                            }
+                            if (resumeAt > 0L) {
+                                Spacer(Modifier.size(10.dp))
+                                Button(onClick = { onPlayMovie(false) }) { Text("Start over") }
+                            }
+                            Spacer(Modifier.size(10.dp))
+                        }
+                        IconButton(onClick = { starred = channelKey(item) in Favourites.toggle(context, item) }) {
+                            Icon(
+                                if (starred) Icons.Default.Star else Icons.Default.StarBorder,
+                                if (starred) "Remove from favourites" else "Add to favourites",
+                                tint = if (starred) Tone.Star else Tone.TextMuted
+                            )
+                        }
+                    }
+
+                    plot?.takeIf(String::isNotBlank)?.let {
+                        Spacer(Modifier.height(14.dp))
+                        Text(it, color = Tone.TextSecondary, fontSize = 14.sp)
+                    }
+                    if (loading) {
+                        Spacer(Modifier.height(14.dp))
+                        CircularProgressIndicator(color = Tone.Accent, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.height(18.dp))
+                }
+            }
+
+            if (item.kind == MediaKind.SERIES) {
+                val loaded = episodes
+                when {
+                    loaded == null -> Unit
+                    loaded.isEmpty() -> item {
+                        Text(
+                            "This series has no episodes listed.",
+                            color = Tone.TextSecondary,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                        )
+                    }
+                    else -> items(loaded, key = { it.id }) { episode ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onPlayEpisode(episode) }
+                                .padding(horizontal = 20.dp, vertical = 13.dp)
+                        ) {
+                            Text(
+                                "S${episode.seasonNumber} E${episode.episodeNumber}  ${episode.title}",
+                                color = Tone.TextPrimary,
+                                fontSize = 15.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            episode.duration?.takeIf(String::isNotBlank)?.let {
+                                Text(it, color = Tone.TextMuted, fontSize = 12.sp)
+                            }
                         }
                     }
                 }
             }
+            item { Spacer(Modifier.height(28.dp)) }
         }
     }
+}
+
+/** A resume position as a viewer reads it, not as milliseconds. */
+private fun formatPosition(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+    else "%d:%02d".format(minutes, seconds)
 }
 
 /**
@@ -766,6 +907,7 @@ private fun PhonePlayer(
     url: String,
     progressPrefs: String?,
     progressKey: String?,
+    startOver: Boolean,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -773,8 +915,11 @@ private fun PhonePlayer(
         buildFourKPlusExoPlayer(context, skipSeconds = 10, muted = false).apply {
             setMediaItem(MediaItem.fromUri(url))
             // Read before prepare, so a resumed title opens at its position rather than starting
-            // from the beginning and jumping a moment later.
-            readProgress(context, progressPrefs, progressKey).takeIf { it > 0L }?.let(::seekTo)
+            // from the beginning and jumping a moment later. Skipped when the viewer asked to start
+            // over, which ignores the saved position without erasing it.
+            if (!startOver) {
+                readProgress(context, progressPrefs, progressKey).takeIf { it > 0L }?.let(::seekTo)
+            }
             prepare()
             playWhenReady = true
         }
