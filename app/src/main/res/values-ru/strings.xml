@@ -316,4 +316,7 @@
     <string name="check_device_playlist_found">Плейлист назначен этому устройству</string>
     <string name="check_device_playlist_none">Этому устройству пока не назначен плейлист</string>
     <string name="check_device_playlist_failed">Не удалось связаться со службой активации</string>
+    <string name="move_manually">Переместить вручную</string>
+    <string name="move_to_top">В начало</string>
+    <string name="move_to_bottom">В конец</string>
 </resources>

@@ -316,4 +316,7 @@
     <string name="check_device_playlist_found">Se asignó una lista a este dispositivo</string>
     <string name="check_device_playlist_none">Aún no se ha asignado ninguna lista a este dispositivo</string>
     <string name="check_device_playlist_failed">No se pudo contactar con el servicio de activación</string>
+    <string name="move_manually">Mover manualmente</string>
+    <string name="move_to_top">Mover al principio</string>
+    <string name="move_to_bottom">Mover al final</string>
 </resources>

@@ -316,4 +316,7 @@
     <string name="check_device_playlist_found">اس ڈیوائس کو ایک پلے لسٹ دی گئی ہے</string>
     <string name="check_device_playlist_none">اس ڈیوائس کو ابھی تک کوئی پلے لسٹ نہیں دی گئی</string>
     <string name="check_device_playlist_failed">ایکٹیویشن سروس تک رسائی نہیں ہو سکی</string>
+    <string name="move_manually">دستی طور پر منتقل کریں</string>
+    <string name="move_to_top">سب سے اوپر منتقل کریں</string>
+    <string name="move_to_bottom">سب سے نیچے منتقل کریں</string>
 </resources>

@@ -327,4 +327,7 @@
     <string name="check_device_playlist_found">تم تعيين قائمة تشغيل لهذا الجهاز</string>
     <string name="check_device_playlist_none">لم يتم تعيين أي قائمة تشغيل لهذا الجهاز بعد</string>
     <string name="check_device_playlist_failed">تعذّر الوصول إلى خدمة التفعيل</string>
+    <string name="move_manually">نقل يدوي</string>
+    <string name="move_to_top">نقل إلى الأعلى</string>
+    <string name="move_to_bottom">نقل إلى الأسفل</string>
 </resources>

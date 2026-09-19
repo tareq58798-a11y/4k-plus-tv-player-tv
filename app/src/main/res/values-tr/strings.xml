@@ -316,4 +316,7 @@
     <string name="check_device_playlist_found">Bu cihaza bir oynatma listesi atandı</string>
     <string name="check_device_playlist_none">Bu cihaza henüz bir oynatma listesi atanmadı</string>
     <string name="check_device_playlist_failed">Etkinleştirme hizmetine ulaşılamadı</string>
+    <string name="move_manually">Elle taşı</string>
+    <string name="move_to_top">En üste taşı</string>
+    <string name="move_to_bottom">En alta taşı</string>
 </resources>

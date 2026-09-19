@@ -316,4 +316,7 @@
     <string name="check_device_playlist_found">Une playlist a été attribuée à cet appareil</string>
     <string name="check_device_playlist_none">Aucune playlist n\'a encore été attribuée à cet appareil</string>
     <string name="check_device_playlist_failed">Le service d\'activation est injoignable</string>
+    <string name="move_manually">Déplacer manuellement</string>
+    <string name="move_to_top">Déplacer en haut</string>
+    <string name="move_to_bottom">Déplacer en bas</string>
 </resources>

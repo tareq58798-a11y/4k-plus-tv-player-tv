@@ -1932,6 +1932,14 @@ private fun MoviesScreen(
                     onFavorite = ::toggleFavorite,
                     onMovie = ::openDetails,
                     onCategoriesReordered = { categoryOrderVersion++ },
+                    // Hiding lives here rather than in the browser, because the set of hidden
+                    // categories is this screen's state - the browser only knows which row was
+                    // long-pressed.
+                    onHideCategory = { hidden ->
+                        val updated = hiddenCategories + hidden
+                        hiddenCategories = updated
+                        parental.edit().putStringSet("hidden_movie_categories", updated).apply()
+                    },
                     onBack = {
                         if (view == MovieView.CATEGORY) view = MovieView.BROWSE else onBack()
                     },
@@ -2081,6 +2089,9 @@ private fun LandscapeMovieBrowser(
     onFavorite: (PlaylistItem) -> Unit,
     onMovie: (PlaylistItem) -> Unit,
     onCategoriesReordered: () -> Unit,
+    /** Hides a category from the main screens. Null on views that are not categories at all -
+     *  Continue watching, Recently watched and Favorites have nothing behind them to hide. */
+    onHideCategory: ((String) -> Unit)? = null,
     onBack: () -> Unit,
     progress: Map<String, Long> = emptyMap(),
     // Owned by the caller, which outlives this browser. A details page replaces this whole
@@ -2105,6 +2116,19 @@ private fun LandscapeMovieBrowser(
     val isTv = remember { context.isTvDevice() }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
     var reorderingCategory by remember { mutableStateOf<String?>(null) }
+    // The category whose long-press menu is open, if any. The gesture opens a menu now rather
+    // than committing straight to hand-moving, which was one of four things somebody might want.
+    var categoryMenuFor by remember { mutableStateOf<String?>(null) }
+    categoryMenuFor?.let { menuCategory ->
+        CategoryActionsDialog(
+            category = menuCategory,
+            onHide = onHideCategory?.let { hide -> { hide(menuCategory) } },
+            onMoveManually = { reorderingCategory = menuCategory },
+            onMoveToTop = { moveCategoryToEnd(context, MediaKind.MOVIE, allCategories, menuCategory, toTop = true); onCategoriesReordered() },
+            onMoveToBottom = { moveCategoryToEnd(context, MediaKind.MOVIE, allCategories, menuCategory, toTop = false); onCategoriesReordered() },
+            onDismiss = { categoryMenuFor = null }
+        )
+    }
     // Keeps the moving category in view as it's nudged past the edge of the visible list -
     // otherwise it scrolls out from under the user with no sign of where it went.
     LaunchedEffect(reorderingCategory, allCategories) {
@@ -2186,7 +2210,7 @@ private fun LandscapeMovieBrowser(
                                 )
                                 .focusableClickable(
                                     cornerRadius = 11.dp,
-                                    onLongClick = if (category in special) null else { { reorderingCategory = category } }
+                                    onLongClick = if (category in special) null else { { categoryMenuFor = category } }
                                 ) {
                                     categorySelectionTick++
                                     onCategory(category)
@@ -2239,6 +2263,9 @@ private fun LandscapeLiveBrowser(
     onChannelFullscreen: (PlaylistItem) -> Unit,
     onFavorite: (PlaylistItem) -> Unit,
     onCategoriesReordered: () -> Unit,
+    /** Hides a category from the main screens. Null on views that are not categories at all -
+     *  Continue watching, Recently watched and Favorites have nothing behind them to hide. */
+    onHideCategory: ((String) -> Unit)? = null,
     onBack: () -> Unit,
     loadEpg: suspend (PlaylistItem) -> Result<EpgNowNext>
 ) {
@@ -2265,6 +2292,19 @@ private fun LandscapeLiveBrowser(
     val reorderableCategories = remember(categories) { categories.filterNot { it in setOf("Recently watched", "Favorites") } }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
     var reorderingCategory by remember { mutableStateOf<String?>(null) }
+    // The category whose long-press menu is open, if any. The gesture opens a menu now rather
+    // than committing straight to hand-moving, which was one of four things somebody might want.
+    var categoryMenuFor by remember { mutableStateOf<String?>(null) }
+    categoryMenuFor?.let { menuCategory ->
+        CategoryActionsDialog(
+            category = menuCategory,
+            onHide = onHideCategory?.let { hide -> { hide(menuCategory) } },
+            onMoveManually = { reorderingCategory = menuCategory },
+            onMoveToTop = { moveCategoryToEnd(context, MediaKind.LIVE, categories, menuCategory, toTop = true); onCategoriesReordered() },
+            onMoveToBottom = { moveCategoryToEnd(context, MediaKind.LIVE, categories, menuCategory, toTop = false); onCategoriesReordered() },
+            onDismiss = { categoryMenuFor = null }
+        )
+    }
     val categoryListState = rememberLazyListState()
     // Keeps the moving category in view as it's nudged past the edge of the visible list -
     // otherwise it scrolls out from under the user with no sign of where it went.
@@ -2386,7 +2426,7 @@ private fun LandscapeLiveBrowser(
                                     )
                                     .focusableClickable(
                                         cornerRadius = 9.dp,
-                                        onLongClick = if (category in reorderableCategories) { { reorderingCategory = category } } else null
+                                        onLongClick = if (category in reorderableCategories) { { categoryMenuFor = category } } else null
                                     ) {
                                         categorySelectionTick++
                                         onCategory(category)
@@ -3290,6 +3330,11 @@ private fun LiveTvScreen(
                             onChannelFullscreen = { channel -> rememberChannel(channel); enterFullscreen() },
                             onFavorite = ::toggleFavorite,
                             onCategoriesReordered = { categoryOrderVersion++ },
+                onHideCategory = { hidden ->
+                    val updated = hiddenCategories + hidden
+                    hiddenCategories = updated
+                    parental.edit().putStringSet("hidden_live_categories", updated).apply()
+                },
                             onBack = onBack,
                             loadEpg = loadEpg
                         )
@@ -3834,6 +3879,95 @@ internal fun moveCategory(context: Context, kind: MediaKind, categories: List<St
         .apply()
 }
 
+/**
+ * What a long press on a category offers.
+ *
+ * A long press used to drop straight into hand-moving the row, which is one of four things
+ * somebody might want and the least obvious of them. It is now a menu, so the gesture means "what
+ * can I do with this?" rather than committing to an answer nobody asked for.
+ *
+ * Move to top and Move to bottom exist because hand-moving is one place per press: shifting a
+ * favourite category up through four hundred others is four hundred presses, and that is not a
+ * feature, it is a punishment.
+ *
+ * The same menu serves a remote and a fingertip. On a television the long press is OK held down;
+ * on a phone it is a finger held on the row. Both arrive here.
+ */
+@Composable
+internal fun CategoryActionsDialog(
+    category: String,
+    onHide: (() -> Unit)?,
+    onMoveManually: () -> Unit,
+    onMoveToTop: () -> Unit,
+    onMoveToBottom: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(category, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column {
+                CategoryAction(Icons.Default.SwapVert, stringResource(R.string.move_manually)) {
+                    onDismiss(); onMoveManually()
+                }
+                CategoryAction(Icons.Default.VerticalAlignTop, stringResource(R.string.move_to_top)) {
+                    onDismiss(); onMoveToTop()
+                }
+                CategoryAction(Icons.Default.VerticalAlignBottom, stringResource(R.string.move_to_bottom)) {
+                    onDismiss(); onMoveToBottom()
+                }
+                // Absent rather than disabled for the rows that cannot be hidden - Continue
+                // watching, Recently watched and Favorites are not categories, they are views of
+                // the catalogue, and there is nothing behind them to hide.
+                if (onHide != null) {
+                    CategoryAction(Icons.Default.VisibilityOff, stringResource(R.string.hide_category_action)) {
+                        onDismiss(); onHide()
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun CategoryAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .focusableClickable(cornerRadius = 10.dp, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = Cyan, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(label, fontSize = 16.sp)
+    }
+}
+/**
+ * Lifts [category] to the very start or end of the order and persists the result.
+ *
+ * Worth having beside the nudge-one-place move: a list of four hundred categories is the ordinary
+ * case, and dragging a favourite from the bottom of one to the top by hand is four hundred
+ * presses. The stored order is the same either way, so this reuses the writer above.
+ */
+internal fun moveCategoryToEnd(
+    context: Context,
+    kind: MediaKind,
+    categories: List<String>,
+    category: String,
+    toTop: Boolean
+) {
+    val current = applyCategoryOrder(context, kind, categories).toMutableList()
+    if (!current.remove(category)) return
+    if (toTop) current.add(0, category) else current.add(category)
+    context.getSharedPreferences(CATEGORY_ORDER_PREFS, Context.MODE_PRIVATE).edit()
+        .putString(categoryOrderPrefsKey(kind), current.joinToString("\u001F"))
+        .apply()
+}
 /** True on an actual Android TV / Fire TV / set-top box, false on phones and tablets — including
  *  a phone in landscape, which reuses the exact same UI but must never auto-focus anything (a
  *  cyan ring appearing on launch with no D-pad to explain it would just look like a UI bug). Used

@@ -340,4 +340,7 @@
     <string name="check_device_playlist_found">A playlist was assigned to this device</string>
     <string name="check_device_playlist_none">No playlist has been assigned to this device yet</string>
     <string name="check_device_playlist_failed">The activation service could not be reached</string>
+    <string name="move_manually">Move manually</string>
+    <string name="move_to_top">Move to top</string>
+    <string name="move_to_bottom">Move to bottom</string>
 </resources>

@@ -316,4 +316,7 @@
     <string name="check_device_playlist_found">इस डिवाइस को एक प्लेलिस्ट दी गई है</string>
     <string name="check_device_playlist_none">इस डिवाइस को अभी तक कोई प्लेलिस्ट नहीं दी गई है</string>
     <string name="check_device_playlist_failed">सक्रियण सेवा तक पहुँचा नहीं जा सका</string>
+    <string name="move_manually">मैन्युअल रूप से ले जाएँ</string>
+    <string name="move_to_top">सबसे ऊपर ले जाएँ</string>
+    <string name="move_to_bottom">सबसे नीचे ले जाएँ</string>
 </resources>
