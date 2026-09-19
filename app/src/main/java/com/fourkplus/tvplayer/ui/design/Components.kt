@@ -72,8 +72,14 @@ import kotlinx.coroutines.delay
  * their own boxes, which is what keeps spacing, focus behaviour and timing identical everywhere.
  */
 
-/** One card's identity, and the card the finger has settled on. See [tvFocusable]. */
-private val touchSelection = androidx.compose.runtime.mutableStateOf<Any?>(null)
+/**
+ * The card the finger has settled on, as that card's own identity object. See [tvFocusable].
+ *
+ * One at a time and one place to keep it, so a card can tell whether it is the chosen one without
+ * every card having to hear about every other. Modifier.focusableClickable shares it, for the
+ * posters in the category grids.
+ */
+internal val touchSelection = androidx.compose.runtime.mutableStateOf<Any?>(null)
 
 /**
  * Makes anything focusable and clickable by remote, and reports its focus state, without drawing

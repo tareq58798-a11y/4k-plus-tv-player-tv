@@ -909,7 +909,10 @@ private fun SeriesGrid(
                                     } else false
                                 }
                             } else Modifier
-                        )
+                        ),
+                    // A tap can never take focus, so the page would otherwise never learn what the
+                    // finger picked and the backdrop would sit on whatever a remote last touched.
+                    onSelected = onItemFocused?.let { notify -> { notify(series) } }
                 )
             }
         }
@@ -922,9 +925,17 @@ private fun SeriesPoster(
     favorite: Boolean,
     onFavorite: () -> Unit,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSelected: (() -> Unit)? = null
 ) {
-    Column(modifier.clip(RoundedCornerShape(14.dp)).focusableClickable(cornerRadius = 14.dp, onClick = onClick)) {
+    Column(
+        modifier.clip(RoundedCornerShape(14.dp)).focusableClickable(
+            cornerRadius = 14.dp,
+            selectFirstOnTouch = true,
+            onSelected = onSelected,
+            onClick = onClick
+        )
+    ) {
         Surface(
             Modifier.fillMaxWidth().aspectRatio(2f / 3f),
             RoundedCornerShape(14.dp),

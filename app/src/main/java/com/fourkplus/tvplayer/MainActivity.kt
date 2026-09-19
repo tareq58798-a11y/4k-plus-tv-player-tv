@@ -113,6 +113,7 @@ import com.fourkplus.tvplayer.ui.design.LocalIsTv
 import com.fourkplus.tvplayer.ui.design.LocalReducedMotion
 import com.fourkplus.tvplayer.ui.design.NavDestination
 import com.fourkplus.tvplayer.ui.design.ScreenEnter
+import com.fourkplus.tvplayer.ui.design.touchSelection
 import com.fourkplus.tvplayer.ui.design.rememberBackdropState
 import com.fourkplus.tvplayer.ui.design.rememberReducedMotion
 import com.fourkplus.tvplayer.data.LoadedPlaylist
@@ -2667,7 +2668,10 @@ private fun MovieGrid(
                                 }
                             } else Modifier
                         ),
-                    watchedFraction = watchedFraction(movie, progress)
+                    watchedFraction = watchedFraction(movie, progress),
+                    // A tap can never take focus, so the page would otherwise never learn what the
+                    // finger picked and the backdrop would sit on whatever a remote last touched.
+                    onSelected = onItemFocused?.let { notify -> { notify(movie) } }
                 )
             }
         }
@@ -2681,9 +2685,17 @@ private fun MoviePoster(
     onFavorite: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    watchedFraction: Float? = null
+    watchedFraction: Float? = null,
+    onSelected: (() -> Unit)? = null
 ) {
-    Column(modifier.clip(RoundedCornerShape(14.dp)).focusableClickable(cornerRadius = 14.dp, onClick = onClick)) {
+    Column(
+        modifier.clip(RoundedCornerShape(14.dp)).focusableClickable(
+            cornerRadius = 14.dp,
+            selectFirstOnTouch = true,
+            onSelected = onSelected,
+            onClick = onClick
+        )
+    ) {
         Surface(
             Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -4285,12 +4297,30 @@ internal fun Modifier.focusableClickable(
     cornerRadius: Dp = 12.dp,
     onLongClick: (() -> Unit)? = null,
     onDoubleClick: (() -> Unit)? = null,
+    /**
+     * Artwork only, and only on the phone: the first tap chooses this and the second acts on it.
+     * See Modifier.tvFocusable, which does the same for the cards on the landing pages. Buttons,
+     * tabs, category rows and everything else leave this alone and act on a single tap.
+     */
+    selectFirstOnTouch: Boolean = false,
+    /** Called when a first tap chooses this, so the page can follow what the finger picked. */
+    onSelected: (() -> Unit)? = null,
     onClick: () -> Unit
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val focusAlpha by animateFloatAsState(if (focused) 1f else 0f, tween(150), label = "focusRing")
-    val scale by animateFloatAsState(if (focused) 1.03f else 1f, tween(150), label = "focusScale")
+    // Holding focus, or - on a phone, where a tap can never take focus - being the thing the
+    // finger last chose. Off on the television, where this is just `focused` and always was.
+    val identity = remember { Any() }
+    val selectFirst = BuildConfig.TOUCH_BUILD && selectFirstOnTouch
+    val highlighted = focused || (selectFirst && touchSelection.value === identity)
+    if (selectFirst) {
+        // A remote or keyboard moving the ring here claims the selection too, so the two ways of
+        // moving the highlight can never both be lit at once.
+        LaunchedEffect(focused) { if (focused) touchSelection.value = identity }
+    }
+    val focusAlpha by animateFloatAsState(if (highlighted) 1f else 0f, tween(150), label = "focusRing")
+    val scale by animateFloatAsState(if (highlighted) 1.03f else 1f, tween(150), label = "focusScale")
     // combinedClickable's own onLongClick is driven by detectTapGestures, which only recognizes a
     // held *touch* pointer - a remote's OK/DPad-center button held down never triggers it. This
     // times the key hold itself (via onPreviewKeyEvent, so it sees the key before the clickable
@@ -4330,7 +4360,14 @@ internal fun Modifier.focusableClickable(
             indication = LocalIndication.current,
             onLongClick = onLongClick,
             onDoubleClick = onDoubleClick,
-            onClick = onClick
+            onClick = {
+                if (!selectFirst || highlighted) {
+                    onClick()
+                } else {
+                    touchSelection.value = identity
+                    onSelected?.invoke()
+                }
+            }
         )
 }
 
