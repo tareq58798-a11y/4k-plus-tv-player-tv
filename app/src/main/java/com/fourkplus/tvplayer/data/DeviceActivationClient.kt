@@ -25,11 +25,22 @@ internal object DeviceActivationClient {
 
     /** [input] carries the MAC in [PlaylistInput.username] and the device key in
      *  [PlaylistInput.password]. Returns a resolved M3U_URL or PROVIDER_LOGIN input, or throws
-     *  if the activation server hasn't had a playlist assigned to this device yet. */
-    suspend fun resolve(input: PlaylistInput, activationUrl: String = ACTIVATION_URL): PlaylistInput {
+     *  if the activation server hasn't had a playlist assigned to this device yet.
+     *
+     *  [userInitiated] says whether somebody asked for this check or the app is polling on its own
+     *  behalf. Only a check somebody asked for may put this device onto the reseller's dashboard:
+     *  a device deleted there has to stay deleted, and it cannot if the five-second poll behind the
+     *  activation screen re-creates it a moment later. Opening that screen, or pressing Refresh,
+     *  counts as asking; the repeats after that do not. */
+    suspend fun resolve(
+        input: PlaylistInput,
+        userInitiated: Boolean = true,
+        activationUrl: String = ACTIVATION_URL
+    ): PlaylistInput {
         val requestBody = JSONObject()
             .put("mac", input.username)
             .put("deviceKey", input.password)
+            .put("userInitiated", userInitiated)
             .toString()
             .toRequestBody("application/json".toMediaType())
         val request = Request.Builder().url(activationUrl).post(requestBody).build()

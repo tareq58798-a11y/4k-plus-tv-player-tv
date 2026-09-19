@@ -10,13 +10,32 @@ async function getDevice(mac) {
   return result.rows[0] || null;
 }
 
-async function upsertPendingDevice(mac, deviceKey) {
+/**
+ * Puts a device on the dashboard, or refreshes the time it was last heard from.
+ *
+ * Only ever called for a request the viewer actually asked for - see the activate route. A device
+ * that has been deleted must stay deleted, and it cannot if a background poll is allowed to put it
+ * straight back.
+ */
+async function registerDevice(mac, deviceKey) {
   await pool.query(
     `insert into devices (mac, device_key)
      values ($1, $2)
      on conflict (mac) do update set last_seen = now()`,
     [mac, deviceKey]
   );
+}
+
+/**
+ * Updates last_seen for a device that is already on the dashboard, and says whether it was there.
+ *
+ * This is what an automatic poll is allowed to do: keep an existing row's clock current, and
+ * nothing else. False means the row is gone - either never registered or deleted - and the caller
+ * answers "pending" without creating anything.
+ */
+async function touchDevice(mac) {
+  const result = await pool.query('update devices set last_seen = now() where mac = $1', [mac]);
+  return result.rowCount > 0;
 }
 
 async function listDevices() {
@@ -54,8 +73,19 @@ async function assignXtream(mac, playlistName, server, username, password) {
   );
 }
 
-async function unassignDevice(mac) {
-  await pool.query(
+/**
+ * Wipes the playlist assigned to a device, leaving the device itself in the list as pending.
+ *
+ * Every playlist column is cleared, not just the ones the current type uses: a device that was on
+ * an Xtream login and is later given an M3U URL leaves its old server, username and password
+ * sitting in the row, and those are someone's real credentials. Deleting the profile has to mean
+ * the credentials are gone, or the word is a lie.
+ *
+ * The device keeps polling and reappears as pending, which is what the dashboard should show - the
+ * set is still switched on and still has no playlist.
+ */
+async function deleteProfile(mac) {
+  const result = await pool.query(
     `update devices set
        status = 'pending',
        playlist_type = null,
@@ -67,6 +97,7 @@ async function unassignDevice(mac) {
      where mac = $1`,
     [mac]
   );
+  return result.rowCount > 0;
 }
 
 /**
@@ -86,10 +117,11 @@ async function deleteDevice(mac) {
 
 module.exports = {
   getDevice,
-  upsertPendingDevice,
+  registerDevice,
+  touchDevice,
   listDevices,
   assignM3u,
   assignXtream,
-  unassignDevice,
+  deleteProfile,
   deleteDevice
 };

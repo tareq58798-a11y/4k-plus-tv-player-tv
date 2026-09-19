@@ -130,12 +130,15 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
         _uiState.update { it.copy(loadingCatalogues = false, catalogueLoadFailed = false) }
     }
 
-    suspend fun addPlaylist(input: PlaylistInput): Result<LoadedPlaylist> {
+    /** [userInitiated] only matters for a DEVICE_ACTIVATION input, where it decides whether this
+     *  check may put the device back on the reseller's dashboard - see
+     *  [com.fourkplus.tvplayer.data.DeviceActivationClient.resolve]. */
+    suspend fun addPlaylist(input: PlaylistInput, userInitiated: Boolean = true): Result<LoadedPlaylist> {
         stopCatalogueLoad()
         val ready = kotlinx.coroutines.CompletableDeferred<Result<LoadedPlaylist>>()
         val job = viewModelScope.launch {
             try {
-                val result = repository.loadProgressively(input) { source, partial ->
+                val result = repository.loadProgressively(input, userInitiated) { source, partial ->
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
                         _uiState.update { it.copy(
                             loadedPlaylist = partial, activeSource = source,

@@ -40,13 +40,26 @@ function note(outcome: string): void {
   }
 }
 
-export async function activate(mac: string, deviceKey: string, url = ACTIVATION_URL): Promise<Activated> {
+/**
+ * `userInitiated` says whether somebody asked for this check or the app is polling on its own.
+ *
+ * Only a check somebody asked for may put this device onto the reseller's dashboard. A device
+ * deleted there has to stay deleted, and it cannot if the five-second poll behind this screen
+ * re-creates it a moment later. Opening the activation screen, or pressing Refresh, counts as
+ * asking; the repeats after that do not.
+ */
+export async function activate(
+  mac: string,
+  deviceKey: string,
+  userInitiated = true,
+  url = ACTIVATION_URL,
+): Promise<Activated> {
   let response: Response;
   try {
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mac, deviceKey }),
+      body: JSON.stringify({ mac, deviceKey, userInitiated }),
     });
   } catch (error) {
     // Almost always one of two things: no network, or the browser refusing a cross-origin request

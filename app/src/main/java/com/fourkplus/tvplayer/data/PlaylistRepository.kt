@@ -21,12 +21,14 @@ class PlaylistRepository(context: Context) {
     private val movieDetailsCache = java.util.concurrent.ConcurrentHashMap<String, MovieDetailsInfo>()
     private val seriesDetailsCache = java.util.concurrent.ConcurrentHashMap<String, SeriesDetailsInfo>()
 
-    suspend fun load(input: PlaylistInput): Result<LoadedPlaylist> = withContext(Dispatchers.IO) {
+    /** [userInitiated] is passed straight through to the activation service - see
+     *  [DeviceActivationClient.resolve]. It has no meaning for any other kind of playlist. */
+    suspend fun load(input: PlaylistInput, userInitiated: Boolean = true): Result<LoadedPlaylist> = withContext(Dispatchers.IO) {
         runCatching {
             // Resolved via our own trusted activation backend, not raw end-user text entry,
             // so it deliberately skips the ApprovedServers host allowlist below.
             if (input.kind == PlaylistKind.DEVICE_ACTIVATION) {
-                val resolved = DeviceActivationClient.resolve(input)
+                val resolved = DeviceActivationClient.resolve(input, userInitiated)
                 val playlist = client.load(resolved)
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 sourceStore.saveSource(resolved)
@@ -49,11 +51,12 @@ class PlaylistRepository(context: Context) {
 
     suspend fun loadProgressively(
         input: PlaylistInput,
+        userInitiated: Boolean = true,
         onPartial: suspend (PlaylistInput, LoadedPlaylist) -> Unit
     ): Result<LoadedPlaylist> = withContext(Dispatchers.IO) {
         try {
             val resolved = if (input.kind == PlaylistKind.DEVICE_ACTIVATION) {
-                PlaylistTiming.measure("activation") { DeviceActivationClient.resolve(input) }
+                PlaylistTiming.measure("activation") { DeviceActivationClient.resolve(input, userInitiated) }
             } else {
                 require(sourceStore.savedSources().any { it.sourceId() == input.sourceId() } || ApprovedServers.allows(input)) {
                     "Please add an account using Server 1 or Server 2."
