@@ -131,7 +131,7 @@ The order below is chosen so that each step unblocks or reuses the last.
 |---|---|---|---|
 | 1 | Android phones | A | In progress |
 | 2 | LG webOS | B | Not started — key map already carried in `web/src/platform/keys.ts` |
-| 3 | Samsung Tizen | B | **Started** — see `web/`. Shared layer, provider client, D-pad engine and a vertical slice run; nothing on hardware yet |
+| 3 | Samsung Tizen | B | **Started** — see `web/`. Shared layer, provider client, D-pad engine, activation by MAC and now the player chrome; nothing on hardware yet |
 | 4 | Hisense VIDAA | B | Not started |
 | 5 | Windows | B | Not started |
 | 6 | iOS | C | Not started |
@@ -146,6 +146,31 @@ Decisions taken for codebase B:
 - Floor is **Tizen 5.5**, the 2020 sets. Older sets would mean an older engine and weaker CPUs.
 - First milestone is a **vertical slice** — sign in, browse, play — so the provider client, the
   focus engine and AVPlay are proven together before the remaining screens are built on them.
+
+### Tizen: what the player has, and what it still lacks
+
+The controls over a playing stream are in `web/src/ui/player.ts`. They carry the parts of the
+television app's chrome that are behaviour rather than Compose:
+
+- Transport row, timeline and a settings panel, with **Down walking them in the order they are
+  drawn** — transport, timeline, settings — worked out from where focus actually is rather than
+  from a count of presses, for the reason given in `advanceDownThroughControls` on Android.
+- The scrubber turns cyan and grows while the timeline holds focus, so a full-width line with a
+  dot on it can say whether the next press will seek.
+- Controls withdraw five seconds after the last press, and any key brings them back rather than
+  acting, so nothing happens unseen.
+- Seeking is absolute, not relative: held down, a relative seek asks a player that is still moving
+  where it is between presses, and the steps come out uneven.
+
+Still missing against the Android player, in rough order of how much they are missed:
+
+- **Audio track selection.** The panel offers speed only. AVPlay exposes tracks through
+  `getTotalTrackInfo` / `setSelectTrack`, neither of which is in the `MediaPlayer` interface yet.
+- Subtitles, and the subtitle background toggle.
+- Aspect ratio / zoom.
+- The episode strip, which on Android is the third Down stop for a series.
+- Nothing has decoded a frame on hardware. AVPlay has never been proven end to end, and this
+  chrome has only been checked against the real stylesheet in a desktop browser.
 
 ## Carried over from the TV app
 

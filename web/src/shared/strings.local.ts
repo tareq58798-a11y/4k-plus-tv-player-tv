@@ -15,6 +15,13 @@ export const LOCAL_EN = {
   enter_all_fields: 'Fill in the address, username and password.',
   server_address_label: 'Server address',
   press_back_to_return: 'Press Back to return',
+  // The player's own chrome. The television app has no counterpart for these because it uses
+  // media3's built-in controller, which brings its own labels - this app draws the controls
+  // itself, so it has to name them.
+  cd_rewind: 'Rewind',
+  cd_forward: 'Fast forward',
+  playback_speed: 'Playback speed',
+  speed_normal: 'Normal',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;

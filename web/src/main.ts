@@ -23,6 +23,7 @@ import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
+import { createPlayerOverlay } from './ui/player';
 import { identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import { loadM3u } from './shared/m3u';
@@ -722,33 +723,45 @@ function playScreen(item: PlaylistItem): void {
   clear();
   document.body.classList.add('playing');
 
-  const bar = el('div', { class: 'player-bar' }, item.name, el('div', { class: 'hint' }, t('press_back_to_return')));
-  app.append(bar);
-
   let durationMs = 0;
   let positionMs = 0;
-  player.on((event) => {
-    if (event.type === 'error') bar.firstChild!.textContent = event.message;
-    if (event.type === 'ready') durationMs = event.durationMs;
-    if (event.type === 'progress') positionMs = event.positionMs;
-  });
-  void player.play(item.streamUrl, new DOMRect(0, 0, window.innerWidth, window.innerHeight)).catch((error: unknown) => {
-    bar.firstChild!.textContent = error instanceof Error ? error.message : String(error);
-  });
 
-  const release = pushKeyHandler((key: RemoteKey) => {
-    if (key === 'back') {
-      rememberPosition(item, positionMs, durationMs);
+  const overlay = createPlayerOverlay({
+    title: item.name,
+    player,
+    skipSeconds: 10,
+    onExit: (at) => {
+      rememberPosition(item, at, durationMs);
       player.stop();
+      overlay.destroy();
       release();
       showSection(section);
-      return true;
+    },
+  });
+  app.append(overlay.element);
+
+  player.on((event) => {
+    if (event.type === 'error') overlay.setMessage(event.message);
+    if (event.type === 'ready') {
+      durationMs = event.durationMs;
+      overlay.setPosition(positionMs, durationMs);
     }
-    if (key === 'playpause' || key === 'pause') { player.pause(); return true; }
-    if (key === 'play') { player.resume(); return true; }
-    if (key === 'rewind') { player.seekBy(-10_000); return true; }
-    if (key === 'forward') { player.seekBy(10_000); return true; }
-    // Nothing else reaches the page: an arrow key must not move a highlight that is off screen.
+    if (event.type === 'progress') {
+      positionMs = event.positionMs;
+      overlay.setPosition(positionMs, durationMs);
+    }
+    if (event.type === 'playing') overlay.setPaused(false);
+    if (event.type === 'paused') overlay.setPaused(true);
+  });
+
+  void player.play(item.streamUrl, new DOMRect(0, 0, window.innerWidth, window.innerHeight)).catch((error: unknown) => {
+    overlay.setMessage(error instanceof Error ? error.message : String(error));
+  });
+
+  // Every key goes to the overlay, and nothing falls through to the page underneath. An arrow key
+  // reaching the page would move a highlight the viewer cannot see, on a screen that is not there.
+  const release = pushKeyHandler((key: RemoteKey) => {
+    overlay.handleKey(key);
     return true;
   });
 }

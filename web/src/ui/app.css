@@ -299,23 +299,233 @@ body.playing #app {
   color: var(--tone-text-secondary);
 }
 
-.player-bar {
+/* --------------------------------------------------------- player chrome
+ *
+ * Everything here is drawn over a moving picture on a plane behind the page, so nothing may rely
+ * on the background being any particular colour. Two consequences run through the whole block:
+ * text carries its own shadow rather than sitting on a panel, and focus is shown by filling a
+ * control rather than outlining it - an outline has to win against whatever frame is underneath,
+ * and some frames are white.
+ */
+
+.player-chrome {
   position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--motion-focus-ms) ease;
+  /* A gradient only at the foot, where the controls are. A full-screen scrim would dim the film
+     the viewer is trying to watch for the five seconds the controls are up. */
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%,
+    rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.78) 100%);
+}
+
+.player-chrome.is-hidden {
+  opacity: 0;
+  /* Not display:none. Fading out and back reads as the controls withdrawing; cutting reads as a
+     glitch, and on a slow panel a cut is what a re-layout looks like. */
+  pointer-events: none;
+}
+
+.player-chrome > * {
+  pointer-events: auto;
+}
+
+.pc-title {
+  position: absolute;
+  left: var(--dim-safe-horizontal);
+  top: var(--dim-safe-vertical);
+  max-width: 55%;
+  font-size: 40px;
+  font-weight: 700;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+}
+
+.pc-message {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  font-size: 34px;
+  color: var(--tone-star);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+  text-align: center;
+}
+
+.pc-transport {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: var(--dim-gap-m);
+}
+
+.pc-button {
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 40px;
+  /* Near-opaque rather than a tint: this is the constant backing that means the glyph never has
+     to fight a bright frame. */
+  background: rgba(4, 28, 43, 0.85);
+  border: 3px solid transparent;
+  transition: background var(--motion-focus-ms) ease, border-color var(--motion-focus-ms) ease;
+}
+
+.pc-button svg {
+  width: 44px;
+  height: 44px;
+  display: block;
+}
+
+.pc-button:focus {
+  outline: none;
+  background: var(--tone-accent-deep);
+  border-color: var(--tone-accent);
+}
+
+.pc-bar {
+  position: absolute;
   left: var(--dim-safe-horizontal);
   right: var(--dim-safe-horizontal);
-  bottom: 96px;
-  padding: var(--dim-gap-m) var(--dim-gap-l);
-  border-radius: var(--dim-radius-panel);
-  background: rgba(3, 7, 17, 0.72);
-  font-size: 44px;
+  bottom: 148px;
+  display: flex;
+  align-items: center;
+  gap: var(--dim-gap-s);
+}
+
+.pc-time {
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  /* Latin digits whatever the interface language is, for the same reason the MAC and device key
+     are: a timeline is a number the viewer compares against itself, and mixing numeral systems
+     mid-session makes that harder, not easier. */
+  font-feature-settings: 'tnum';
+  min-width: 120px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+}
+
+.pc-time:last-of-type {
+  text-align: right;
+}
+
+.pc-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: height var(--motion-focus-ms) ease;
+}
+
+.pc-played {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 4px;
+  background: #ffffff;
+  transition: background var(--motion-focus-ms) ease;
+}
+
+/* The dot the viewer asked to be able to see. It exists at rest too - a bar with no marker gives
+   no sense of where "now" is once the played portion is dark against dark video - but focus is
+   what makes it cyan and large enough to be unmistakable from across a room. */
+.pc-thumb {
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
+  transition: width var(--motion-focus-ms) ease, height var(--motion-focus-ms) ease,
+    background var(--motion-focus-ms) ease, right var(--motion-focus-ms) ease;
+}
+
+.pc-track:focus {
+  outline: none;
+  height: 12px;
+}
+
+.pc-track:focus .pc-played {
+  background: var(--tone-accent);
+}
+
+.pc-track:focus .pc-thumb {
+  width: 36px;
+  height: 36px;
+  right: -18px;
+  background: var(--tone-accent);
+  box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.6), 0 0 22px rgba(34, 211, 238, 0.85);
+}
+
+.pc-tools {
+  position: absolute;
+  right: var(--dim-safe-horizontal);
+  bottom: 56px;
+  display: flex;
+  gap: var(--dim-gap-s);
+}
+
+.pc-tools .pc-button {
+  width: 72px;
+  height: 72px;
+}
+
+.pc-tools .pc-button svg {
+  width: 34px;
+  height: 34px;
+}
+
+.pc-panel {
+  position: absolute;
+  right: var(--dim-safe-horizontal);
+  bottom: 148px;
+  min-width: 620px;
+  padding: var(--dim-gap-m);
+  border-radius: var(--dim-radius-card);
+  background: rgba(3, 7, 17, 0.94);
+  border: 1px solid var(--tone-glass-border);
+}
+
+.pc-panel-title {
+  font-size: 30px;
+  font-weight: 700;
+  margin-bottom: var(--dim-gap-s);
+}
+
+.pc-speeds {
+  display: flex;
+  gap: var(--dim-gap-xs);
+  flex-wrap: wrap;
+}
+
+.pc-speed {
+  padding: 14px 26px;
+  border-radius: var(--dim-radius-pill);
+  font-size: 28px;
+  background: var(--tone-glass);
+  border: 3px solid transparent;
+}
+
+.pc-speed[aria-selected='true'] {
+  /* Chosen and focused are different states and must not look the same: the tick says what is in
+     force, the fill says where the next press lands. */
+  color: var(--tone-accent);
   font-weight: 700;
 }
 
-.player-bar .hint {
-  margin-top: 8px;
-  font-size: 32px;
-  font-weight: 400;
-  color: var(--tone-text-muted);
+.pc-speed:focus {
+  outline: none;
+  background: var(--tone-accent-deep);
+  border-color: var(--tone-accent);
+  color: #ffffff;
 }
 
 /* ------------------------------------------------------------- backdrop */

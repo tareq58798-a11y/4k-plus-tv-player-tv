@@ -27,6 +27,18 @@ export interface MediaPlayer {
   pause(): void;
   resume(): void;
   seekBy(deltaMs: number): void;
+  /**
+   * Jumps to an absolute position. Distinct from seekBy because a timeline the viewer drags along
+   * knows where it wants to land, not how far that is from wherever playback has drifted to while
+   * they were dragging.
+   */
+  seekTo(positionMs: number): void;
+  /**
+   * Playback rate, 1 being normal. Not every set honours every value - a rate a decoder refuses
+   * simply does not take, which is why this reports nothing back and the caller reads the speed it
+   * asked for rather than one it was promised.
+   */
+  setSpeed(rate: number): void;
   stop(): void;
   /** Re-aims the picture, for a resize or a change between full screen and a preview pane. */
   setRect(rect: DOMRect): void;
@@ -51,6 +63,8 @@ interface AvPlay {
   getDuration(): number;
   getState(): string;
   setListener(listener: Record<string, unknown>): void;
+  /** Present from Tizen 2.4, but a set is free to reject a rate it cannot decode. */
+  setSpeed?(rate: number): void;
 }
 
 class TizenPlayer implements MediaPlayer {
@@ -140,6 +154,19 @@ class TizenPlayer implements MediaPlayer {
   seekBy(deltaMs: number): void {
     const target = Math.max(0, this.av.getCurrentTime() + deltaMs);
     this.av.seekTo(target);
+  }
+
+  seekTo(positionMs: number): void {
+    this.av.seekTo(Math.max(0, Math.round(positionMs)));
+  }
+
+  setSpeed(rate: number): void {
+    try {
+      this.av.setSpeed?.(rate);
+    } catch {
+      /* The set refused this rate. Playback carries on at whatever it was already doing, which is
+         better than tearing down the stream over a speed control. */
+    }
   }
 
   setRect(rect: DOMRect): void {
@@ -236,6 +263,14 @@ class BrowserPlayer implements MediaPlayer {
 
   seekBy(deltaMs: number): void {
     this.video.currentTime = Math.max(0, this.video.currentTime + deltaMs / 1000);
+  }
+
+  seekTo(positionMs: number): void {
+    this.video.currentTime = Math.max(0, positionMs / 1000);
+  }
+
+  setSpeed(rate: number): void {
+    this.video.playbackRate = rate;
   }
 
   setRect(rect: DOMRect): void {
