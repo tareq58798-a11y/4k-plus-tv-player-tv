@@ -46,8 +46,11 @@ const config = readFileSync(join(staging, 'config.xml'), 'utf8');
 if (config.includes('4KPlusTVXX')) {
   console.warn(
     '\n  ! config.xml still has the placeholder package prefix "4KPlusTVXX".\n' +
-      '    Samsung issues the real ten characters when the app is registered in Seller Office,\n' +
-      '    and a television will only install a widget whose certificate matches it.\n',
+      '    This is fine for testing. A widget signed with your own certificate installs and runs\n' +
+      '    on the emulator, and on a real set in Developer Mode, whatever the prefix says - what\n' +
+      '    gates a real set is the distributor certificate carrying that television\'s DUID.\n' +
+      '    The prefix only has to be the one Samsung issues when the app is submitted through\n' +
+      '    Seller Office for publication.\n',
   );
 }
 
