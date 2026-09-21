@@ -44,6 +44,15 @@ const backdropHost = document.getElementById('video-plane') as HTMLElement;
 let player: MediaPlayer;
 let backdrop: Backdrop;
 
+/**
+ * How long a channel must be the focused one before the preview tunes to it.
+ *
+ * Longer than the backdrop's debounce, because the cost is far higher: a backdrop that fires early
+ * wastes an image request, a preview that fires early opens a stream. Long enough to walk a list
+ * without tuning anything, short enough that stopping on a channel feels like it answered.
+ */
+const PREVIEW_DELAY_MS = 900;
+
 const SAVED_LOGIN = 'login';
 /** An M3U playlist has no account, so it is remembered by address instead of by login. */
 const SAVED_M3U = 'm3u';
@@ -64,7 +73,19 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/**
+ * Torn down by whatever replaces the screen that set it.
+ *
+ * The Live TV preview is a playing stream, and Back is only one of the ways out of that screen -
+ * the navigation bar, search and settings all leave too. Rather than remember to stop it at each
+ * exit and miss one, the screen registers its teardown here and every navigation runs it, because
+ * every navigation goes through clear().
+ */
+let leaveScreen: (() => void) | null = null;
+
 function clear(): void {
+  leaveScreen?.();
+  leaveScreen = null;
   activationStop?.();
   activationStop = null;
   // Both pages hang listeners on the document rather than on their own elements, so emptying the
@@ -589,7 +610,15 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   /** The category being hand-moved after the menu's first action - Up and Down nudge it. */
   let reordering: string | null = null;
 
-  const grid = el('div', { class: 'grid', 'data-focus-group': 'browser-grid' });
+  // Live TV is a list of channels beside a preview, the way the television app lays it out - not a
+  // wall of posters. A channel has a logo and a name and no artwork worth a poster's space, and
+  // what the viewer actually wants to know is what is on it right now, which needs the preview and
+  // the listings next to the list rather than underneath a grid.
+  const live = current === 'live';
+  const grid = el('div', {
+    class: live ? 'channel-list' : 'grid',
+    'data-focus-group': live ? 'browser-channels' : 'browser-grid',
+  });
   const sidebar = el('div', { class: 'sidebar', 'data-focus-group': 'browser-categories' });
 
   // What is on the focused channel now and next. Only Live TV has listings, and only for the one
@@ -628,6 +657,48 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   });
   let focusedChannelId: string | null = null;
 
+  /**
+   * The box the preview picture is aimed at, and the machinery to keep it aimed there.
+   *
+   * Debounced like the backdrop, and for the same reason: holding the D-pad through thirty
+   * channels must cost one stream, not thirty. A provider will throttle or simply refuse an app
+   * that opens a connection per keypress, and on a set the tuning delay would make the list feel
+   * broken rather than responsive.
+   */
+  const preview = el('div', { class: 'live-preview' });
+  let previewTimer: number | null = null;
+  let previewing: string | null = null;
+
+  function stopPreview(): void {
+    if (previewTimer !== null) {
+      window.clearTimeout(previewTimer);
+      previewTimer = null;
+    }
+    if (previewing) {
+      player.stop();
+      previewing = null;
+    }
+  }
+
+  function schedulePreview(item: PlaylistItem): void {
+    if (previewTimer !== null) window.clearTimeout(previewTimer);
+    previewTimer = window.setTimeout(() => {
+      previewTimer = null;
+      if (previewing === item.streamUrl) return;
+      // A locked category must not start playing behind its own PIN prompt.
+      if (isCategoryLocked(item.group) && !isUnlocked()) return;
+      if (isChannelLocked(itemKey(item)) && !isUnlocked()) return;
+      player.stop();
+      previewing = item.streamUrl;
+      const box = preview.getBoundingClientRect();
+      void player.play(item.streamUrl, box).catch(() => {
+        // A channel that will not tune is not an error worth a dialog while browsing - the viewer
+        // is passing through. The listings beside it still say what is on.
+        previewing = null;
+      });
+    }, PREVIEW_DELAY_MS);
+  }
+
   function renderGrid(): void {
     grid.textContent = '';
     // The one place a locked category can be held back. Guarding the focus handler instead would
@@ -648,11 +719,16 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       return;
     }
     for (const item of pool.filter((entry) => entry.group === selected).slice(0, 400)) {
-      const card = el('div', { class: 'card', tabindex: '-1', 'data-focus': '', 'data-focus-id': itemKey(item) });
-      const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
+      const card = el('div', {
+        class: live ? 'channel-row' : 'card',
+        tabindex: '-1',
+        'data-focus': '',
+        'data-focus-id': itemKey(item),
+      });
+      const art = el('img', { class: live ? 'channel-logo' : 'art', alt: '' }) as HTMLImageElement;
       if (item.logoUrl) art.src = item.logoUrl;
       art.addEventListener('error', () => art.removeAttribute('src'));
-      card.append(art, el('div', { class: 'label' }, item.name));
+      card.append(art, el('div', { class: live ? 'channel-name' : 'label' }, item.name));
       card.addEventListener('focus', () => {
         if (item.kind !== 'live') backdrop.show(item.logoUrl);
         focusedChannelId = item.channelId;
@@ -661,10 +737,17 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           guide.textContent = '';
           guide.append(el('div', { class: 'guide-now' }, item.name));
           epg.request(item);
+          schedulePreview(item);
         }
       });
       card.addEventListener('click', () =>
-        behindPin(isCategoryLocked(item.group) || isChannelLocked(itemKey(item)), () => playScreen(item)),
+        behindPin(isCategoryLocked(item.group) || isChannelLocked(itemKey(item)), () => {
+          // Handed over rather than left running: the preview and the full screen are the same
+          // decoder, and two calls to play() without a stop between them is how a set ends up
+          // showing the previous channel with the new one's sound.
+          stopPreview();
+          playScreen(item);
+        }),
       );
       grid.append(card);
     }
@@ -761,10 +844,28 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     }
   }
 
+  if (live) leaveScreen = stopPreview;
+
   renderSidebar();
 
   const back = el('div', { class: 'browser-title' }, t(current === 'live' ? 'nav_live_tv' : current === 'movies' ? 'nav_movies' : 'nav_series'));
-  app.append(back, el('div', { class: 'browser' }, sidebar, el('div', { class: 'browser-main' }, grid, current === 'live' ? guide : el('div'))));
+  if (live) {
+    // Three columns, as on the television: categories, channels, and what is on. The preview is an
+    // empty box on purpose - AVPlay paints behind the page, so this element exists to be measured,
+    // and the picture appears in the hole its background leaves.
+    app.append(
+      back,
+      el(
+        'div',
+        { class: 'browser' },
+        sidebar,
+        grid,
+        el('div', { class: 'browser-main' }, preview, guide),
+      ),
+    );
+  } else {
+    app.append(back, el('div', { class: 'browser' }, sidebar, el('div', { class: 'browser-main' }, grid, el('div'))));
+  }
   renderGrid();
   focus(sidebar.querySelector<HTMLElement>('[data-focus]'));
 

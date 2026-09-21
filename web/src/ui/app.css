@@ -374,6 +374,80 @@ body.playing #app {
   gap: var(--dim-gap-l);
 }
 
+/* ---------------------------------------------------------------- live TV
+ *
+ * Three columns, as on the television: categories, channels, and what is on. A channel is a logo
+ * and a name - there is no artwork worth a poster's space - and what the viewer actually wants is
+ * the picture and the listings beside the list, not underneath a grid of squares.
+ */
+
+.channel-list {
+  width: 560px;
+  height: 800px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-right: var(--dim-gap-xs);
+}
+
+.channel-list::-webkit-scrollbar {
+  display: none;
+}
+
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: var(--dim-gap-s);
+  padding: 10px var(--dim-gap-s);
+  margin-bottom: 10px;
+  border-radius: var(--dim-radius-card);
+  background: rgba(3, 9, 18, 0.72);
+  cursor: pointer;
+}
+
+.channel-row:focus {
+  outline: none;
+  background: var(--tone-category-gradient);
+  color: #04131f;
+}
+
+/* A constant dark tile behind the logo, because a channel logo is a bright mark on a transparent
+   background and would otherwise sit on whatever colour the row happens to be. */
+.channel-logo {
+  width: 96px;
+  height: 64px;
+  flex: 0 0 96px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #061423;
+  padding: 6px;
+}
+
+.channel-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 30px;
+  /* One line. A channel name can be long and a list whose rows are different heights is much
+     harder to run an eye down. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The hole the picture shows through.
+ *
+ * Deliberately empty and deliberately not black-backgrounded: on Samsung the decoder paints behind
+ * the page, so this element's job is to be measured and to leave a gap. Anything opaque drawn here
+ * hides the very thing it is framing.
+ */
+.live-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--dim-radius-card);
+  border: 1px solid var(--tone-glass-border);
+  background: transparent;
+}
+
 /* ---------------------------------------------------------------- overlay */
 
 .status {
