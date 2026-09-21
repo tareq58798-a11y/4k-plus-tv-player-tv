@@ -164,8 +164,7 @@ television app's chrome that are behaviour rather than Compose:
 
 Still missing against the Android player, in rough order of how much they are missed:
 
-- Subtitles, and the subtitle background toggle.
-- Aspect ratio / zoom.
+- Subtitles, and the subtitle background toggle. The last one.
 - Nothing has run on real hardware. The emulator is x86 and permissive; a 2020 set is ARM, slower,
   stricter and on an older WebKit.
 

@@ -24,7 +24,7 @@ import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { createPlayerOverlay, type StripEpisode } from './ui/player';
-import { backgroundMode } from './shared/preferences';
+import { backgroundMode, videoScaling } from './shared/preferences';
 import {
   applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
 } from './shared/categories';
@@ -1007,6 +1007,10 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = []): void {
     if (event.type === 'ready') {
       durationMs = event.durationMs;
       overlay.setPosition(positionMs, durationMs);
+      // Applied on ready rather than before play: AVPlay rejects a display method on a stream it
+      // has not prepared, so setting it earlier is silently thrown away and the viewer's choice
+      // appears to have been forgotten between one title and the next.
+      player.setScaling(videoScaling());
     }
     if (event.type === 'progress') {
       positionMs = event.positionMs;

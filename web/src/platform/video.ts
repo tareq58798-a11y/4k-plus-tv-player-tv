@@ -21,6 +21,9 @@ export type PlayerEvent =
   | { type: 'ended' }
   | { type: 'error'; message: string };
 
+/** Matches the television app's video_mode preference: fit, fill, stretch. */
+export type VideoScaling = 'fit' | 'fill' | 'stretch';
+
 /** One selectable soundtrack: a dub, a commentary, or the original. */
 export interface AudioTrack {
   /** What the platform wants back to select it. Opaque - do not do arithmetic on it. */
@@ -56,6 +59,13 @@ export interface MediaPlayer {
    */
   audioTracks(): AudioTrack[];
   selectAudioTrack(id: number): void;
+  /**
+   * How the picture fills the box: the whole frame with bars, cropped to fill, or stretched.
+   *
+   * The same three the television app offers, and they map onto AVPlay's display methods without
+   * inventing anything - which is why there are three rather than two.
+   */
+  setScaling(mode: VideoScaling): void;
   stop(): void;
   /** Re-aims the picture, for a resize or a change between full screen and a preview pane. */
   setRect(rect: DOMRect): void;
@@ -282,6 +292,22 @@ class TizenPlayer implements MediaPlayer {
     }
   }
 
+  setScaling(mode: VideoScaling): void {
+    // LETTER_BOX keeps the whole frame and adds bars; CROPPED_FULL keeps the shape and loses the
+    // edges; FULL_SCREEN keeps neither and fills the box. One each for fit, fill and stretch.
+    const method = mode === 'stretch'
+      ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN'
+      : mode === 'fill'
+        ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL'
+        : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+    try {
+      this.av.setDisplayMethod(method);
+    } catch {
+      // Some sets reject a method before the stream is prepared, and some reject CROPPED_FULL
+      // outright. Either way the picture stays as it was, which is better than losing it.
+    }
+  }
+
   setRect(rect: DOMRect): void {
     try {
       this.av.setDisplayRect(...this.device(rect));
@@ -384,6 +410,10 @@ class BrowserPlayer implements MediaPlayer {
 
   setSpeed(rate: number): void {
     this.video.playbackRate = rate;
+  }
+
+  setScaling(mode: VideoScaling): void {
+    this.video.style.objectFit = mode === 'stretch' ? 'fill' : mode === 'fill' ? 'cover' : 'contain';
   }
 
   /**

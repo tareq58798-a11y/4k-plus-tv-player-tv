@@ -26,3 +26,26 @@ export function backgroundMode(): BackgroundMode {
 export function setBackgroundMode(mode: BackgroundMode): void {
   writeJson(BACKGROUND_KEY, mode);
 }
+
+/**
+ * How the picture fills the screen, remembered between sessions.
+ *
+ * Deliberately not reset per title, unlike on Android where aspect is a per-playback choice. On a
+ * television the reason somebody reaches for this is usually their set or their provider rather
+ * than the film - a channel that arrives pillarboxed does so every night - so making them choose
+ * again each time would be answering a standing complaint with a temporary fix.
+ */
+const SCALING_KEY = 'video_scaling';
+const SCALING_VALUES = ['fit', 'fill', 'stretch'] as const;
+export type VideoScalingPreference = (typeof SCALING_VALUES)[number];
+
+export function videoScaling(): VideoScalingPreference {
+  const stored = readJson<unknown>(SCALING_KEY, 'fit');
+  return SCALING_VALUES.includes(stored as VideoScalingPreference)
+    ? (stored as VideoScalingPreference)
+    : 'fit';
+}
+
+export function setVideoScaling(mode: VideoScalingPreference): void {
+  writeJson(SCALING_KEY, mode);
+}

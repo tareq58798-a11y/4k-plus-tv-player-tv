@@ -15,6 +15,7 @@
  */
 import { focus } from './focus';
 import { t } from '../shared/i18n';
+import { setVideoScaling, videoScaling, type VideoScalingPreference } from '../shared/preferences';
 import type { MediaPlayer } from '../platform/video';
 import type { RemoteKey } from '../platform/keys';
 
@@ -230,6 +231,40 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       audioRow.append(option);
     }
   }
+
+  // Video scaling. Applied the moment it is chosen and remembered afterwards - see videoScaling.
+  const scalingTitle = document.createElement('div');
+  scalingTitle.className = 'pc-panel-title';
+  scalingTitle.textContent = t('video_scaling');
+  panel.append(scalingTitle);
+
+  let scaling = videoScaling();
+  const scalingRow = document.createElement('div');
+  scalingRow.className = 'pc-speeds';
+  const SCALINGS: { mode: VideoScalingPreference; label: () => string }[] = [
+    { mode: 'fit', label: () => t('video_fit') },
+    { mode: 'fill', label: () => t('video_fill') },
+    { mode: 'stretch', label: () => t('video_stretch') },
+  ];
+  for (const entry of SCALINGS) {
+    const option = document.createElement('div');
+    option.className = 'pc-speed';
+    option.tabIndex = -1;
+    option.textContent = entry.label();
+    option.setAttribute('data-focus', '');
+    option.setAttribute('data-focus-id', `pc-scale-${entry.mode}`);
+    option.setAttribute('aria-selected', String(entry.mode === scaling));
+    option.addEventListener('click', () => {
+      scaling = entry.mode;
+      setVideoScaling(entry.mode);
+      player.setScaling(entry.mode);
+      for (const other of scalingRow.querySelectorAll('.pc-speed')) {
+        other.setAttribute('aria-selected', String(other === option));
+      }
+    });
+    scalingRow.append(option);
+  }
+  panel.append(scalingRow);
 
   const panelTitle = document.createElement('div');
   panelTitle.className = 'pc-panel-title';
