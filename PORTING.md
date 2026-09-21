@@ -183,6 +183,23 @@ A note for anyone testing this way: capturing the emulator needs `PrintWindow` w
 back as an identical ~1.3KB image every time. Retry until the size jumps rather than reading a
 blank frame as a blank screen, which is a mistake that cost an hour here.
 
+### Tizen: the settings page does not take a fifth column
+
+`.settings` is a flex row of groups that shrink to share the width. Measured at 1920x1080:
+
+| groups | column width | result |
+|---|---|---|
+| 4 (today) | 404px | rows 69-73px, nothing wraps |
+| 5 | 314px | labels like "Enable parental control" wrap to two lines |
+
+So the five settings pages still to be ported cannot simply be five more columns. They want either
+a menu of pages, as on Android, or groups that wrap onto a second row. Worth deciding before the
+first of them is written rather than after the fourth.
+
+Anything written *inside* a row has far less room than the 560px the group asks for. A sentence in
+a row wraps to four lines and turns a 69px row into a 205px one - which is why the background
+mode's description sits once under the pair rather than inside each option.
+
 ## Carried over from the TV app
 
 Still outstanding regardless of platform:

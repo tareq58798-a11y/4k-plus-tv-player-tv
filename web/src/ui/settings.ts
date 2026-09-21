@@ -105,15 +105,23 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       },
       mode === 'classic' ? t('background_classic') : t('background_modern'),
     );
-    row.append(
-      el('div', { class: 'settings-note' }, mode === 'classic' ? t('background_classic_desc') : t('background_modern_desc')),
-    );
     row.addEventListener('click', () => {
       setBackgroundMode(mode);
       options.onChanged();
     });
     appearance.append(row);
   }
+  // One description, under the pair, for whichever is in force - not a description inside each
+  // row. These columns are narrower than they look: four groups share the width, so a sentence
+  // inside a row wraps to four lines and turns a 69-pixel row into a 205-pixel one, which makes
+  // the two options look like two paragraphs rather than a choice.
+  appearance.append(
+    el(
+      'div',
+      { class: 'settings-note' },
+      currentMode === 'classic' ? t('background_classic_desc') : t('background_modern_desc'),
+    ),
+  );
 
   const actions = el('div', { class: 'settings-group', 'data-focus-group': 'settings-actions' });
   actions.append(el('h3', { class: 'section-title' }, t('settings_title')));

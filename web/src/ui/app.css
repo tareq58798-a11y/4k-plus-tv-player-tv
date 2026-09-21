@@ -998,11 +998,19 @@ body.playing .backdrop-scrim {
 
 .settings {
   display: flex;
-  gap: 120px;
+  /* Was 120px, which was affordable at three columns and is not at four: flex takes the gaps out
+     of the columns, and every pixel of gap is a pixel the text has to wrap around. */
+  gap: var(--dim-gap-l);
 }
 
+/*
+ * A preferred width, not a fixed one. Flex shrinks these to share the row - at four groups they
+ * settle around 400px rather than the 560 asked for - and that is the intended behaviour, but it
+ * does mean anything written inside a row has far less room than this number suggests.
+ */
 .settings-group {
   width: 560px;
+  min-width: 0;
 }
 
 .settings-row {
