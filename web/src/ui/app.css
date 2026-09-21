@@ -46,6 +46,27 @@ body.playing {
   background: transparent;
 }
 
+/*
+ * Live TV, darkened.
+ *
+ * A channel logo is nearly always a bright mark on a transparent background, so the lighter page
+ * lets pale logos wash into it. Dropping the whole section closer to black gives every one of them
+ * an edge, which is the same reason the television app darkens this screen. The scrim goes over
+ * the backdrop rather than replacing it, so Classic and Modern backgrounds both end up equally
+ * readable here.
+ */
+body.section-live {
+  background-image: linear-gradient(180deg, #02060d, #000208);
+}
+
+body.section-live .backdrop-scrim {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+body.section-live .card {
+  background: rgba(3, 9, 18, 0.88);
+}
+
 #video-plane {
   position: fixed;
   inset: 0;

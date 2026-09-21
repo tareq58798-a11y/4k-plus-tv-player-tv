@@ -24,6 +24,7 @@ import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { createPlayerOverlay } from './ui/player';
+import { backgroundMode } from './shared/preferences';
 import { identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import { loadM3u } from './shared/m3u';
@@ -381,8 +382,18 @@ function showSection(next: Section): void {
   section = next;
   clear();
   document.body.classList.remove('playing');
+  // Read on every navigation rather than once at boot, so changing it in Settings takes effect on
+  // the way back out instead of at the next launch. Classic also clears whatever artwork is
+  // already up, or turning it on leaves the last title's picture behind and looks like nothing
+  // happened.
+  const classic = backgroundMode() === 'classic';
+  backdrop.followsFocus = !classic;
+  // Live TV gets a darker page. Channel logos are bright marks on transparent backgrounds and
+  // they wash out against the ordinary background, which is the same reason the Android app
+  // darkens this section.
+  document.body.classList.toggle('section-live', next === 'live');
   // Home starts over on the app's own artwork rather than whichever title was last looked at.
-  if (next === 'home') backdrop.reset();
+  if (next === 'home' || classic) backdrop.reset();
 
   const bar = renderNav(app, {
     current: next,

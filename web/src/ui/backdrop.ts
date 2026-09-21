@@ -44,11 +44,26 @@ export class Backdrop {
   }
 
   /**
+   * Whether the background follows what the viewer is looking at.
+   *
+   * False is Classic: the app's own artwork stays up everywhere and nothing replaces it. Some
+   * people want the room to hold still - a picture that changes every time the highlight moves is
+   * the busiest thing on screen, and on a television across a room it is movement in the corner of
+   * the eye all evening.
+   *
+   * Gated here rather than at the callers, exactly as on Android. Every page asks for artwork in
+   * the ordinary way and this decides whether the request is honoured, so Classic cannot be
+   * defeated by a screen that forgot to check.
+   */
+  followsFocus = true;
+
+  /**
    * Ask for [url] to become the background. A blank url is a no-op rather than a reset: a title
    * with no artwork keeps whatever is already there, instead of dropping the viewer onto the
    * default image, which reads as a flash every time an untagged title is focused.
    */
   show(url: string | null | undefined): void {
+    if (!this.followsFocus) return;
     if (!url) return;
     if (url === this.settledUrl || url === this.incomingUrl) return;
     this.schedule(url);

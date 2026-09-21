@@ -7,6 +7,7 @@
  * does and a viewer might need to change.
  */
 import { availableLocales, locale, setLocale, t } from '../shared/i18n';
+import { backgroundMode, setBackgroundMode } from '../shared/preferences';
 import { cryptoAvailable, hasPin, parental, update } from '../shared/parental';
 import { focus, pushKeyHandler } from './focus';
 
@@ -86,6 +87,34 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     languages.append(row);
   }
 
+  // Appearance. Two rows rather than a switch, because a switch on a television has to say what
+  // it is a switch *for*, and by the time that label is written the two named choices are shorter
+  // and clearer than the question.
+  const appearance = el('div', { class: 'settings-group', 'data-focus-group': 'appearance' });
+  appearance.append(el('h3', { class: 'section-title' }, t('settings_appearance')));
+  const currentMode = backgroundMode();
+  for (const mode of ['modern', 'classic'] as const) {
+    const row = el(
+      'div',
+      {
+        class: 'settings-row',
+        tabindex: '-1',
+        'data-focus': '',
+        'data-focus-id': `background-${mode}`,
+        'aria-selected': String(mode === currentMode),
+      },
+      mode === 'classic' ? t('background_classic') : t('background_modern'),
+    );
+    row.append(
+      el('div', { class: 'settings-note' }, mode === 'classic' ? t('background_classic_desc') : t('background_modern_desc')),
+    );
+    row.addEventListener('click', () => {
+      setBackgroundMode(mode);
+      options.onChanged();
+    });
+    appearance.append(row);
+  }
+
   const actions = el('div', { class: 'settings-group', 'data-focus-group': 'settings-actions' });
   actions.append(el('h3', { class: 'section-title' }, t('settings_title')));
 
@@ -152,7 +181,7 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     }
   }
 
-  page.append(languages, actions, guard);
+  page.append(languages, appearance, actions, guard);
   host.append(el('div', { class: 'browser-title' }, t('settings_title')), page);
   focus(languages.querySelector<HTMLElement>('[data-focus]'));
 
