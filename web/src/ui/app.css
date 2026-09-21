@@ -331,6 +331,20 @@ body.playing #app {
   grid-template-columns: repeat(4, var(--dim-card-width));
   gap: var(--dim-gap-m) var(--dim-gap-s);
   align-content: start;
+  /*
+   * Cards size to their own content instead of being stretched to the row.
+   *
+   * Without this the browse grids were blank on a television - every row measured as zero, each
+   * card was stretched to that zero, and its poster and title overflowed into overflow:hidden. The
+   * cards were all there, the artwork had all loaded, and none of it drew: measured on the set,
+   * 400 cards at 316x0 inside a 1272x780 grid.
+   *
+   * It survived desktop testing because the same page is only laid out this way once there are
+   * enough rows for the grid to size them jointly. Proven the other way round on the television
+   * too - adding this took a card from 0 to 236 pixels, removing it put it back to 0.
+   */
+  align-items: start;
+  grid-auto-rows: max-content;
   height: 780px;
   overflow-y: auto;
   padding: var(--dim-card-bleed);
