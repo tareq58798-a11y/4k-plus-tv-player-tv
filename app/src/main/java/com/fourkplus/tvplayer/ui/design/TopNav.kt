@@ -1,4 +1,4 @@
-﻿package com.fourkplus.tvplayer.ui.design
+package com.fourkplus.tvplayer.ui.design
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -271,7 +271,7 @@ private fun NavTab(
             )
             .padding(horizontal = 18.dp, vertical = 8.dp)
     ) {
-        Text(label, color = textColor, fontSize = 15.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+        Text(label, color = textColor, fontSize = Type.Tab, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
 
@@ -330,7 +330,7 @@ fun ClockLabel(modifier: Modifier = Modifier) {
         now,
         modifier = modifier,
         color = Tone.TextSecondary,
-        fontSize = 15.sp,
+        fontSize = Type.Clock,
         fontWeight = FontWeight.Medium,
         // Never wraps: a two-line clock pushes the whole header out of shape on narrower panels.
         softWrap = false,

@@ -172,11 +172,16 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
       if (item.logoUrl) art.src = item.logoUrl;
       art.addEventListener('error', () => art.removeAttribute('src'));
       card.append(art);
+      // Title and progress are set over the foot of the artwork rather than in a box under it,
+      // which is where the television app puts them. A separate box costs every card a strip of
+      // height whether its title needs one line or two, and it is what made the rows here look so
+      // much heavier than the same rows on Android.
+      const foot = el('div', { class: 'card-foot' }, el('div', { class: 'label' }, item.name));
       const progress = progressOf(item);
       if (progress !== null) {
-        card.append(el('div', { class: 'progress' }, el('div', { class: 'progress-fill', style: `width:${progress * 100}%` })));
+        foot.append(el('div', { class: 'progress' }, el('div', { class: 'progress-fill', style: `width:${progress * 100}%` })));
       }
-      card.append(el('div', { class: 'label' }, item.name));
+      card.append(foot);
       card.addEventListener('focus', () => onCardFocus(item, card));
       card.addEventListener('click', () => options.onPlay(item));
       track.append(card);

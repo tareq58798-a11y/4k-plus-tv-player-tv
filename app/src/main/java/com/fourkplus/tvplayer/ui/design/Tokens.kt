@@ -13,7 +13,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * The single source of truth for the cinematic redesign: colours, spacing, radii and motion.
@@ -110,6 +112,77 @@ object Dims {
      */
     val CardWidth: Dp = 158.dp
     val CardWidthCompact: Dp = 134.dp
+
+    /**
+     * The left-hand category column on Movies, Series and Live TV, and beside it on Live TV the
+     * column of channels. Fixed widths: the grid takes whatever is left, and what is left is what
+     * decides how many columns it gets - see [PosterWidthTarget].
+     */
+    val PaneWidth: Dp = 240.dp
+    val ChannelPaneWidth: Dp = 310.dp
+
+    /**
+     * Portrait poster grids size themselves: columns are the available width divided by this,
+     * so a narrow panel gets fewer readable posters instead of a row of slivers. On the standard
+     * 960dp television it works out at exactly seven - 960 less the 40dp margins, the 240dp
+     * category column and the 10dp between them leaves 630, and 630/90 is 7.
+     */
+    val PosterWidthTarget: Dp = 90.dp
+    val GridGapH: Dp = 7.dp
+    val GridGapV: Dp = 9.dp
+    /** Between the category column and the grid beside it. */
+    val PaneGap: Dp = 10.dp
+
+    val RadiusPoster: Dp = 14.dp
+    val RadiusPane: Dp = 15.dp
+    val RadiusCategory: Dp = 11.dp
+}
+
+/**
+ * The type scale, in sp, and the one place it is written down.
+ *
+ * It lives here for the same reason the colours and spacing do: the Tizen port reads this file and
+ * cannot otherwise know what size anything is. Every size below was already in the app - scattered
+ * across the components that used it - and the port had been guessing at them from screenshots,
+ * which is how its titles ended up half again as large as these and its headings half as large.
+ *
+ * sp, not dp, but at the font scale a television reports the two convert identically: the extractor
+ * multiplies both by the same density.
+ */
+object Type {
+    /** Top bar: the section tabs and the clock beside them. */
+    val Tab: TextUnit = 15.sp
+    val Clock: TextUnit = 15.sp
+
+    /** "Continue watching", "Recently added" - the heading over a row. */
+    val SectionHeading: TextUnit = 19.sp
+
+    /** Landscape artwork cards. The title is set over the foot of the artwork, on one line. */
+    val CardTitle: TextUnit = 11.sp
+    val CardBadge: TextUnit = 10.sp
+    val LiveFlag: TextUnit = 9.sp
+
+    /** The category box that ends each row on a section page. */
+    val TileTitle: TextUnit = 11.sp
+    val TileTitleLine: TextUnit = 13.sp
+    val TileCaption: TextUnit = 8.sp
+    val TileCaptionLine: TextUnit = 10.sp
+
+    /** The block of information under the row holding focus. */
+    val InfoTitle: TextUnit = 28.sp
+    val InfoMeta: TextUnit = 13.sp
+    val InfoBody: TextUnit = 13.sp
+    val InfoBodyLine: TextUnit = 19.sp
+
+    val ActionLabel: TextUnit = 14.sp
+
+    /** The browse pages: the pane heading, its categories, and the posters in the grid. */
+    val PaneHeading: TextUnit = 19.sp
+    val CategoryLabel: TextUnit = 14.sp
+    val PosterTitle: TextUnit = 12.sp
+    val PosterYear: TextUnit = 10.sp
+
+    val Hint: TextUnit = 12.sp
 }
 
 /**

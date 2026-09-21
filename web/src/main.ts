@@ -726,15 +726,19 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     }
     for (const item of pool.filter((entry) => entry.group === selected).slice(0, 400)) {
       const card = el('div', {
-        class: live ? 'channel-row' : 'card',
+        class: live ? 'channel-row' : 'poster',
         tabindex: '-1',
         'data-focus': '',
         'data-focus-id': itemKey(item),
       });
-      const art = el('img', { class: live ? 'channel-logo' : 'art', alt: '' }) as HTMLImageElement;
+      const art = el('img', { class: live ? 'channel-logo' : 'poster-art', alt: '' }) as HTMLImageElement;
       if (item.logoUrl) art.src = item.logoUrl;
       art.addEventListener('error', () => art.removeAttribute('src'));
-      card.append(art, el('div', { class: live ? 'channel-name' : 'label' }, item.name));
+      // Portrait artwork with the name beneath it, which is what the television app's browse grids
+      // show - not the landscape cards the landing rows use. The two are different shapes on
+      // purpose: a row is a shelf of stills, a grid is a wall of posters.
+      card.append(art, el('div', { class: live ? 'channel-name' : 'poster-label' }, item.name));
+      if (!live && item.year) card.append(el('div', { class: 'poster-year' }, item.year));
       card.addEventListener('focus', () => {
         if (item.kind !== 'live') backdrop.show(item.logoUrl);
         focusedChannelId = item.channelId;
@@ -877,7 +881,10 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       ),
     );
   } else {
-    app.append(back, el('div', { class: 'browser' }, sidebar, el('div', { class: 'browser-main' }, grid, el('div'))));
+    // The grid is a flex child of .browser directly, not wrapped: it has to be the thing that
+    // takes the width left over by the category column, because that width is what decides how
+    // wide its seven columns are.
+    app.append(back, el('div', { class: 'browser' }, sidebar, grid));
   }
   renderGrid();
   focus(sidebar.querySelector<HTMLElement>('[data-focus]'));

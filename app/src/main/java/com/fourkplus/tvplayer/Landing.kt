@@ -83,6 +83,7 @@ import com.fourkplus.tvplayer.ui.design.PreloadBackdrops
 import com.fourkplus.tvplayer.ui.design.RevealOnAppear
 import com.fourkplus.tvplayer.ui.design.SectionHeading
 import com.fourkplus.tvplayer.ui.design.Tone
+import com.fourkplus.tvplayer.ui.design.Type
 import com.fourkplus.tvplayer.ui.design.tvFocusable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -499,7 +500,7 @@ internal fun LandingScaffold(
                         Text(
                             row.hint,
                             color = Tone.TextMuted,
-                            fontSize = 12.sp,
+                            fontSize = Type.Hint,
                             modifier = Modifier.padding(horizontal = Dims.SafeHorizontal)
                         )
                     }
@@ -691,8 +692,8 @@ private fun CategoryTile(
                 Text(
                     tile.title,
                     color = Tone.TextPrimary,
-                    fontSize = 11.sp,
-                    lineHeight = 13.sp,
+                    fontSize = Type.TileTitle,
+                    lineHeight = Type.TileTitleLine,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -702,8 +703,8 @@ private fun CategoryTile(
                     Text(
                         tile.caption,
                         color = Tone.TextMuted,
-                        fontSize = 8.sp,
-                        lineHeight = 10.sp,
+                        fontSize = Type.TileCaption,
+                        lineHeight = Type.TileCaptionLine,
                         maxLines = 1,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         overflow = TextOverflow.Ellipsis,
@@ -742,7 +743,7 @@ private fun FocusedItemInfo(
         Text(
             item.name,
             color = Tone.TextPrimary,
-            fontSize = 28.sp,
+            fontSize = Type.InfoTitle,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -767,8 +768,8 @@ private fun FocusedItemInfo(
             Text(
                 description,
                 color = Tone.TextSecondary,
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
+                fontSize = Type.InfoBody,
+                lineHeight = Type.InfoBodyLine,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(.55f)

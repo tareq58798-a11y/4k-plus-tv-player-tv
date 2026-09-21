@@ -86,7 +86,7 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
       const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
       if (item.logoUrl) art.src = item.logoUrl;
       art.addEventListener('error', () => art.removeAttribute('src'));
-      card.append(art, el('div', { class: 'label' }, item.name));
+      card.append(art, el('div', { class: 'card-foot' }, el('div', { class: 'label' }, item.name)));
       card.addEventListener('focus', () => {
         if (item.kind !== 'live') options.backdrop.show(item.logoUrl);
       });

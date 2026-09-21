@@ -233,7 +233,7 @@ fun SectionHeading(text: String, modifier: Modifier = Modifier) {
         text,
         modifier = modifier,
         color = Tone.TextPrimary,
-        fontSize = 19.sp,
+        fontSize = Type.SectionHeading,
         fontWeight = FontWeight.Bold
     )
 }
@@ -356,7 +356,7 @@ fun ArtCard(
                     Text(
                         title,
                         color = Tone.TextPrimary,
-                        fontSize = 11.sp,
+                        fontSize = Type.CardTitle,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -380,11 +380,11 @@ fun ArtCard(
                         }
                         if (!cornerBadge.isNullOrBlank()) {
                             Spacer(Modifier.width(8.dp))
-                            Text(cornerBadge, color = Tone.TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            Text(cornerBadge, color = Tone.TextPrimary, fontSize = Type.CardBadge, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 } else if (!cornerBadge.isNullOrBlank()) {
-                    Text(cornerBadge, color = Tone.TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Text(cornerBadge, color = Tone.TextSecondary, fontSize = Type.CardBadge, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -401,7 +401,7 @@ fun LiveFlag(modifier: Modifier = Modifier) {
             .background(Tone.LiveRed)
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
-        Text("LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text("LIVE", color = Color.White, fontSize = Type.LiveFlag, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -452,7 +452,7 @@ fun ActionButton(
             if (icon != null) {
                 Icon(icon, null, tint = Tone.TextPrimary, modifier = Modifier.size(18.dp))
             }
-            Text(label, color = Tone.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = Tone.TextPrimary, fontSize = Type.ActionLabel, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -497,7 +497,7 @@ fun CategoryPill(
         Text(
             label,
             color = if (selected) Color(0xFF04121F) else Tone.TextSecondary,
-            fontSize = 15.sp,
+            fontSize = Type.Tab,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -509,7 +509,7 @@ fun CategoryPill(
 data class MetaItem(val text: String, val star: Boolean = false, val accent: Boolean = false)
 
 /**
- * A row of "Movie | 2026 | ★ 8.2 | 2h 08m | Sci-Fi • Drama" facts, divided by thin rules rather
+ * A row of "Movie | 2026 | â˜… 8.2 | 2h 08m | Sci-Fi â€¢ Drama" facts, divided by thin rules rather
  * than dots so the genre list's own bullets stay readable as a list. Missing values are simply
  * left out - the row gets shorter rather than showing an empty slot.
  */
@@ -520,7 +520,7 @@ fun MetadataRow(items: List<MetaItem>, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         shown.forEachIndexed { index, item ->
             if (index > 0) {
-                Text("   |   ", color = Tone.TextMuted.copy(alpha = .55f), fontSize = 13.sp)
+                Text("   |   ", color = Tone.TextMuted.copy(alpha = .55f), fontSize = Type.InfoMeta)
             }
             if (item.star) {
                 Icon(Icons.Default.Star, null, tint = Tone.Star, modifier = Modifier.size(15.dp))
@@ -529,7 +529,7 @@ fun MetadataRow(items: List<MetaItem>, modifier: Modifier = Modifier) {
             Text(
                 item.text,
                 color = if (item.accent) Tone.Accent else Tone.TextSecondary,
-                fontSize = 13.sp,
+                fontSize = Type.InfoMeta,
                 fontWeight = if (item.accent || item.star) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1
             )

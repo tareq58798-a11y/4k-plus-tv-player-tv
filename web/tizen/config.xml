@@ -11,11 +11,15 @@
   * required_version is the oldest Tizen the app claims to run on. 5.5 is the 2020 sets, which is
     the floor we chose; declaring lower would let the app install on a set whose engine cannot
     parse what Vite emits for this target.
+
+  version tracks the Android app's versionName rather than counting on its own, because the two
+  are one product and a viewer asking which build they have should not get a different answer
+  depending on which set they are standing in front of. Tizen wants three parts, so 8.2 is 8.2.0.
 -->
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://fourkplus.com/tvplayer"
-        version="1.0.0"
+        version="8.2.0"
         viewmodes="maximized">
 
   <tizen:application id="4KPlusTVXX.FourKPlusTVPlayer"

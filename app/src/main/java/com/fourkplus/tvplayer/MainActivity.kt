@@ -111,6 +111,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.fourkplus.tvplayer.ui.theme.*
 import com.fourkplus.tvplayer.ui.design.CinematicBackdrop
+import com.fourkplus.tvplayer.ui.design.Dims
+import com.fourkplus.tvplayer.ui.design.Type
 import com.fourkplus.tvplayer.ui.design.LocalIsTv
 import com.fourkplus.tvplayer.ui.design.LocalReducedMotion
 import com.fourkplus.tvplayer.ui.design.NavDestination
@@ -2262,7 +2264,7 @@ private fun LandscapeMovieBrowser(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Surface(
-            Modifier.width(if (compact) 180.dp else 240.dp).fillMaxHeight(),
+            Modifier.width(if (compact) 180.dp else Dims.PaneWidth).fillMaxHeight(),
             shape = RoundedCornerShape(15.dp),
             color = Color.Black.copy(alpha = .34f),
             border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
@@ -2270,7 +2272,7 @@ private fun LandscapeMovieBrowser(
             Column(Modifier.fillMaxSize().padding(9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AnimatedIconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, stringResource(R.string.cd_back)) }
-                    Text(stringResource(R.string.nav_movies), fontSize = 19.sp, fontWeight = FontWeight.Black)
+                    Text(stringResource(R.string.nav_movies), fontSize = Type.PaneHeading, fontWeight = FontWeight.Black)
                 }
                 SearchField(search, onSearch, stringResource(R.string.search_movies))
                 LazyColumn(Modifier.weight(1f), state = categoryListState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -2488,8 +2490,8 @@ private fun LandscapeLiveBrowser(
         // video beside them almost nothing. Shrinking them below the standard TV width keeps the
         // picture watchable; at 960dp and above the sizes are unchanged.
         val compact = maxWidth < COMPACT_TV_WIDTH
-        val categoryColumnWidth = if (compact) 180.dp else 240.dp
-        val channelColumnWidth = if (compact) 240.dp else 310.dp
+        val categoryColumnWidth = if (compact) 180.dp else Dims.PaneWidth
+        val channelColumnWidth = if (compact) 240.dp else Dims.ChannelPaneWidth
         Row(
             Modifier.fillMaxSize().padding(horizontal = if (compact) 10.dp else 18.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2540,7 +2542,7 @@ private fun LandscapeLiveBrowser(
                                 border = if (isReordering) BorderStroke(2.dp, Cyan) else null
                             ) {
                                 Row(Modifier.padding(start = 11.dp, top = 5.dp, bottom = 5.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(localizedSectionTitle(category), Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
+                                    Text(localizedSectionTitle(category), Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = Type.CategoryLabel)
                                     if (isReordering) Icon(Icons.Default.SwapVert, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 }
                             }
@@ -2804,7 +2806,7 @@ private fun MovieGrid(
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(), state = gridState,
-            horizontalArrangement = Arrangement.spacedBy(if (landscape) 7.dp else 10.dp), verticalArrangement = Arrangement.spacedBy(if (landscape) 9.dp else 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (landscape) Dims.GridGapH else 10.dp), verticalArrangement = Arrangement.spacedBy(if (landscape) Dims.GridGapV else 16.dp),
             contentPadding = PaddingValues(bottom = 20.dp)
         ) {
             // Keyed for the same reason as the Live TV channel list - see the comment there.
@@ -2889,8 +2891,8 @@ private fun MoviePoster(
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text(movie.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-        if (!movie.year.isNullOrBlank()) Text(movie.year, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(movie.name, fontSize = Type.PosterTitle, fontWeight = FontWeight.SemiBold, maxLines = 2)
+        if (!movie.year.isNullOrBlank()) Text(movie.year, fontSize = Type.PosterYear, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -4201,7 +4203,7 @@ private val LiveColumnTint = Color.Black.copy(alpha = .42f)
  *  rather than fixed, so a narrow box gets fewer, readable posters instead of a row of slivers and
  *  a very wide one does not get twenty. The target is chosen so a standard 960dp TV still lands on
  *  the seven columns the grids have always shown. */
-private val TARGET_POSTER_WIDTH = 90.dp
+private val TARGET_POSTER_WIDTH = Dims.PosterWidthTarget
 
 /** Columns for a media grid across [availableWidth], clamped so neither extreme degenerates. */
 internal fun posterGridColumns(availableWidth: Dp, landscape: Boolean): Int =

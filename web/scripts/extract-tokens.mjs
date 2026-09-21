@@ -50,6 +50,7 @@ function section(objectName) {
 
 const tone = section('Tone');
 const dims = section('Dims');
+const type = section('Type');
 const motion = section('Motion');
 
 const colors = [...tone.matchAll(/val (\w+) = Color\((0x[0-9A-Fa-f]{8})\)/g)].map(([, name, hex]) => ({
@@ -68,6 +69,13 @@ const sizes = [...dims.matchAll(/val (\w+): Dp = (\d+(?:\.\d+)?)\.dp/g)].map(([,
   name,
   px: Number(value) * DP_TO_PX,
 }));
+
+/* The type scale. sp rather than dp, but a television reports a font scale of 1, so the same
+   density converts both - and the page has no accessibility text size of its own to honour. */
+const fonts = [...type.matchAll(/val (\w+): TextUnit = (\d+(?:\.\d+)?)\.sp/g)].map(
+  ([, name, value]) => ({ name, px: Number(value) * DP_TO_PX }),
+);
+if (!fonts.length) throw new Error('object Type produced no sizes - has its shape changed?');
 
 /* Anchored to end of line so `const val PosterFocusScale = 1.06f` is not read as the integer 1 -
    it is a scale factor, not a duration, and it is emitted separately below. */
@@ -104,6 +112,8 @@ ${gradients
 
 ${sizes.map((s) => `  --dim-${kebab(s.name)}: ${s.px}px;`).join('\n')}
 
+${fonts.map((f) => `  --type-${kebab(f.name)}: ${f.px}px;`).join('\n')}
+
 ${durations.map((d) => `  --motion-${kebab(d.name)}: ${d.ms}ms;`).join('\n')}
 ${easings.map((e) => `  --motion-${kebab(e.name)}: ${e.css};`).join('\n')}
   --motion-poster-focus-scale: ${scale ? scale[1] : '1.06'};
@@ -125,6 +135,11 @@ export const Dims = {
 ${sizes.map((s) => `  ${s.name}: ${s.px},`).join('\n')}
 } as const;
 
+/** Font sizes in CSS pixels, from object Type in Tokens.kt. */
+export const Type = {
+${fonts.map((f) => `  ${f.name}: ${f.px},`).join('\n')}
+} as const;
+
 export const Motion = {
 ${durations.map((d) => `  ${d.name}: ${d.ms},`).join('\n')}
   PosterFocusScale: ${scale ? scale[1] : '1.06'},
@@ -137,5 +152,6 @@ writeFileSync(OUT_TS, ts, 'utf8');
 writeFileSync(OUT_CSS, css, 'utf8');
 console.log(
   `tokens: ${colors.length} colours, ${gradients.length} gradients, ${sizes.length} sizes, ` +
+    `+${fonts.length} font sizes, ` +
     `${durations.length} durations -> src/shared/tokens.generated.{ts,css}`,
 );
