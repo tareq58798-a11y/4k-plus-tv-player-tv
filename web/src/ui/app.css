@@ -1107,6 +1107,50 @@ body.playing .backdrop-scrim {
   color: var(--tone-live-red);
 }
 
+/* A hidden category, still listed here so it can be brought back. Dimmed rather than removed -
+   the point of this page is that hiding is reversible. */
+.settings-row.muted {
+  color: var(--tone-text-muted);
+}
+
+/* The state sits at the end of the row, away from the name, so a long category name does not push
+   it about and the column of states stays readable down the list. */
+.settings-row .row-state {
+  float: right;
+  font-size: 24px;
+  color: var(--tone-text-muted);
+}
+
+.settings-row:focus .row-state {
+  color: inherit;
+}
+
+.kind-tabs {
+  display: flex;
+  gap: var(--dim-gap-xs);
+  margin-bottom: var(--dim-gap-s);
+}
+
+.kind-tabs .kind-tab {
+  flex: 1;
+  margin-bottom: 0;
+  text-align: center;
+}
+
+/*
+ * A playlist can carry hundreds of categories in one kind, so this scrolls rather than running off
+ * the bottom of the television. Height is what is left under the kind tabs on a 1080 canvas.
+ */
+.category-visibility-list {
+  max-height: 700px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.category-visibility-list::-webkit-scrollbar {
+  display: none;
+}
+
 /* -------------------------------------------------------------------- EPG */
 
 .browser-main {

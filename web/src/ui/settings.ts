@@ -13,6 +13,9 @@
 import { availableLocales, locale, setLocale, t } from '../shared/i18n';
 import { backgroundMode, setBackgroundMode } from '../shared/preferences';
 import { cryptoAvailable, hasPin, parental, update } from '../shared/parental';
+import {
+  hiddenCategories, hideCategory, unhideCategory, type CategoryKind,
+} from '../shared/categories';
 import { focus, pushKeyHandler } from './focus';
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -55,6 +58,13 @@ function languageName(code: string): string {
 }
 
 export interface SettingsOptions {
+  /**
+   * Every category the current playlist has, per kind, whether hidden or not.
+   *
+   * Asked for rather than passed as a value because hiding one changes the answer, and a list
+   * captured when settings opened would stop matching what the page is showing.
+   */
+  categories: (kind: CategoryKind) => string[];
   /** Redraws whatever is underneath, because changing language changes every word on screen. */
   onLanguageChanged: () => void;
   onSignOut: () => void;
@@ -67,7 +77,14 @@ export interface SettingsOptions {
 }
 
 /** Which page is showing. ROOT is the menu; the rest mirror the television app's pages. */
-type Page = 'root' | 'playlist' | 'appearance' | 'language' | 'parental';
+type Page = 'root' | 'playlist' | 'appearance' | 'language' | 'parental' | 'categories';
+
+/** The three catalogues, in the order the navigation bar puts them. */
+const KINDS: { kind: CategoryKind; label: () => string }[] = [
+  { kind: 'live', label: () => t('nav_live_tv') },
+  { kind: 'movie', label: () => t('nav_movies') },
+  { kind: 'series', label: () => t('nav_series') },
+];
 
 export function renderSettings(host: HTMLElement, options: SettingsOptions): void {
   let page: Page = 'root';
@@ -97,6 +114,7 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       case 'appearance': return t('settings_appearance');
       case 'language': return t('cd_language');
       case 'parental': return t('settings_parental_controls');
+      case 'categories': return t('settings_category_visibility');
       default: return t('settings_title');
     }
   }
@@ -115,12 +133,13 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function rootPage(): HTMLElement {
     const menu = el('div', { class: 'settings-menu', 'data-focus-group': 'settings-menu' });
     // Grouped as the television app groups them: what the viewer watches with, then what they
-    // restrict. Pages not yet ported - playback, app info, privacy, category visibility - are
-    // absent rather than listed and dead.
+    // restrict. Pages not yet ported - playback, app info, privacy - are absent rather than
+    // listed and dead.
     menu.append(
       menuRow('playlist', t('settings_playlists'), 'playlist'),
       menuRow('appearance', t('settings_appearance'), 'appearance'),
       menuRow('language', t('cd_language'), 'language'),
+      menuRow('categories', t('settings_category_visibility'), 'categories'),
       menuRow('parental', t('settings_parental_controls'), 'parental'),
     );
     return menu;
@@ -208,6 +227,84 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     return actions;
   }
 
+  /**
+   * Which categories are hidden, and the only way to get one back.
+   *
+   * This page is not optional. A held OK on a category hides it, and without somewhere to undo
+   * that, hiding is a one-way door - a viewer who hides the wrong row has no way to find it again
+   * short of clearing the app's storage.
+   *
+   * One kind at a time, as on Android, because a playlist can carry hundreds of categories in each
+   * and a single list of all three is not something anybody can find anything in.
+   */
+  let visibilityKind: CategoryKind = 'live';
+
+  function categoriesPage(): HTMLElement {
+    const wrap = el('div', { class: 'settings-group', 'data-focus-group': 'category-visibility' });
+
+    const tabs = el('div', { class: 'kind-tabs' });
+    for (const entry of KINDS) {
+      const tab = el(
+        'div',
+        {
+          class: 'settings-row kind-tab',
+          tabindex: '-1',
+          'data-focus': '',
+          'data-focus-id': `kind-${entry.kind}`,
+          'aria-selected': String(entry.kind === visibilityKind),
+        },
+        entry.label(),
+      );
+      tab.addEventListener('click', () => {
+        visibilityKind = entry.kind;
+        draw();
+      });
+      tabs.append(tab);
+    }
+    wrap.append(tabs);
+
+    const all = options.categories(visibilityKind);
+    const hidden = new Set(hiddenCategories(visibilityKind));
+
+    if (!all.length && !hidden.size) {
+      wrap.append(el('div', { class: 'settings-note' }, t('no_live_categories')));
+      return wrap;
+    }
+
+    // Hidden categories are listed first. They are the reason anybody opens this page, and they
+    // are also the ones that have vanished from every other screen - so burying them among two
+    // hundred visible rows would make the fix harder to reach than the mistake was to make.
+    const names = [...new Set([...hidden, ...all])].sort((a, b) => {
+      const byHidden = Number(hidden.has(b)) - Number(hidden.has(a));
+      return byHidden !== 0 ? byHidden : a.localeCompare(b);
+    });
+
+    const list = el('div', { class: 'category-visibility-list' });
+    for (const name of names) {
+      const isHidden = hidden.has(name);
+      const row = el(
+        'div',
+        {
+          class: `settings-row${isHidden ? ' muted' : ''}`,
+          tabindex: '-1',
+          'data-focus': '',
+          'data-focus-id': `visibility-${name}`,
+          'aria-selected': String(!isHidden),
+        },
+        name,
+      );
+      row.append(el('span', { class: 'row-state' }, isHidden ? t('hide_category_action') : t('action_see_all')));
+      row.addEventListener('click', () => {
+        if (isHidden) unhideCategory(visibilityKind, name);
+        else hideCategory(visibilityKind, name);
+        draw();
+      });
+      list.append(row);
+    }
+    wrap.append(list);
+    return wrap;
+  }
+
   function parentalPage(): HTMLElement {
   const guard = el('div', { class: 'settings-group', 'data-focus-group': 'parental' });
 
@@ -263,6 +360,7 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       case 'appearance': return appearancePage();
       case 'language': return languagePage();
       case 'parental': return parentalPage();
+      case 'categories': return categoriesPage();
       default: return rootPage();
     }
   }

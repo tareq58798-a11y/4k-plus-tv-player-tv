@@ -438,6 +438,11 @@ function searchScreen(): void {
 function settingsScreen(): void {
   clear();
   renderSettings(app, {
+    // Read from the catalogue each time rather than from whatever the browse screens are showing,
+    // so a hidden category still appears here - it is the only place one can be brought back.
+    categories: (kind) => [
+      ...new Set((catalogue?.items ?? []).filter((item) => item.kind === kind).map((item) => item.group)),
+    ].sort((a, b) => a.localeCompare(b)),
     // Every word on screen changes, so the page behind is rebuilt rather than patched.
     onLanguageChanged: () => {
       setFocusDirection(isRtl());

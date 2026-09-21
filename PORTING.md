@@ -164,8 +164,6 @@ television app's chrome that are behaviour rather than Compose:
 
 Still missing against the Android player, in rough order of how much they are missed:
 
-- **Audio track selection.** The panel offers speed only. AVPlay exposes tracks through
-  `getTotalTrackInfo` / `setSelectTrack`, neither of which is in the `MediaPlayer` interface yet.
 - Subtitles, and the subtitle background toggle.
 - Aspect ratio / zoom.
 - The episode strip, which on Android is the third Down stop for a series.
@@ -183,7 +181,16 @@ A note for anyone testing this way: capturing the emulator needs `PrintWindow` w
 back as an identical ~1.3KB image every time. Retry until the size jumps rather than reading a
 blank frame as a blank screen, which is a mistake that cost an hour here.
 
-### Tizen: the settings page does not take a fifth column
+### Tizen: settings pages, ported and outstanding
+
+Settings follows the television app's shape - a root menu, one page per row, Back stepping out a
+level at a time. Ported: Playlists, Appearance, Language, Category visibility, Parental controls.
+Outstanding: Playback, App info, Privacy & history.
+
+Category visibility is not optional company for the category menu, it is its other half: a held OK
+hides a category, and without this page hiding is a one-way door.
+
+### Tizen: the old settings layout did not take a fifth column
 
 `.settings` is a flex row of groups that shrink to share the width. Measured at 1920x1080:
 
