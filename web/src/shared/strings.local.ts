@@ -22,6 +22,7 @@ export const LOCAL_EN = {
   cd_forward: 'Fast forward',
   playback_speed: 'Playback speed',
   speed_normal: 'Normal',
+  audio_track: 'Audio',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;

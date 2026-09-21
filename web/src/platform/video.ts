@@ -21,6 +21,14 @@ export type PlayerEvent =
   | { type: 'ended' }
   | { type: 'error'; message: string };
 
+/** One selectable soundtrack: a dub, a commentary, or the original. */
+export interface AudioTrack {
+  /** What the platform wants back to select it. Opaque - do not do arithmetic on it. */
+  readonly id: number;
+  /** What to show. A language name where the stream declares one, else something like "Audio 2". */
+  readonly label: string;
+}
+
 export interface MediaPlayer {
   /** Begins [url]. The rectangle is in CSS pixels of the page, converted internally if it must be. */
   play(url: string, rect: DOMRect): Promise<void>;
@@ -39,12 +47,73 @@ export interface MediaPlayer {
    * asked for rather than one it was promised.
    */
   setSpeed(rate: number): void;
+  /**
+   * The soundtracks this stream carries, or an empty list.
+   *
+   * Only meaningful once playback has started - a decoder cannot say what is in a stream it has
+   * not opened. Empty is the normal answer for a single-language file, and the caller is expected
+   * to offer nothing rather than an empty menu.
+   */
+  audioTracks(): AudioTrack[];
+  selectAudioTrack(id: number): void;
   stop(): void;
   /** Re-aims the picture, for a resize or a change between full screen and a preview pane. */
   setRect(rect: DOMRect): void;
   on(listener: (event: PlayerEvent) => void): void;
   /** The container extension this platform wants for a live stream - see LiveContainer. */
   readonly liveContainer: 'ts' | 'm3u8';
+}
+
+/** Shown when a stream declares a soundtrack but not what language it is. */
+const AUDIO_FALLBACK_LABEL = 'Audio';
+
+/**
+ * Digs a language out of AVPlay's `extra_info`, or gives up quietly.
+ *
+ * Every step is defended because none of it is guaranteed: the field may be absent, may not be
+ * JSON, and may use any of several names for the same thing depending on the container. A menu
+ * entry reading "Audio 2" is a perfectly good outcome; an exception thrown out of a getter while a
+ * film is playing is not.
+ */
+function languageOf(extraInfo: string | undefined): string | null {
+  if (!extraInfo) return null;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(extraInfo) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  for (const key of ['language', 'track_lang', 'lang']) {
+    const value = parsed[key];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      // Streams commonly fill this with "und" for undetermined, which is worse than saying
+      // nothing - it looks like a language nobody has heard of.
+      if (trimmed && trimmed.toLowerCase() !== 'und') return describeLanguage(trimmed);
+    }
+  }
+  return null;
+}
+
+/**
+ * Turns a language tag into something a viewer reads, using the set's own language data.
+ *
+ * Intl.DisplayNames is in Chromium from 81 and these sets run 69, so this is expected to be absent
+ * rather than unlucky - the tag itself is the fallback, and "ara" on a menu is still more use than
+ * "Audio 2".
+ */
+function describeLanguage(tag: string): string {
+  // Reached for rather than called directly: the type is not in the ES2019 lib this project
+  // targets, precisely because it arrived after the engine these televisions run.
+  const ctor = (Intl as unknown as {
+    DisplayNames?: new (locales: string[], options: { type: string }) => { of(code: string): string | undefined };
+  }).DisplayNames;
+  if (!ctor) return tag;
+  try {
+    return new ctor([document.documentElement.lang || 'en'], { type: 'language' }).of(tag) ?? tag;
+  } catch {
+    return tag;
+  }
 }
 
 /* ------------------------------------------------------------------ Tizen */
@@ -65,6 +134,23 @@ interface AvPlay {
   setListener(listener: Record<string, unknown>): void;
   /** Present from Tizen 2.4, but a set is free to reject a rate it cannot decode. */
   setSpeed?(rate: number): void;
+  /** Every track in the stream, audio and video and subtitle together. Only valid once prepared. */
+  getTotalTrackInfo?(): AvTrack[];
+  setSelectTrack?(type: 'AUDIO' | 'VIDEO' | 'TEXT', index: number): void;
+}
+
+/**
+ * A track as AVPlay describes it.
+ *
+ * `extra_info` is a JSON *string*, not an object, and what it contains varies by container: an
+ * MPEG-TS gives `language`, an MP4 often gives `track_lang`, and some streams give neither. It is
+ * also free to be malformed, so every read of it is guarded - a soundtrack menu is not worth
+ * throwing away a playing stream for.
+ */
+interface AvTrack {
+  index: number;
+  type: string;
+  extra_info?: string;
 }
 
 class TizenPlayer implements MediaPlayer {
@@ -166,6 +252,33 @@ class TizenPlayer implements MediaPlayer {
     } catch {
       /* The set refused this rate. Playback carries on at whatever it was already doing, which is
          better than tearing down the stream over a speed control. */
+    }
+  }
+
+  audioTracks(): AudioTrack[] {
+    let tracks: AvTrack[];
+    try {
+      tracks = this.av.getTotalTrackInfo?.() ?? [];
+    } catch {
+      // Asked before the stream was prepared, or not supported on this set. Either way the answer
+      // is "no choice to offer", which is also the answer for most files.
+      return [];
+    }
+    const audio = tracks.filter((track) => String(track.type).toUpperCase() === 'AUDIO');
+    // One soundtrack is not a choice. Offering a menu of one invites the viewer to open it, read
+    // it, and close it again having learned nothing.
+    if (audio.length < 2) return [];
+    return audio.map((track, position) => ({
+      id: track.index,
+      label: languageOf(track.extra_info) ?? `${AUDIO_FALLBACK_LABEL} ${position + 1}`,
+    }));
+  }
+
+  selectAudioTrack(id: number): void {
+    try {
+      this.av.setSelectTrack?.('AUDIO', id);
+    } catch {
+      /* Refused, for the same reason and with the same answer as a refused speed. */
     }
   }
 
@@ -271,6 +384,48 @@ class BrowserPlayer implements MediaPlayer {
 
   setSpeed(rate: number): void {
     this.video.playbackRate = rate;
+  }
+
+  /**
+   * hls.js knows the soundtracks in an HLS stream; a plain <video> mostly does not, because
+   * HTMLMediaElement.audioTracks is unimplemented in Chrome. Both are read, and an empty list is
+   * the honest answer when neither can say.
+   */
+  audioTracks(): AudioTrack[] {
+    const fromHls = (this.hls as { audioTracks?: { id: number; name?: string; lang?: string }[] } | null)?.audioTracks;
+    if (fromHls && fromHls.length > 1) {
+      return fromHls.map((track, position) => ({
+        id: track.id,
+        label: track.name || track.lang || `${AUDIO_FALLBACK_LABEL} ${position + 1}`,
+      }));
+    }
+    const native = (this.video as HTMLVideoElement & {
+      audioTracks?: { length: number; [index: number]: { id: string; label?: string; language?: string } };
+    }).audioTracks;
+    if (!native || native.length < 2) return [];
+    const tracks: AudioTrack[] = [];
+    for (let i = 0; i < native.length; i++) {
+      const track = native[i];
+      if (!track) continue;
+      tracks.push({ id: i, label: track.label || track.language || `${AUDIO_FALLBACK_LABEL} ${i + 1}` });
+    }
+    return tracks;
+  }
+
+  selectAudioTrack(id: number): void {
+    const hls = this.hls as { audioTrack?: number } | null;
+    if (hls && 'audioTrack' in hls) {
+      hls.audioTrack = id;
+      return;
+    }
+    const native = (this.video as HTMLVideoElement & {
+      audioTracks?: { length: number; [index: number]: { enabled: boolean } };
+    }).audioTracks;
+    if (!native) return;
+    for (let i = 0; i < native.length; i++) {
+      const track = native[i];
+      if (track) track.enabled = i === id;
+    }
   }
 
   setRect(rect: DOMRect): void {

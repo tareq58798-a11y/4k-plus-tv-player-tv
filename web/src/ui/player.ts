@@ -165,6 +165,52 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const panel = document.createElement('div');
   panel.className = 'pc-panel';
   panel.hidden = true;
+
+  /*
+   * Soundtracks, built when the panel opens rather than now.
+   *
+   * A decoder cannot say what is in a stream it has not opened, so asking at construction time
+   * reliably returns nothing. The panel is the first moment the answer is both available and
+   * wanted. An empty list means a single-language file, and then this section is absent rather
+   * than empty - a menu of one invites the viewer to open it, read it, and learn nothing.
+   */
+  const audioSection = document.createElement('div');
+  audioSection.hidden = true;
+  const audioTitle = document.createElement('div');
+  audioTitle.className = 'pc-panel-title';
+  audioTitle.textContent = t('audio_track');
+  const audioRow = document.createElement('div');
+  audioRow.className = 'pc-speeds';
+  audioSection.append(audioTitle, audioRow);
+  panel.append(audioSection);
+
+  let selectedAudio: number | null = null;
+
+  function buildAudioOptions(): void {
+    const tracks = player.audioTracks();
+    audioRow.textContent = '';
+    audioSection.hidden = tracks.length === 0;
+    if (!tracks.length) return;
+    if (selectedAudio === null) selectedAudio = tracks[0]?.id ?? null;
+    for (const track of tracks) {
+      const option = document.createElement('div');
+      option.className = 'pc-speed';
+      option.tabIndex = -1;
+      option.textContent = track.label;
+      option.setAttribute('data-focus', '');
+      option.setAttribute('data-focus-id', `pc-audio-${track.id}`);
+      option.setAttribute('aria-selected', String(track.id === selectedAudio));
+      option.addEventListener('click', () => {
+        selectedAudio = track.id;
+        player.selectAudioTrack(track.id);
+        for (const other of audioRow.querySelectorAll('.pc-speed')) {
+          other.setAttribute('aria-selected', String(other === option));
+        }
+      });
+      audioRow.append(option);
+    }
+  }
+
   const panelTitle = document.createElement('div');
   panelTitle.className = 'pc-panel-title';
   panelTitle.textContent = t('playback_speed');
@@ -226,7 +272,15 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   function openPanel(): void {
     panelOpen = true;
     panel.hidden = false;
-    focus(speedRow.querySelector<HTMLElement>('.pc-speed'));
+    // Rebuilt every time it opens: switching episode replaces the stream, and with it the
+    // soundtracks. A list cached from the last thing played would offer choices that no longer
+    // exist.
+    buildAudioOptions();
+    focus(
+      audioSection.hidden
+        ? speedRow.querySelector<HTMLElement>('.pc-speed')
+        : audioRow.querySelector<HTMLElement>('.pc-speed'),
+    );
   }
 
   function closePanel(): void {
