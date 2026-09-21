@@ -694,6 +694,77 @@ body.playing #app {
   height: 34px;
 }
 
+/*
+ * The rest of the season, under the controls.
+ *
+ * Wide cards rather than small ones: an episode's name reads "Series - S01E04 - Title", and at the
+ * width a poster wants that is all series and no episode - precisely the part being chosen
+ * between. Same reasoning as the television app's strip, which went from 88dp to 158dp for it.
+ */
+.pc-strip {
+  position: absolute;
+  left: var(--dim-safe-horizontal);
+  right: var(--dim-safe-horizontal);
+  bottom: 56px;
+  display: flex;
+  gap: var(--dim-gap-s);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: var(--dim-gap-xs) 0;
+}
+
+.pc-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.pc-episode {
+  flex: 0 0 320px;
+  width: 320px;
+  border-radius: var(--dim-radius-card);
+  background: rgba(3, 9, 18, 0.9);
+  border: 3px solid transparent;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.pc-episode:focus {
+  outline: none;
+  border-color: var(--tone-accent);
+}
+
+/* The one playing. Marked, but not with the focus colour - chosen and "where the next press goes"
+   are different things and must not look the same. */
+.pc-episode[aria-selected='true'] .pc-episode-label {
+  color: var(--tone-accent);
+  font-weight: 700;
+}
+
+.pc-episode-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--tone-glass-strong);
+}
+
+.pc-episode-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pc-episode-label {
+  padding: 8px 12px 12px;
+  font-size: 24px;
+  line-height: 1.25;
+  /* Two lines, then stop. Cards of different heights in a row are much harder to run an eye
+     along than cards that all end in the same place. */
+  height: 72px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .pc-panel {
   position: absolute;
   right: var(--dim-safe-horizontal);

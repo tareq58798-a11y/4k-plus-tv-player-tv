@@ -24,10 +24,30 @@ const CONTROLS_TIMEOUT_MS = 5000;
 /** Offered rates. 1 first so the resting state is the one most people want back. */
 const SPEEDS = [1, 0.5, 0.75, 1.25, 1.5, 2];
 
+/** One entry in the strip: enough to draw it and to play it. */
+export interface StripEpisode {
+  id: string;
+  label: string;
+  thumbnailUrl: string | null;
+  streamUrl: string;
+}
+
 export interface PlayerOverlayOptions {
   title: string;
   player: MediaPlayer;
   skipSeconds: number;
+  /**
+   * The rest of the season, empty for a film.
+   *
+   * Its presence is what makes Down mean "show me the episodes" rather than "walk the controls" -
+   * see stepDown. A film has nothing under the controls worth reaching, so there the walk is
+   * right; a series has the rest of the season, and making somebody press three times to see it
+   * puts the commonest thing they want furthest away.
+   */
+  episodes?: StripEpisode[];
+  /** Which of [episodes] is playing, so the strip can mark it. */
+  currentEpisodeId?: string | null;
+  onEpisode?: (episode: StripEpisode) => void;
   /** Called when the viewer leaves, with the position to remember. */
   onExit: (positionMs: number) => void;
 }
@@ -239,6 +259,62 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   panel.append(speedRow);
   root.append(panel);
 
+  // ------------------------------------------------------------- episode strip
+  const episodes = options.episodes ?? [];
+  const strip = document.createElement('div');
+  strip.className = 'pc-strip';
+  strip.hidden = true;
+  strip.setAttribute('data-focus-group', 'pc-strip');
+  for (const episode of episodes) {
+    const card = document.createElement('div');
+    card.className = 'pc-episode';
+    card.tabIndex = -1;
+    card.setAttribute('data-focus', '');
+    card.setAttribute('data-focus-id', `pc-ep-${episode.id}`);
+    card.setAttribute('aria-selected', String(episode.id === options.currentEpisodeId));
+    const thumb = document.createElement('div');
+    thumb.className = 'pc-episode-thumb';
+    if (episode.thumbnailUrl) {
+      const image = document.createElement('img');
+      image.src = episode.thumbnailUrl;
+      image.alt = '';
+      // A thumbnail that will not load leaves the tile as a plain box rather than a broken icon.
+      image.addEventListener('error', () => image.remove());
+      thumb.append(image);
+    }
+    const label = document.createElement('div');
+    label.className = 'pc-episode-label';
+    label.textContent = episode.label;
+    card.append(thumb, label);
+    card.addEventListener('click', () => {
+      if (episode.id === options.currentEpisodeId) {
+        // Already playing. Closing the strip is the useful answer; restarting the stream is not.
+        closeStrip();
+        return;
+      }
+      options.onEpisode?.(episode);
+    });
+    strip.append(card);
+  }
+  root.append(strip);
+
+  let stripOpen = false;
+
+  function openStrip(): void {
+    if (!episodes.length) return;
+    stripOpen = true;
+    strip.hidden = false;
+    // Opens on the episode that is playing rather than on the first, so the viewer starts where
+    // they are and moves outwards from it.
+    const current = strip.querySelector<HTMLElement>('[aria-selected="true"]');
+    focus(current ?? strip.querySelector<HTMLElement>('[data-focus]'));
+  }
+
+  function closeStrip(): void {
+    stripOpen = false;
+    strip.hidden = true;
+  }
+
   // ------------------------------------------------------------------- state
   let visible = true;
   let paused = false;
@@ -250,8 +326,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   function armHide(): void {
     if (hideTimer !== null) window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(() => {
-      // Never while the settings panel is open: the viewer is reading it, not idle.
-      if (panelOpen) { armHide(); return; }
+      // Never while the settings panel or the episode strip is open: the viewer is reading one of
+      // them, not idle, and taking the controls away under a list somebody is choosing from is
+      // the one moment it is least welcome.
+      if (panelOpen || stripOpen) { armHide(); return; }
       setVisible(false);
     }, CONTROLS_TIMEOUT_MS);
   }
@@ -262,6 +340,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     if (next) {
       armHide();
     } else {
+      closeStrip();
       closePanel();
       // Focus goes nowhere when the chrome is down. Leaving it on a hidden control means the next
       // press acts on something invisible.
@@ -292,8 +371,12 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   // reason given in advanceDownThroughControls on Android: a counter drifts the moment anything
   // else moves the highlight, and the viewer has no way to get it back in step.
   function stepDown(): boolean {
-    const here = document.activeElement;
     if (panelOpen) return true;
+    if (stripOpen) return true;
+    // An episode goes straight to the season. See PlayerOverlayOptions.episodes for why this is
+    // not the same walk a film gets.
+    if (episodes.length) { openStrip(); return true; }
+    const here = document.activeElement;
     if (here === track) { focus(settingsButton); return true; }
     if (here === settingsButton) { openPanel(); return true; }
     focus(track);
@@ -302,6 +385,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
 
   function stepUp(): boolean {
     if (panelOpen) { closePanel(); focus(settingsButton); return true; }
+    // Up is the strip's way out, mirroring the way it was opened.
+    if (stripOpen) { closeStrip(); focus(playPause); return true; }
     const here = document.activeElement;
     if (here === settingsButton) { focus(track); return true; }
     if (here === track) { focus(playPause); return true; }
@@ -346,6 +431,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // exception is Back, which leaves whether or not the controls are up.
     if (key === 'back') {
       if (panelOpen) { closePanel(); focus(settingsButton); return true; }
+      if (stripOpen) { closeStrip(); focus(playPause); return true; }
       if (visible) { setVisible(false); return true; }
       options.onExit(positionMs);
       return true;

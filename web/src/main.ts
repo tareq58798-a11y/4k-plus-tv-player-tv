@@ -23,7 +23,7 @@ import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
-import { createPlayerOverlay } from './ui/player';
+import { createPlayerOverlay, type StripEpisode } from './ui/player';
 import { backgroundMode } from './shared/preferences';
 import {
   applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
@@ -918,15 +918,28 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
       details,
       backdrop,
       onEpisode: (episode) =>
-        playScreen({
-          ...item,
-          // The episode is what plays, and what a resume point belongs to - a series has no
-          // single position of its own.
-          name: `${item.name} • ${episode.title}`,
-          streamUrl: episode.streamUrl,
-          channelId: episode.id,
-          kind: 'movie',
-        }),
+        playScreen(
+          {
+            ...item,
+            // The episode is what plays, and what a resume point belongs to - a series has no
+            // single position of its own.
+            name: `${item.name} • ${episode.title}`,
+            streamUrl: episode.streamUrl,
+            channelId: episode.id,
+            kind: 'movie',
+          },
+          // Only the season being watched. Handing over every episode of every season would make
+          // the strip a list nobody can get to the end of, and the season is the unit somebody
+          // moving to "the next one" means.
+          details.episodes
+            .filter((entry) => entry.seasonNumber === episode.seasonNumber)
+            .map((entry) => ({
+              id: entry.id,
+              label: `${item.name} • ${entry.title}`,
+              thumbnailUrl: entry.thumbnailUrl,
+              streamUrl: entry.streamUrl,
+            })),
+        ),
       onBack: () => showSection(section),
     });
   } catch (error) {
@@ -940,7 +953,15 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
   }
 }
 
-function playScreen(item: PlaylistItem): void {
+/**
+ * Full-screen playback.
+ *
+ * [siblings] is the rest of the season when an episode is playing, which is what puts the strip
+ * under the controls. Passed in rather than looked up here, because the season has already been
+ * fetched by the screen that got us here and asking the provider for it twice would be a round
+ * trip in front of the picture.
+ */
+function playScreen(item: PlaylistItem, siblings: StripEpisode[] = []): void {
   if (item.kind === 'series') {
     void seriesScreen(item);
     return;
@@ -955,6 +976,22 @@ function playScreen(item: PlaylistItem): void {
     title: item.name,
     player,
     skipSeconds: 10,
+    episodes: siblings,
+    currentEpisodeId: item.channelId,
+    onEpisode: (episode) => {
+      // The position belongs to the episode being left, not to the one arriving.
+      rememberPosition(item, positionMs, durationMs);
+      player.stop();
+      overlay.destroy();
+      release();
+      // Re-entered rather than swapped in place: a new stream means a new duration, a new resume
+      // point and a new title, and rebuilding is how all three stay in step. The season is handed
+      // on so the strip is still there on the next episode.
+      playScreen(
+        { ...item, name: episode.label, streamUrl: episode.streamUrl, channelId: episode.id },
+        siblings,
+      );
+    },
     onExit: (at) => {
       rememberPosition(item, at, durationMs);
       player.stop();
