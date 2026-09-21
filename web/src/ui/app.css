@@ -996,6 +996,17 @@ body.playing .backdrop-scrim {
   grid-template-columns: repeat(5, var(--dim-card-width));
 }
 
+/*
+ * The root menu: one column of pages, as on Android.
+ *
+ * Narrow on purpose. A row that runs the full 1760px puts its label at the far left of a very long
+ * highlight, and on a television the highlight is how you know where you are - a wide one is
+ * harder to place at a glance than a narrow one, not easier.
+ */
+.settings-menu {
+  width: 760px;
+}
+
 .settings {
   display: flex;
   /* Was 120px, which was affordable at three columns and is not at four: flex takes the gaps out
@@ -1004,12 +1015,12 @@ body.playing .backdrop-scrim {
 }
 
 /*
- * A preferred width, not a fixed one. Flex shrinks these to share the row - at four groups they
- * settle around 400px rather than the 560 asked for - and that is the intended behaviour, but it
- * does mean anything written inside a row has far less room than this number suggests.
+ * One page's worth of settings. Now that each page is on its own, a group gets a readable width
+ * instead of a share of a crowded row - which is what makes a sentence inside a row affordable
+ * again, and why the pages still to be ported do not have to fight for space.
  */
 .settings-group {
-  width: 560px;
+  width: 760px;
   min-width: 0;
 }
 

@@ -464,7 +464,6 @@ function settingsScreen(): void {
       catalogue = null;
       loginScreen();
     },
-    onChanged: () => settingsScreen(),
     onSetPin: () => {
       askPin({
         title: t('create_parental_pin'),
