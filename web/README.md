@@ -89,13 +89,18 @@ page with seasons and episodes, search across the whole playlist, settings with 
 languages, now-and-next listings in Live TV, the layered backdrop, favourites, resume points, and
 a catalogue cache that opens the app on what is already on the set.
 
-Not built: parental controls. Everything else the television app does that is missing here -
-subtitle appearance, aspect ratio, buffering modes - belongs with playback, which cannot be tried
-until this runs on a set.
+Playback carries playback speed, audio track selection, video scaling and subtitle track
+selection. Parental controls are built - PIN, locked categories and locked channels, enforced
+where the grid is drawn rather than on focus, so a locked category cannot show its contents even
+when it is the one the page opens on.
 
-Nothing has run on Samsung hardware or the emulator yet: see the certificate above. In particular
-nothing that depends on the browser delivering real focus events has been seen working, because
-the pane used for development runs hidden and Chrome suppresses those while a document is hidden.
+Not built: the Playback, App info, and Privacy and history pages in settings, and the subtitle
+background toggle.
+
+This runs on real hardware. It is installed on a QN65QN800C and the layout work has been measured
+there through the set's own web inspector rather than judged on the desktop - see
+[TIZEN-RELEASE.md](TIZEN-RELEASE.md) for how to open that, and for what publishing this to anyone
+other than ourselves actually involves.
 
 ## Installing on a Samsung emulator or television
 
@@ -113,7 +118,7 @@ Three things here are not what the general Tizen documentation says, and each co
 `npm run package:tizen` and then `node scripts/package-tizen.mjs --sign <profile>` prints the two
 commands with the right paths already filled in.
 
-### The remaining blocker: a Samsung certificate
+### Signing: it has to be a Samsung certificate
 
 A Tizen author certificate is **not** enough, even on the emulator. Signed with one, the install
 gets as far as 27% and then:
@@ -123,12 +128,18 @@ install failed[118, -12], reason: Check certificate error :
 Invalid certificate chain with certificate in signature.
 ```
 
-Tried with both distributor certificates the SDK ships (`tizen-distributor-signer.p12` and
-`tizen-distributor-signer-new.p12`); same result. A Samsung set will only accept a **Samsung**
-certificate, which Certificate Manager creates after signing in with a Samsung account.
+Both distributor certificates the SDK ships (`tizen-distributor-signer.p12` and
+`tizen-distributor-signer-new.p12`) give the same result. A Samsung set accepts only a **Samsung**
+certificate, which Certificate Manager creates after signing in with a Samsung account. That
+sign-in is the one step that cannot be automated here.
 
-That sign-in is the one step that cannot be automated here. Once the profile exists, sign with it
-and the two commands above should complete.
+That profile now exists and is called `4kplus-samsung`. Pass exactly that to `--sign`: a profile
+name that does not exist produces the same certificate error rather than an honest failure, which
+is a confusing hour if you have not seen it before. The profiles that exist are listed in
+`~/tizen-studio-data/profile/profiles.xml`.
+
+The certificate is scoped to two devices, and what that means for shipping to anybody else is in
+[TIZEN-RELEASE.md](TIZEN-RELEASE.md).
 ## A difference from Android worth knowing about
 
 The Android app keeps provider credentials in `EncryptedSharedPreferences`, backed by the device
