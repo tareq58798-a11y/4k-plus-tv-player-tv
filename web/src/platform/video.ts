@@ -192,6 +192,8 @@ class TizenPlayer implements MediaPlayer {
   private listener: ((event: PlayerEvent) => void) | null = null;
   private ticker: number | null = null;
   private subtitleTimer: number | null = null;
+  /** Held until the stream is prepared, because AVPlay will not accept it before then. */
+  private pendingRect: DOMRect | null = null;
 
   constructor() {
     const webapis = (window as unknown as { webapis?: { avplay?: AvPlay } }).webapis;
@@ -227,14 +229,11 @@ class TizenPlayer implements MediaPlayer {
   async play(url: string, rect: DOMRect): Promise<void> {
     this.stop();
     this.av.open(url);
-    this.av.setDisplayRect(...this.device(rect));
-    // FULL_SCREEN here means "fill the rectangle I gave you", not "fill the panel". Letter-boxing
-    // inside that rectangle is AVPlay's own aspect handling and is what the television app does.
-    try {
-      this.av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
-    } catch {
-      /* Older sets name this differently; the default is already letter-box. */
-    }
+    // Remembered, not applied: AVPlay ignores a display rectangle on a stream it has not prepared
+    // yet, and ignores it silently. Setting it here left every stream at the default, which is the
+    // whole panel - so the Live TV preview played full screen behind the page instead of in its
+    // box. Applied below, once prepareAsync has returned.
+    this.pendingRect = rect;
     this.av.setListener({
       onbufferingprogress: (percent: number) => this.emit({ type: 'buffering', percent }),
       onbufferingcomplete: () => this.emit({ type: 'playing' }),
@@ -267,6 +266,19 @@ class TizenPlayer implements MediaPlayer {
         (error) => reject(new Error(String(error))),
       );
     });
+    // Now that it is prepared, the rectangle and the display method actually take.
+    if (this.pendingRect) {
+      this.av.setDisplayRect(...this.device(this.pendingRect));
+      this.pendingRect = null;
+    }
+    try {
+      // LETTER_BOX fits the picture inside the rectangle it was given, keeping its shape. It is
+      // the default the app starts from; the viewer's own choice is applied by setScaling, which
+      // the caller does on this same 'ready' event.
+      this.av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
+    } catch {
+      /* Older sets name this differently; the default is already letter-box. */
+    }
     this.emit({ type: 'ready', durationMs: this.av.getDuration() });
     this.av.play();
     this.emit({ type: 'playing' });
@@ -384,10 +396,15 @@ class TizenPlayer implements MediaPlayer {
   }
 
   setRect(rect: DOMRect): void {
+    // Kept either way, so a rectangle handed over before the stream is ready is applied when it
+    // is rather than lost - which is what "the rectangle is set again when it is" used to assume
+    // without anything actually doing it.
+    this.pendingRect = rect;
     try {
       this.av.setDisplayRect(...this.device(rect));
+      this.pendingRect = null;
     } catch {
-      /* Not prepared yet; the rectangle is set again when it is. */
+      /* Not prepared yet. Applied on 'ready'. */
     }
   }
 

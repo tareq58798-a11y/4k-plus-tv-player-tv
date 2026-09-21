@@ -678,10 +678,12 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       window.clearTimeout(previewTimer);
       previewTimer = null;
     }
-    if (previewing) {
-      player.stop();
-      previewing = null;
-    }
+    // Stopped whether or not this screen believes it started something. `previewing` is set after
+    // play() resolves, so a stream that was opening when the viewer left would not have been
+    // counted - and an open decoder keeps painting on the plane behind the page, which is how a
+    // half-drawn frame ended up behind the Movies grid.
+    previewing = null;
+    player.stop();
   }
 
   function schedulePreview(item: PlaylistItem): void {
@@ -848,7 +850,14 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     }
   }
 
-  if (live) leaveScreen = stopPreview;
+  // Registered for every section, not only Live TV. Movies and Series never start a preview of
+  // their own, but they can be the screen a viewer lands on *from* Live TV, and whatever is still
+  // decoding has to be stopped by the page arriving rather than by the page leaving.
+  leaveScreen = stopPreview;
+  // Belt and braces: the page is only transparent while something is deliberately playing full
+  // screen. Anywhere else an opaque page is what guarantees a stray frame cannot show through,
+  // whatever the decoder is doing.
+  document.body.classList.remove('playing');
 
   renderSidebar();
 
