@@ -483,7 +483,8 @@ internal fun SeriesScreen(
                 SeriesView.BROWSE -> {
                     SeriesSearch(search, { search = it })
                     if (search.isNotBlank()) {
-                        val results = seriesItems.filter { it.name.contains(search.trim(), true) }
+                        val query = rememberDebouncedSearch(search)
+                        val results = seriesItems.filter { it.name.contains(query.trim(), true) }
                         SeriesGrid(
                             results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape,
                             restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
@@ -539,7 +540,8 @@ internal fun SeriesScreen(
                         "Favorites" -> favorites
                         else -> seriesItems.filter { it.group == selectedCategory }
                     }
-                    val results = if (search.isBlank()) base else seriesItems.filter { it.name.contains(search.trim(), true) }
+                    val query = rememberDebouncedSearch(search)
+                    val results = if (query.isBlank()) base else seriesItems.filter { it.name.contains(query.trim(), true) }
                     SeriesGrid(
                         results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape,
                         restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
@@ -616,7 +618,8 @@ private fun LandscapeSeriesBrowser(
         "Favorites" -> favorites
         else -> seriesItems.filter { it.group == selectedCategory }
     }
-    val displayed = if (search.isBlank()) base else seriesItems.filter { it.name.contains(search.trim(), true) }
+    val query = rememberDebouncedSearch(search)
+    val displayed = if (query.isBlank()) base else seriesItems.filter { it.name.contains(query.trim(), true) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.

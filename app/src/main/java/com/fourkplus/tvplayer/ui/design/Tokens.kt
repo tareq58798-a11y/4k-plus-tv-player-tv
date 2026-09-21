@@ -140,7 +140,16 @@ object Motion {
      * Short, because the neighbours of the focused card are fetched and decoded ahead of time: the
      * wait this guards against is mostly gone, so the pause before committing can be too.
      */
-    val BackdropDebounceMs = 110L
+    /**
+     * How long a title has to stay the focused one before the background becomes its artwork.
+     *
+     * Three seconds, which is far longer than a debounce usually is, and deliberately so. At 110ms
+     * this fired on almost every move, and moving along a row of twenty films meant twenty
+     * decodes of a 4K still - each one cheap on its own and jointly enough to make the highlight
+     * itself feel late. The picture now changes for somebody who has stopped to look at
+     * something, and not for somebody passing through, which is also the only time it is any use.
+     */
+    val BackdropDebounceMs = 3000L
 
     /** Scale a focused artwork card grows to. Kept inside [Dims.CardBleed]. */
     const val PosterFocusScale = 1.06f

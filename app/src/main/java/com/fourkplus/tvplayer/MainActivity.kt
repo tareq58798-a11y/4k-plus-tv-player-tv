@@ -2040,7 +2040,8 @@ private fun MoviesScreen(
                     MovieView.BROWSE -> {
                         SearchField(search, { search = it }, stringResource(R.string.search_all_movies))
                         if (search.isNotBlank()) {
-                            val results = remember(movies, search) { movies.filter { it.name.contains(search.trim(), true) } }
+                            val query = rememberDebouncedSearch(search)
+                val results = remember(movies, query) { movies.filter { it.name.contains(query.trim(), true) } }
                             MovieGrid(
                                 results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress,
                                 restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
@@ -2092,7 +2093,8 @@ private fun MoviesScreen(
                             "Favorites" -> favorites
                             else -> movies.filter { it.group == selectedCategory }
                         }
-                        val results = if (search.isBlank()) base else movies.filter { it.name.contains(search.trim(), true) }
+                        val query = rememberDebouncedSearch(search)
+    val results = if (query.isBlank()) base else movies.filter { it.name.contains(query.trim(), true) }
                         MovieGrid(
                             results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress,
                             restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
@@ -2159,7 +2161,8 @@ private fun LandscapeMovieBrowser(
         "Favorites" -> favorites
         else -> movies.filter { it.group == selectedCategory }
     }
-    val displayed = if (search.isBlank()) base else movies.filter { it.name.contains(search.trim(), true) }
+    val query = rememberDebouncedSearch(search)
+    val displayed = if (query.isBlank()) base else movies.filter { it.name.contains(query.trim(), true) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
@@ -4321,6 +4324,31 @@ private fun NowNextLine(
  *  as internal lookup keys (category-hiding, section filtering) throughout Movies/Series/Live TV,
  *  so those keys stay in English everywhere in the code. This translates ONLY what gets rendered,
  *  at the point it's rendered — a real provider category name falls through [title] unchanged. */
+/**
+ * The search text, but only once the typing has stopped.
+ *
+ * Filtering runs over every item in the playlist - fifty thousand of them is ordinary - and each
+ * result set rebuilds a grid and starts fetching posters for it. Doing that per keystroke means a
+ * six-letter word costs six full passes and six rounds of image loading, five of which nobody
+ * wanted, and the typing itself goes behind because the work is on the same thread as the cursor.
+ *
+ * Clearing is deliberately immediate. Emptying the box means "show me everything again", and
+ * waiting to obey that reads as the app having stuck.
+ */
+@Composable
+internal fun rememberDebouncedSearch(value: String, delayMs: Long = 320L): String {
+    var settled by remember { mutableStateOf(value) }
+    LaunchedEffect(value) {
+        if (value.isBlank()) {
+            settled = value
+            return@LaunchedEffect
+        }
+        delay(delayMs)
+        settled = value
+    }
+    return settled
+}
+
 @Composable
 internal fun localizedSectionTitle(title: String): String = when (title) {
     "Continue watching" -> stringResource(R.string.section_continue_watching)

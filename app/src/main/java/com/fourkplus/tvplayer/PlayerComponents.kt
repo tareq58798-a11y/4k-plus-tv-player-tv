@@ -990,12 +990,20 @@ private const val TimeBarRestingScrubber = 0xFFFFFFFF.toInt()
  * back in step.
  */
 private fun advanceDownThroughControls(view: PlayerView, hasStrip: Boolean, onOpenStrip: () -> Unit): Boolean {
+    // An episode goes straight there. Walking the timeline and the settings gear first is the
+    // right order for a film, where there is nothing below them worth reaching; for a series the
+    // thing under the controls is the rest of the season, and making somebody press three times to
+    // see it turns the commonest thing they want into the furthest one away.
+    if (hasStrip) {
+        onOpenStrip()
+        return true
+    }
     val timeBar = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)
     val settings = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)
     return when (view.findFocus()) {
         null -> timeBar?.requestFocus() ?: false
         timeBar -> settings?.requestFocus() ?: false
-        settings -> if (hasStrip) { onOpenStrip(); true } else false
+        settings -> false
         // Anywhere else in the controller - play/pause, rewind, fast-forward - is the top row, so
         // the first press down from it lands on the timeline like it does from nowhere at all.
         else -> timeBar?.requestFocus() ?: false

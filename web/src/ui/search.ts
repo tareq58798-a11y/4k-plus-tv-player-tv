@@ -55,6 +55,9 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
   // difference is a search that keeps up with typing and one that does not.
   const index = options.items.map((item) => ({ item, haystack: fold(`${item.name} ${item.group}`) }));
 
+  /** Matches the Android app's pause before a search runs. */
+  const SEARCH_DELAY_MS = 320;
+
   const field = el('input', {
     type: 'text',
     class: 'search-field',
@@ -92,7 +95,30 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
     }
   }
 
-  field.addEventListener('input', render);
+  /*
+   * Searching waits for the typing to stop.
+   *
+   * The filter runs over every item in the catalogue - fifty thousand is ordinary - and each pass
+   * rebuilds the results grid and starts fetching artwork for it. Per keystroke that makes a
+   * six-letter word cost six full passes and six rounds of image loading, five of which nobody
+   * asked for, and on a television the typing itself falls behind because the work is on the same
+   * thread as the on-screen keyboard.
+   *
+   * Clearing is immediate: emptying the box means "start again", and making that wait reads as the
+   * app having stuck.
+   */
+  let searchTimer: number | null = null;
+  field.addEventListener('input', () => {
+    if (searchTimer !== null) window.clearTimeout(searchTimer);
+    if (!field.value.trim()) {
+      render();
+      return;
+    }
+    searchTimer = window.setTimeout(() => {
+      searchTimer = null;
+      render();
+    }, SEARCH_DELAY_MS);
+  });
   host.append(
     el('div', { class: 'browser-title' }, t('search_title')),
     el('div', { class: 'search' }, field, count, results),

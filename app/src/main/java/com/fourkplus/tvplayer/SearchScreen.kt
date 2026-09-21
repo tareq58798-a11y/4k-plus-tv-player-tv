@@ -76,10 +76,12 @@ internal fun SearchScreen(
     var filter by remember { mutableStateOf(SearchFilter.ALL) }
     var focused by remember { mutableStateOf<PlaylistItem?>(null) }
 
-    // Identical to the previous screen's search, deliberately: same match, same cap.
-    val results = remember(playlist, query) {
-        if (query.isBlank()) emptyList()
-        else playlist?.items?.filter { it.name.contains(query.trim(), ignoreCase = true) }?.take(200).orEmpty()
+    // Identical to the previous screen's search, deliberately: same match, same cap, and the same
+    // pause before any of it runs - see rememberDebouncedSearch.
+    val settled = rememberDebouncedSearch(query)
+    val results = remember(playlist, settled) {
+        if (settled.isBlank()) emptyList()
+        else playlist?.items?.filter { it.name.contains(settled.trim(), ignoreCase = true) }?.take(200).orEmpty()
     }
     val shown = remember(results, filter) {
         when (filter) {
@@ -122,8 +124,16 @@ internal fun SearchScreen(
                 stringResource(R.string.search_hint),
                 Modifier.fillMaxWidth().padding(top = Dims.GapXl)
             )
+            // Typed, but the pause has not elapsed yet. Without this the screen answers "nothing
+            // found for ab" before it has looked, on the way to finding plenty for "abbott".
+            settled.isBlank() -> EmptyState(
+                stringResource(R.string.search_hint),
+                Modifier.fillMaxWidth().padding(top = Dims.GapXl)
+            )
+            // Reported against what was actually searched for, not against what has been typed
+            // since - otherwise the message names a word the results below it never described.
             shown.isEmpty() -> EmptyState(
-                stringResource(R.string.search_no_results, query),
+                stringResource(R.string.search_no_results, settled),
                 Modifier.fillMaxWidth().padding(top = Dims.GapXl)
             )
             else -> {
