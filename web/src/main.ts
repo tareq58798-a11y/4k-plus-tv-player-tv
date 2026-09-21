@@ -425,8 +425,10 @@ function showSection(next: Section): void {
     onSection: (chosen) => showSection(chosen),
     onEnter: () => focusPageStart(app),
     onSearch: () => searchScreen(),
+    // Straight to the language list, not to the settings menu with language somewhere in it. The
+    // globe is a shortcut or it is nothing.
+    onLanguage: () => settingsScreen('language'),
     onSettings: () => settingsScreen(),
-    subtitle: `${catalogue.items.length} ${t('items_label')}`,
   });
   detachNav = trackNavHighlight(bar);
 
@@ -456,9 +458,11 @@ function searchScreen(): void {
   });
 }
 
-function settingsScreen(): void {
+function settingsScreen(openAt?: 'language'): void {
   clear();
   renderSettings(app, {
+    // The globe in the bar opens the language list directly; the gear opens the menu.
+    openAt,
     // Read from the catalogue each time rather than from whatever the browse screens are showing,
     // so a hidden category still appears here - it is the only place one can be brought back.
     categories: (kind) => [

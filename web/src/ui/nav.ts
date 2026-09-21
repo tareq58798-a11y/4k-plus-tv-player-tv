@@ -10,7 +10,7 @@
  *    page, the indicator leaves the tab - otherwise two things on screen both look selected and
  *    neither is clearly where the next press will go.
  */
-import { t } from '../shared/i18n';
+import { locale, t } from '../shared/i18n';
 
 export type Section = 'home' | 'live' | 'movies' | 'series';
 
@@ -27,8 +27,8 @@ export interface NavOptions {
   /** OK on a tab: go into the page that is already showing. */
   onEnter: () => void;
   onSearch: () => void;
+  onLanguage: () => void;
   onSettings: () => void;
-  subtitle?: string;
 }
 
 export function renderNav(host: HTMLElement, options: NavOptions): HTMLElement {
@@ -75,6 +75,9 @@ export function renderNav(host: HTMLElement, options: NavOptions): HTMLElement {
   // and at this size two more would read as another four sections rather than as tools.
   const tools: [string, string, () => void][] = [
     ['⌕', t('cd_search'), options.onSearch],
+    // Language sits between the two, as on the television app. It is a destination people look
+    // for by eye rather than by name, so the globe earns its place beside the other two glyphs.
+    ['🌐', t('cd_language'), options.onLanguage],
     ['⚙', t('cd_settings'), options.onSettings],
   ];
   for (const [glyph, label, action] of tools) {
@@ -93,12 +96,37 @@ export function renderNav(host: HTMLElement, options: NavOptions): HTMLElement {
     bar.append(button);
   }
 
-  if (options.subtitle) {
-    const note = document.createElement('div');
-    note.className = 'clock';
-    note.textContent = options.subtitle;
-    bar.append(note);
+  /*
+   * The date and time, where the television app puts them.
+   *
+   * This corner used to carry a count of items in the playlist, which is a number that answers a
+   * question nobody has. The clock answers one people ask constantly, and a television is the
+   * thing they ask it of - which is why the set's own menus put one here too.
+   *
+   * Ticks every fifteen seconds rather than every second: the display has no seconds in it, and
+   * fifteen is close enough that the minute never looks stale while costing almost nothing on a
+   * set that is also decoding video.
+   */
+  const clock = document.createElement('div');
+  clock.className = 'clock';
+  bar.append(clock);
+
+  function paintClock(): void {
+    const now = new Date();
+    const date = now.toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' });
+    const time = now.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+    clock.textContent = `${date}  ·  ${time}`;
   }
+  paintClock();
+  const ticking = window.setInterval(() => {
+    // Stops itself once the bar has been replaced, so navigating away does not leave a timer
+    // painting into an element nobody can see.
+    if (!clock.isConnected) {
+      window.clearInterval(ticking);
+      return;
+    }
+    paintClock();
+  }, 15000);
 
   host.append(bar);
   return bar;

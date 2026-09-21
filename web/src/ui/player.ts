@@ -119,9 +119,16 @@ function button(id: string, label: string, path: string): HTMLElement {
   return node;
 }
 
-/** Swaps the glyph inside an existing button, for play becoming pause and back. */
+/**
+ * Swaps the glyph inside an existing button, for play becoming pause and back.
+ *
+ * Not replaceChildren, which arrived in Chromium 86 and would throw on anything older than a 2023
+ * set - taking the play button with it on the first press. The floor this app declares is Tizen
+ * 5.5, which is Chromium 69.
+ */
 function setIcon(node: HTMLElement, path: string): void {
-  node.replaceChildren(icon(path));
+  while (node.firstChild) node.removeChild(node.firstChild);
+  node.append(icon(path));
 }
 
 export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverlay {

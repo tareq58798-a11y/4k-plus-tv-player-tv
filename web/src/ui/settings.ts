@@ -58,6 +58,8 @@ function languageName(code: string): string {
 }
 
 export interface SettingsOptions {
+  /** A page to open straight into, instead of the root menu. */
+  openAt?: 'language';
   /**
    * Every category the current playlist has, per kind, whether hidden or not.
    *
@@ -87,7 +89,7 @@ const KINDS: { kind: CategoryKind; label: () => string }[] = [
 ];
 
 export function renderSettings(host: HTMLElement, options: SettingsOptions): void {
-  let page: Page = 'root';
+  let page: Page = options.openAt ?? 'root';
 
   const release = pushKeyHandler((key) => {
     if (key !== 'back') return false;

@@ -17,7 +17,7 @@
  * of description and the action buttons come to just over 400px, so this leaves a margin.
  */
 :root {
-  --dim-info-reserve: 460px;
+  --dim-info-reserve: 320px;
 }
 
 html,
@@ -134,9 +134,9 @@ body.playing #app {
 .top-bar {
   display: flex;
   align-items: center;
-  gap: var(--dim-gap-xl);
-  height: 128px;
-  margin-bottom: var(--dim-gap-l);
+  gap: var(--dim-gap-m);
+  height: 84px;
+  margin-bottom: var(--dim-gap-s);
 }
 
 .brand {
@@ -150,7 +150,7 @@ body.playing #app {
 }
 
 .tab {
-  font-size: 44px;
+  font-size: 32px;
   font-weight: 600;
   color: var(--tone-text-secondary);
   padding: 8px 20px;
@@ -172,7 +172,7 @@ body.playing #app {
 }
 
 .clock {
-  font-size: 38px;
+  font-size: 26px;
   color: var(--tone-text-secondary);
 }
 
@@ -271,8 +271,8 @@ body.playing #app {
 /* ------------------------------------------------------------------- rows */
 
 .section-title {
-  margin: 0 0 var(--dim-gap-s);
-  font-size: 52px;
+  margin: 0 0 var(--dim-gap-xs);
+  font-size: 34px;
   font-weight: 800;
 }
 
@@ -314,10 +314,10 @@ body.playing #app {
 }
 
 .card .label {
-  padding: 6px 8px 8px;
-  font-size: 28px;
+  padding: 6px 10px 10px;
+  font-size: 22px;
   line-height: 1.25;
-  height: 92px;
+  height: 62px;
   overflow: hidden;
   color: var(--tone-text-secondary);
 }
@@ -1014,8 +1014,8 @@ body.playing .backdrop-scrim {
 }
 
 .info h2 {
-  margin: 0 0 6px;
-  font-size: 80px;
+  margin: 0 0 4px;
+  font-size: 44px;
   font-weight: 900;
   line-height: 1.05;
   /* Capped at two lines so the block's height is predictable, which is what lets the rows above
@@ -1028,13 +1028,13 @@ body.playing .backdrop-scrim {
 }
 
 .info .meta {
-  font-size: 34px;
+  font-size: 24px;
   color: var(--tone-text-secondary);
 }
 
 .info p {
-  margin: 10px 0 var(--dim-gap-m);
-  font-size: 32px;
+  margin: 8px 0 var(--dim-gap-s);
+  font-size: 24px;
   line-height: 1.4;
   color: var(--tone-text-secondary);
   display: -webkit-box;
@@ -1043,9 +1043,18 @@ body.playing .backdrop-scrim {
   overflow: hidden;
 }
 
+/* The two buttons under the description. Smaller than a standalone .button, which is sized for a
+   form: these sit in a strip the rows above have given up space for, so every pixel they take is a
+   pixel of catalogue nobody can see. */
 .info .actions {
   display: flex;
-  gap: var(--dim-gap-s);
+  gap: var(--dim-gap-xs);
+}
+
+.info .actions .button {
+  height: 64px;
+  padding: 0 var(--dim-gap-l);
+  font-size: 26px;
 }
 
 .browser-title {
@@ -1213,9 +1222,9 @@ body.playing .backdrop-scrim {
 /* ------------------------------------------------------- search, settings */
 
 .tool {
-  font-size: 40px;
+  font-size: 30px;
   line-height: 1;
-  padding: 10px 18px;
+  padding: 8px 14px;
   border-radius: var(--dim-radius-pill);
   color: var(--tone-text-secondary);
   cursor: pointer;
