@@ -683,7 +683,15 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     for (const group of groups) {
     const row = el(
       'div',
-      { class: 'category', 'data-focus': '', 'data-focus-id': group, 'aria-selected': String(group === selected) },
+      {
+        class: 'category',
+        // Without this the browser refuses focus and the whole screen is unusable - see
+        // ensureFocusable in ui/focus.ts.
+        tabindex: '-1',
+        'data-focus': '',
+        'data-focus-id': group,
+        'aria-selected': String(group === selected),
+      },
       group,
     );
     if (group === reordering) row.classList.add('reordering');

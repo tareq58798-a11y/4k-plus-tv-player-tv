@@ -143,9 +143,31 @@ function remember(element: HTMLElement): void {
 
 export function focus(element: HTMLElement | null): void {
   if (!element) return;
+  ensureFocusable(element);
   remember(element);
   element.focus({ preventScroll: true });
   element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+}
+
+/**
+ * Makes sure a div can actually take focus before we ask it to.
+ *
+ * `data-focus` is this app's way of saying "the highlight can land here", but the browser does not
+ * read it: a `<div>` without a tabindex refuses focus and `element.focus()` returns quietly having
+ * done nothing. The failure is silent at every level - no error, no event, and `focus()` looks like
+ * it worked - so the symptom appears a long way from the cause, as a screen where the highlight is
+ * simply absent and no key does anything.
+ *
+ * That is exactly what happened to the category lists in the browse screens, which were marked
+ * focusable and were not. Fixed at the source too, but guaranteed here so the next element marked
+ * `data-focus` cannot inherit the same fault.
+ */
+function ensureFocusable(element: HTMLElement): void {
+  if (element.hasAttribute('tabindex')) return;
+  // Buttons, inputs and links are focusable already; adding tabindex to them would only change
+  // their order in the tab sequence for no gain.
+  if (element.matches('button, input, select, textarea, a[href]')) return;
+  element.tabIndex = -1;
 }
 
 /** Clears a group's memory, for when its contents have been replaced entirely. */
