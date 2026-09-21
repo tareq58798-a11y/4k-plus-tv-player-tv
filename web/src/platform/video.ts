@@ -19,6 +19,14 @@ export type PlayerEvent =
   | { type: 'buffering'; percent: number }
   | { type: 'progress'; positionMs: number }
   | { type: 'ended' }
+  /**
+   * A line of subtitle to put on screen, or an empty string to take the last one off.
+   *
+   * AVPlay does not draw subtitles. It decodes them and hands the text over, and the app paints
+   * it - which is the opposite of a `<video>` element, where the browser draws them and the app
+   * never sees the words. That difference is why this is an event rather than a setting.
+   */
+  | { type: 'subtitle'; text: string }
   | { type: 'error'; message: string };
 
 /** Matches the television app's video_mode preference: fit, fill, stretch. */
@@ -66,6 +74,10 @@ export interface MediaPlayer {
    * inventing anything - which is why there are three rather than two.
    */
   setScaling(mode: VideoScaling): void;
+  /** The subtitle tracks the stream carries, or an empty list. Only valid once playing. */
+  subtitleTracks(): AudioTrack[];
+  /** Null turns subtitles off. */
+  selectSubtitleTrack(id: number | null): void;
   stop(): void;
   /** Re-aims the picture, for a resize or a change between full screen and a preview pane. */
   setRect(rect: DOMRect): void;
@@ -76,6 +88,12 @@ export interface MediaPlayer {
 
 /** Shown when a stream declares a soundtrack but not what language it is. */
 const AUDIO_FALLBACK_LABEL = 'Audio';
+
+/** The same, for a subtitle track with no declared language. */
+const SUBTITLE_FALLBACK_LABEL = 'Subtitles';
+
+/** How long a cue stays up when the stream does not say. About the length of a spoken line. */
+const SUBTITLE_FALLBACK_MS = 4000;
 
 /**
  * Digs a language out of AVPlay's `extra_info`, or gives up quietly.
@@ -147,6 +165,8 @@ interface AvPlay {
   /** Every track in the stream, audio and video and subtitle together. Only valid once prepared. */
   getTotalTrackInfo?(): AvTrack[];
   setSelectTrack?(type: 'AUDIO' | 'VIDEO' | 'TEXT', index: number): void;
+  /** True stops the cue callbacks, which is how subtitles are turned off on AVPlay. */
+  setSilentSubtitle?(silent: boolean): void;
 }
 
 /**
@@ -171,6 +191,7 @@ class TizenPlayer implements MediaPlayer {
   private readonly av: AvPlay;
   private listener: ((event: PlayerEvent) => void) | null = null;
   private ticker: number | null = null;
+  private subtitleTimer: number | null = null;
 
   constructor() {
     const webapis = (window as unknown as { webapis?: { avplay?: AvPlay } }).webapis;
@@ -222,6 +243,23 @@ class TizenPlayer implements MediaPlayer {
         this.emit({ type: 'ended' });
       },
       onerror: (error: unknown) => this.emit({ type: 'error', message: String(error) }),
+      /**
+       * A cue, with how long it should stay up.
+       *
+       * The duration is honoured rather than waiting for the next cue, because there may not be
+       * one: a line spoken before a long silence would otherwise sit on screen through the whole
+       * silence. A zero or missing duration falls back to a few seconds, which is roughly how
+       * long a line of dialogue lasts and is better than leaving it up for ever.
+       */
+      onsubtitlechange: (durationMs: number, text: string) => {
+        this.emit({ type: 'subtitle', text: String(text ?? '') });
+        if (this.subtitleTimer !== null) window.clearTimeout(this.subtitleTimer);
+        const holdFor = Number(durationMs) > 0 ? Number(durationMs) : SUBTITLE_FALLBACK_MS;
+        this.subtitleTimer = window.setTimeout(() => {
+          this.subtitleTimer = null;
+          this.emit({ type: 'subtitle', text: '' });
+        }, holdFor);
+      },
     });
     await new Promise<void>((resolve, reject) => {
       this.av.prepareAsync(
@@ -289,6 +327,43 @@ class TizenPlayer implements MediaPlayer {
       this.av.setSelectTrack?.('AUDIO', id);
     } catch {
       /* Refused, for the same reason and with the same answer as a refused speed. */
+    }
+  }
+
+  subtitleTracks(): AudioTrack[] {
+    let tracks: AvTrack[];
+    try {
+      tracks = this.av.getTotalTrackInfo?.() ?? [];
+    } catch {
+      return [];
+    }
+    // Unlike soundtracks, a single subtitle track is worth offering: the choice being made is not
+    // "which language" but "on or off", and one track is enough for that.
+    return tracks
+      .filter((track) => String(track.type).toUpperCase() === 'TEXT')
+      .map((track, position) => ({
+        id: track.index,
+        label: languageOf(track.extra_info) ?? `${SUBTITLE_FALLBACK_LABEL} ${position + 1}`,
+      }));
+  }
+
+  selectSubtitleTrack(id: number | null): void {
+    try {
+      if (id === null) {
+        // There is no "deselect" on AVPlay. Silencing the stream of cues is what turns them off,
+        // and the app simply stops being told about them.
+        this.av.setSilentSubtitle?.(true);
+        if (this.subtitleTimer !== null) {
+          window.clearTimeout(this.subtitleTimer);
+          this.subtitleTimer = null;
+        }
+        this.emit({ type: 'subtitle', text: '' });
+        return;
+      }
+      this.av.setSilentSubtitle?.(false);
+      this.av.setSelectTrack?.('TEXT', id);
+    } catch {
+      /* Refused. Subtitles stay as they were rather than taking the stream down with them. */
     }
   }
 
@@ -414,6 +489,21 @@ class BrowserPlayer implements MediaPlayer {
 
   setScaling(mode: VideoScaling): void {
     this.video.style.objectFit = mode === 'stretch' ? 'fill' : mode === 'fill' ? 'cover' : 'contain';
+  }
+
+  /**
+   * The browser draws subtitles itself, so there is nothing here to enumerate or paint.
+   *
+   * Reporting none is honest rather than lazy: this path exists for developing without a
+   * television, and pretending to offer a control that the shipping platform implements
+   * completely differently would make the development build a worse guide, not a better one.
+   */
+  subtitleTracks(): AudioTrack[] {
+    return [];
+  }
+
+  selectSubtitleTrack(): void {
+    /* See subtitleTracks. */
   }
 
   /**

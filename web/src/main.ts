@@ -1018,6 +1018,7 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = []): void {
     }
     if (event.type === 'playing') overlay.setPaused(false);
     if (event.type === 'paused') overlay.setPaused(true);
+    if (event.type === 'subtitle') overlay.setCaption(event.text);
   });
 
   void player.play(item.streamUrl, new DOMRect(0, 0, window.innerWidth, window.innerHeight)).catch((error: unknown) => {

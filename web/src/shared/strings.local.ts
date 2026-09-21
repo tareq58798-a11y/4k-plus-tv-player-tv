@@ -23,6 +23,8 @@ export const LOCAL_EN = {
   playback_speed: 'Playback speed',
   speed_normal: 'Normal',
   audio_track: 'Audio',
+  subtitles_label: 'Subtitles',
+  subtitles_off: 'Off',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;

@@ -59,6 +59,8 @@ export interface PlayerOverlay {
   handleKey(key: RemoteKey): boolean;
   setPosition(positionMs: number, durationMs: number): void;
   setPaused(paused: boolean): void;
+  /** A line of subtitle, or an empty string to clear it. */
+  setCaption(text: string): void;
   setMessage(message: string): void;
   destroy(): void;
 }
@@ -125,17 +127,36 @@ function setIcon(node: HTMLElement, path: string): void {
 export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverlay {
   const { player, skipSeconds } = options;
 
+  /*
+   * Two layers, not one.
+   *
+   * The controls fade out after five seconds, and a fade is an opacity on the element that holds
+   * them - which every child inherits and none can opt out of, because opacity creates a group.
+   * Subtitles must not fade with the controls, so they sit in this outer layer, which never fades,
+   * and everything that does fade sits in `chrome` inside it.
+   */
   const root = document.createElement('div');
-  root.className = 'player-chrome';
+  root.className = 'player-layer';
+
+  const chrome = document.createElement('div');
+  chrome.className = 'player-chrome';
+  root.append(chrome);
 
   const title = document.createElement('div');
   title.className = 'pc-title';
   title.textContent = options.title;
-  root.append(title);
+  chrome.append(title);
 
   const message = document.createElement('div');
   message.className = 'pc-message';
-  root.append(message);
+  chrome.append(message);
+
+  // Subtitles are painted here because AVPlay hands over the text rather than drawing it - see
+  // the 'subtitle' event. Outside the chrome that hides itself: the controls withdraw after five
+  // seconds and the subtitles must not go with them.
+  const captions = document.createElement('div');
+  captions.className = 'pc-captions';
+  root.append(captions);
 
   // ---------------------------------------------------------------- transport
   const transport = document.createElement('div');
@@ -144,7 +165,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const playPause = button('pc-playpause', t('play_action'), ICONS.pause);
   const forward = button('pc-forward', t('cd_forward'), ICONS.forward);
   transport.append(rewind, playPause, forward);
-  root.append(transport);
+  chrome.append(transport);
 
   // ----------------------------------------------------------------- timeline
   const bar = document.createElement('div');
@@ -174,14 +195,14 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   total.textContent = '0:00';
 
   bar.append(elapsed, track, total);
-  root.append(bar);
+  chrome.append(bar);
 
   // ----------------------------------------------------------------- settings
   const tools = document.createElement('div');
   tools.className = 'pc-tools';
   const settingsButton = button('pc-settings', t('settings_title'), ICONS.settings);
   tools.append(settingsButton);
-  root.append(tools);
+  chrome.append(tools);
 
   const panel = document.createElement('div');
   panel.className = 'pc-panel';
@@ -229,6 +250,56 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
         }
       });
       audioRow.append(option);
+    }
+  }
+
+  /**
+   * Subtitles: Off, then whatever the stream carries.
+   *
+   * Built when the panel opens, like the soundtracks and for the same reason - a decoder cannot
+   * list what is in a stream it has not opened. Unlike soundtracks, a single track is still worth
+   * showing: the choice here is "on or off", and one track answers it.
+   */
+  const subtitleSection = document.createElement('div');
+  subtitleSection.hidden = true;
+  const subtitleTitle = document.createElement('div');
+  subtitleTitle.className = 'pc-panel-title';
+  subtitleTitle.textContent = t('subtitles_label');
+  const subtitleRow = document.createElement('div');
+  subtitleRow.className = 'pc-speeds';
+  subtitleSection.append(subtitleTitle, subtitleRow);
+  panel.append(subtitleSection);
+
+  let selectedSubtitle: number | null = null;
+
+  function buildSubtitleOptions(): void {
+    const tracks = player.subtitleTracks();
+    subtitleRow.textContent = '';
+    subtitleSection.hidden = tracks.length === 0;
+    if (!tracks.length) return;
+    const choices: { id: number | null; label: string }[] = [
+      { id: null, label: t('subtitles_off') },
+      ...tracks.map((track) => ({ id: track.id, label: track.label })),
+    ];
+    for (const choice of choices) {
+      const option = document.createElement('div');
+      option.className = 'pc-speed';
+      option.tabIndex = -1;
+      option.textContent = choice.label;
+      option.setAttribute('data-focus', '');
+      option.setAttribute('data-focus-id', `pc-sub-${choice.id ?? 'off'}`);
+      option.setAttribute('aria-selected', String(choice.id === selectedSubtitle));
+      option.addEventListener('click', () => {
+        selectedSubtitle = choice.id;
+        player.selectSubtitleTrack(choice.id);
+        // Cleared at once rather than waiting for the decoder to stop sending cues, so turning
+        // them off takes the line on screen off with it.
+        if (choice.id === null) captions.textContent = '';
+        for (const other of subtitleRow.querySelectorAll('.pc-speed')) {
+          other.setAttribute('aria-selected', String(other === option));
+        }
+      });
+      subtitleRow.append(option);
     }
   }
 
@@ -292,7 +363,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     speedRow.append(option);
   }
   panel.append(speedRow);
-  root.append(panel);
+  chrome.append(panel);
 
   // ------------------------------------------------------------- episode strip
   const episodes = options.episodes ?? [];
@@ -331,7 +402,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     });
     strip.append(card);
   }
-  root.append(strip);
+  chrome.append(strip);
 
   let stripOpen = false;
 
@@ -371,7 +442,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
 
   function setVisible(next: boolean): void {
     visible = next;
-    root.classList.toggle('is-hidden', !next);
+    chrome.classList.toggle('is-hidden', !next);
     if (next) {
       armHide();
     } else {
@@ -390,11 +461,11 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // soundtracks. A list cached from the last thing played would offer choices that no longer
     // exist.
     buildAudioOptions();
-    focus(
-      audioSection.hidden
-        ? speedRow.querySelector<HTMLElement>('.pc-speed')
-        : audioRow.querySelector<HTMLElement>('.pc-speed'),
-    );
+    buildSubtitleOptions();
+    // Lands on the first section that has anything in it, so the highlight never opens on a
+    // heading with nothing under it.
+    const firstOption = panel.querySelector<HTMLElement>('div:not([hidden]) > .pc-speeds > .pc-speed');
+    focus(firstOption ?? speedRow.querySelector<HTMLElement>('.pc-speed'));
   }
 
   function closePanel(): void {
@@ -525,6 +596,9 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     setPaused(next: boolean): void {
       paused = next;
       setIcon(playPause, next ? ICONS.play : ICONS.pause);
+    },
+    setCaption(text: string): void {
+      captions.textContent = text;
     },
     setMessage(text: string): void {
       message.textContent = text;
