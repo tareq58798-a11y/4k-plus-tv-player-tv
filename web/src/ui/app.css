@@ -75,8 +75,15 @@ body.playing {
    */
   display: flex;
   flex-direction: column;
-  /* The bottom strip belongs to the info block, which is drawn over it. Padding here is what stops
-     the flex children from claiming it. */
+}
+
+/*
+ * Only the landing has an info block, so only the landing gives up the bottom of the screen to it.
+ * This was briefly on #app itself, which took 460px away from every page in the app - the browse
+ * grid, the sidebar and the series pane all carry fixed heights measured against the full canvas,
+ * and they ran straight off the bottom of the television.
+ */
+#app.has-info {
   padding-bottom: calc(var(--dim-safe-vertical) + var(--dim-info-reserve));
 }
 
@@ -150,18 +157,37 @@ body.playing #app {
 
 /* ------------------------------------------------------------------ login */
 
+/*
+ * Sized to fit a television, which it did not.
+ *
+ * With three fields, a button and a message line this panel measured 1419 pixels tall on a 1080
+ * canvas - the Connect button and anything it had to say were 339 pixels below the bottom of the
+ * screen, where no remote can reach them. The manual login is the fallback when activation by MAC
+ * is not an option, so it being unusable is not a small thing.
+ *
+ * Tightened rather than shrunk: the type is still television-sized. The max-height is a safety
+ * net for a language whose labels run longer than English, so nothing can ever be stranded off
+ * screen again even if the arithmetic above drifts.
+ */
 .panel {
   width: 880px;
-  margin: 80px auto 0;
-  padding: var(--dim-gap-xl);
+  margin: var(--dim-gap-m) auto 0;
+  padding: var(--dim-gap-l);
   border-radius: var(--dim-radius-panel);
   background: var(--tone-glass);
   border: 1px solid var(--tone-glass-border);
+  max-height: calc(100% - var(--dim-gap-l));
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.panel::-webkit-scrollbar {
+  display: none;
 }
 
 .panel h1 {
-  margin: 0 0 var(--dim-gap-s);
-  font-size: 88px;
+  margin: 0 0 var(--dim-gap-xs);
+  font-size: 64px;
   font-weight: 800;
 }
 
@@ -173,7 +199,7 @@ body.playing #app {
 
 .field {
   display: block;
-  margin-bottom: var(--dim-gap-m);
+  margin-bottom: var(--dim-gap-s);
 }
 
 .field span {
@@ -185,7 +211,7 @@ body.playing #app {
 
 .field input {
   width: 100%;
-  height: 112px;
+  height: 96px;
   padding: 0 var(--dim-gap-m);
   font-size: 40px;
   color: var(--tone-text-primary);

@@ -195,6 +195,13 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
   };
   document.addEventListener('focusin', onFocusIn);
   disposers.push(() => document.removeEventListener('focusin', onFocusIn));
+
+  // The bottom strip of the page belongs to the info block, and the rows above stop short of it.
+  // Marked on the host rather than left on #app, because only this page has an info block - the
+  // browser, series, search and settings pages use the full height, and reserving 460px on every
+  // one of them pushed their fixed-height panels off the bottom of the television.
+  host.classList.add('has-info');
+  disposers.push(() => host.classList.remove('has-info'));
 }
 
 /** Torn down when a page is replaced, so its listeners do not outlive it. */
