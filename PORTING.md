@@ -169,8 +169,19 @@ Still missing against the Android player, in rough order of how much they are mi
 - Subtitles, and the subtitle background toggle.
 - Aspect ratio / zoom.
 - The episode strip, which on Android is the third Down stop for a series.
-- Nothing has decoded a frame on hardware. AVPlay has never been proven end to end, and this
-  chrome has only been checked against the real stylesheet in a desktop browser.
+- Nothing has run on real hardware. The emulator is x86 and permissive; a 2020 set is ARM, slower,
+  stricter and on an older WebKit.
+
+**AVPlay decodes.** Proven on the emulator on 21 Sep 2026, end to end from a cold launch:
+activation by MAC, catalogue load, a series' details and season list fetched live, OK on episode
+one, and moving video. Successive captures a few seconds apart differ in size and hash, so it is
+playing rather than holding a first frame. That was the single largest open risk in this codebase
+and it is closed.
+
+A note for anyone testing this way: capturing the emulator needs `PrintWindow` with
+`PW_RENDERFULLCONTENT` (flag 2), not flag 1, and it fails intermittently - a failed capture comes
+back as an identical ~1.3KB image every time. Retry until the size jumps rather than reading a
+blank frame as a blank screen, which is a mistake that cost an hour here.
 
 ## Carried over from the TV app
 
