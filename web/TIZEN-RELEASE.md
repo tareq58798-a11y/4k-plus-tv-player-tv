@@ -56,19 +56,46 @@ one.
 The real answer for real users. The order matters, because most steps are blocked by an earlier
 one.
 
-1. **Register as a seller** at seller.samsungapps.com, TV section, with a Samsung account.
-2. **Samsung issues a ten-character App ID prefix.** This replaces `4KPlusTVXX` in
+**It is a separate portal from the Galaxy Store, at a different address, and registering on one
+does not register you on the other.** seller.samsungapps.com is the Galaxy Store seller portal -
+Android phone and Galaxy Watch apps, its "Add New App" dialog offers only those two. Smart TV apps
+are submitted at **seller.samsungapps.com/tv**, reached from developer.samsung.com/smarttv →
+Distribute → TV Seller Office. Registering as a private seller on the first does not by itself
+give you a listing on the second; the TV portal may recognise the same Samsung account and offer
+seller status there directly, or it may ask you to register again - that only becomes clear by
+visiting seller.samsungapps.com/tv and looking.
+
+1. **Reach the TV Seller Office**, at seller.samsungapps.com/tv - not the plain seller.samsungapps.com
+   used for mobile - and confirm or complete seller registration there.
+2. Create the application: **Applications menu → name, application type, default language.** This
+   is what issues the **ten-character App ID prefix**, which replaces `4KPlusTVXX` in
    `web/tizen/config.xml`, in both the `id` and `package` attributes. Until then the packager
-   warns on every build, and that warning is correct — it cannot be filled in by guessing.
+   warns on every build, and that warning is correct - it cannot be filled in by guessing.
 3. **Create a publication distributor certificate** in Certificate Manager. Not the device-scoped
    one described above.
 4. **Re-sign the widget** with it: `node scripts/package-tizen.mjs --sign <profile>`.
-5. **Build the store listing** — icon, screenshots, description, category, age rating, countries,
-   privacy-policy URL, at whatever sizes Samsung currently specifies.
-6. **Review**, carried out on real hardware by Samsung.
+5. **Upload the package** from Applications → App Package. A pre-test runs automatically and
+   reports problems in the package before a human ever sees it.
+6. **Register the application information**: image, title and description per language, service
+   countries, billing, feature and test information. Assets, as specified today:
+
+   | Element | Size | Format | Max |
+   |---|---|---|---|
+   | Foreground icon | 1920×1080 | PNG | 300 KB |
+   | Background icon | 512×423 | PNG | 300 KB |
+   | Screenshots | 1280×720 or 1920×1080 | JPG | 500 KB |
+   | UI description | - | PPTX | - |
+
+7. **Request release** from Applications → Distribute, choosing which TV model group the app runs
+   on. This runs its own pre-test against that model group before anything reaches a reviewer.
+8. **Samsung reviews and verification-tests** the build, on real hardware, and reports the result.
+   A rejection means fixing the specific problem named and resubmitting, not starting over.
+9. On passing, the app goes live in the TV model group and countries selected.
 
 Steps 2 and 3 both hang off step 1, and 4 hangs off both. Nothing below step 1 can be started
-early, which is why step 1 is worth doing before any further packaging work.
+early, which is why step 1 is worth doing before any further packaging work. A beta channel exists
+for testing with real users before a public release, ahead of step 7 - see the "Proceeding to Beta
+Test" guide linked from the TV Seller Office docs if that is wanted.
 
 ## Two things to plan around
 
