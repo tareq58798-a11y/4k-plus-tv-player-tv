@@ -75,13 +75,26 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
   let pending: number | null = null;
   const details = new Map<string, { description?: string | null; backdropUrl?: string | null }>();
 
-  function describe(item: PlaylistItem | null): void {
+  function describe(item: PlaylistItem | null, anchor?: HTMLElement): void {
     info.textContent = '';
     if (!item) {
       info.classList.remove('visible');
       return;
     }
     info.classList.add('visible');
+    // Moved to sit directly under the row the highlight is in, rather than pinned to the foot of
+    // the screen. A block at the bottom describes something the viewer has to look away from to
+    // read about; under the row it is beside what it is describing, which is how the television
+    // app reads. It is one element that relocates rather than one per row, so only the row being
+    // looked at ever carries it.
+    //
+    // The row comes from the card that reported the focus, not from document.activeElement. That
+    // property is not reliable here - a window without focus updates it without firing the events
+    // this depends on, and worse, the reverse also happens - so reading it turns a layout into a
+    // guess about browser state.
+    const track = anchor?.closest('.row') ?? null;
+    if (track && info.previousElementSibling !== track) track.after(info);
+
     const extra = details.get(itemKey(item));
     const meta: string[] = [t(KIND_LABEL[item.kind] as never)];
     if (item.year) meta.push(item.year);
@@ -108,9 +121,9 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     );
   }
 
-  function onCardFocus(item: PlaylistItem): void {
+  function onCardFocus(item: PlaylistItem, card: HTMLElement): void {
     viewerHasMoved = true;
-    describe(item);
+    describe(item, card);
     // The poster now, the title's proper landscape artwork when the details arrive. Asking for
     // the better picture up front is what makes this one transition rather than a poster that is
     // replaced a moment later.
@@ -124,7 +137,7 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
       details.set(itemKey(item), loaded);
       // Only if the viewer is still here - they may have moved on while this was in flight.
       if (document.activeElement?.getAttribute('data-focus-id') !== itemKey(item)) return;
-      describe(item);
+      describe(item, card);
       if (viewerHasMoved && loaded.backdropUrl) backdrop.show(loaded.backdropUrl);
     }, 400);
   }
@@ -164,7 +177,7 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
         card.append(el('div', { class: 'progress' }, el('div', { class: 'progress-fill', style: `width:${progress * 100}%` })));
       }
       card.append(el('div', { class: 'label' }, item.name));
-      card.addEventListener('focus', () => onCardFocus(item));
+      card.addEventListener('focus', () => onCardFocus(item, card));
       card.addEventListener('click', () => options.onPlay(item));
       track.append(card);
     }
@@ -181,7 +194,10 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     }
   });
 
-  host.append(body, info);
+  // info is not appended here: it is inserted after whichever row holds the highlight, by
+  // describe(). Appending it to the host as well would leave a second, empty copy at the foot of
+  // the page.
+  host.append(body);
   describe(null);
 
   // The block belongs to the artwork, so it goes when the highlight does - onto the navigation
@@ -196,12 +212,9 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
   document.addEventListener('focusin', onFocusIn);
   disposers.push(() => document.removeEventListener('focusin', onFocusIn));
 
-  // The bottom strip of the page belongs to the info block, and the rows above stop short of it.
   // Marked on the host rather than left on #app, because only this page has an info block - the
   // browser, series, search and settings pages use the full height, and reserving 460px on every
   // one of them pushed their fixed-height panels off the bottom of the television.
-  host.classList.add('has-info');
-  disposers.push(() => host.classList.remove('has-info'));
 }
 
 /** Torn down when a page is replaced, so its listeners do not outlive it. */

@@ -98,15 +98,6 @@ body.section-live .card {
   flex-direction: column;
 }
 
-/*
- * Only the landing has an info block, so only the landing gives up the bottom of the screen to it.
- * This was briefly on #app itself, which took 460px away from every page in the app - the browse
- * grid, the sidebar and the series pane all carry fixed heights measured against the full canvas,
- * and they ran straight off the bottom of the television.
- */
-#app.has-info {
-  padding-bottom: calc(var(--dim-safe-vertical) + var(--dim-info-reserve));
-}
 
 body.playing #app {
   /* The controls layer stays, the page behind it does not. */
@@ -150,7 +141,7 @@ body.playing #app {
 }
 
 .tab {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: 600;
   color: var(--tone-text-secondary);
   padding: 8px 20px;
@@ -172,7 +163,7 @@ body.playing #app {
 }
 
 .clock {
-  font-size: 26px;
+  font-size: 22px;
   color: var(--tone-text-secondary);
 }
 
@@ -272,7 +263,7 @@ body.playing #app {
 
 .section-title {
   margin: 0 0 var(--dim-gap-xs);
-  font-size: 34px;
+  font-size: 28px;
   font-weight: 800;
 }
 
@@ -313,11 +304,17 @@ body.playing #app {
   display: block;
 }
 
+/* Two lines at most, and the box is sized to exactly that: 18px at 1.25 is 22.5 a line, so 45
+   for the text plus the padding. Anything taller leaves a band of empty card under short titles
+   and makes the whole row look loose. */
 .card .label {
-  padding: 6px 10px 10px;
-  font-size: 22px;
+  padding: 5px 10px 8px;
+  font-size: 18px;
   line-height: 1.25;
-  height: 62px;
+  height: 58px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   color: var(--tone-text-secondary);
 }
@@ -994,18 +991,25 @@ body.playing .backdrop-scrim {
 
 /* ------------------------------------------------------------------ info */
 
+/*
+ * The block describing whatever is focused, sitting directly under that row.
+ *
+ * It used to be pinned to the foot of the screen, which meant the viewer read about a film by
+ * looking away from it, and cost the rows a 320px strip whether anything was selected or not. In
+ * the flow it is beside the thing it describes and takes room only while it has something to say.
+ *
+ * Half the width, because a description set across 1760px is a line the eye has to track back
+ * along, and because the artwork behind the page is worth leaving visible.
+ */
 .info {
-  position: absolute;
-  left: var(--dim-safe-horizontal);
-  right: 52%;
-  /* Anchored to the same edge the page's padding reserves, and given that reserve as its height,
-     so the scrolling rows stop exactly where this starts. Any other pair of numbers leaves either
-     a gap or an overlap, and the overlap is what this whole block is fixing. */
-  bottom: var(--dim-safe-vertical);
-  height: var(--dim-info-reserve);
+  width: 48%;
+  margin: var(--dim-gap-xs) 0 var(--dim-gap-s);
   opacity: 0;
   transition: opacity var(--motion-info-fade-ms) var(--motion-ease-in-out);
   pointer-events: none;
+  /* Reserved whether or not anything is selected, so rows do not jump up and down as the
+     highlight moves along them - the block fades, it does not push. */
+  min-height: 210px;
 }
 
 .info.visible {
@@ -1015,7 +1019,7 @@ body.playing .backdrop-scrim {
 
 .info h2 {
   margin: 0 0 4px;
-  font-size: 44px;
+  font-size: 36px;
   font-weight: 900;
   line-height: 1.05;
   /* Capped at two lines so the block's height is predictable, which is what lets the rows above
@@ -1028,13 +1032,13 @@ body.playing .backdrop-scrim {
 }
 
 .info .meta {
-  font-size: 24px;
+  font-size: 20px;
   color: var(--tone-text-secondary);
 }
 
 .info p {
-  margin: 8px 0 var(--dim-gap-s);
-  font-size: 24px;
+  margin: 6px 0 var(--dim-gap-s);
+  font-size: 20px;
   line-height: 1.4;
   color: var(--tone-text-secondary);
   display: -webkit-box;
@@ -1222,7 +1226,7 @@ body.playing .backdrop-scrim {
 /* ------------------------------------------------------- search, settings */
 
 .tool {
-  font-size: 30px;
+  font-size: 26px;
   line-height: 1;
   padding: 8px 14px;
   border-radius: var(--dim-radius-pill);
