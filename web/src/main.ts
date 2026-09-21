@@ -25,6 +25,10 @@ import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { createPlayerOverlay } from './ui/player';
 import { backgroundMode } from './shared/preferences';
+import {
+  applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
+} from './shared/categories';
+import { openCategoryMenu } from './ui/categoryMenu';
 import { identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import { loadM3u } from './shared/m3u';
@@ -567,8 +571,18 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   let pool = catalogue.items.filter((item) => item.kind === kind);
   if (favoritesOnly) pool = favoriteItems(pool, Number.MAX_SAFE_INTEGER);
 
-  const groups = [...new Set(pool.map((item) => item.group))].sort((a, b) => a.localeCompare(b));
+  // Hidden categories are filtered out of the pool, not just out of the sidebar - otherwise the
+  // grid would still show their contents whenever a search or a favourites view reached across
+  // categories, and "hidden" would only mean "hidden from this one list".
+  const hidden = new Set(hiddenCategories(kind));
+  pool = pool.filter((item) => !hidden.has(item.group));
+  const groups = applyCategoryOrder(
+    kind,
+    [...new Set(pool.map((item) => item.group))].sort((a, b) => a.localeCompare(b)),
+  );
   let selected = groups[0] ?? '';
+  /** The category being hand-moved after the menu's first action - Up and Down nudge it. */
+  let reordering: string | null = null;
 
   const grid = el('div', { class: 'grid', 'data-focus-group': 'browser-grid' });
   const sidebar = el('div', { class: 'sidebar', 'data-focus-group': 'browser-categories' });
@@ -651,12 +665,23 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     }
   }
 
-  for (const group of groups) {
+  /**
+   * Draws the category list from [groups].
+   *
+   * Called again whenever the order or the hidden set changes, rather than re-entering
+   * browseScreen. Re-entering would push a second key handler onto the stack without releasing the
+   * first, and would throw away the closure that is holding which row is being carried - so the
+   * hand-move would forget itself after a single nudge.
+   */
+  function renderSidebar(): void {
+    sidebar.textContent = '';
+    for (const group of groups) {
     const row = el(
       'div',
       { class: 'category', 'data-focus': '', 'data-focus-id': group, 'aria-selected': String(group === selected) },
       group,
     );
+    if (group === reordering) row.classList.add('reordering');
     // Focus selects, as on the television: moving down the list changes what the grid shows
     // without needing a press for each one.
     row.addEventListener('focus', () => {
@@ -666,8 +691,64 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       }
       renderGrid();
     });
+    // A held OK opens the menu, which is the television app's long press arriving the only way a
+    // remote can express it on the web - see openCategoryMenu.
+    row.addEventListener('keydown', (event) => {
+      if (!event.repeat) return;
+      const key = keyOf(event, platform);
+      if (key !== 'enter') return;
+      event.preventDefault();
+      event.stopPropagation();
+      openCategoryMenu(app, {
+        category: group,
+        onHide: () => {
+          hideCategory(kind, group);
+          // The whole screen, because hiding changes the pool the grid is drawn from, not just the
+          // list of rows. This is also the one action that cannot leave focus where it was: the
+          // row it was on has gone.
+          browseScreen(current, favoritesOnly);
+        },
+        onMoveManually: () => {
+          reordering = group;
+          renderSidebar();
+          focusCategory(group);
+        },
+        onMoveToTop: () => {
+          moveCategoryToEnd(kind, groups, group, true);
+          reorderGroups();
+          focusCategory(group);
+        },
+        onMoveToBottom: () => {
+          moveCategoryToEnd(kind, groups, group, false);
+          reorderGroups();
+          focusCategory(group);
+        },
+        onDismiss: () => undefined,
+      });
+    });
     sidebar.append(row);
+    }
   }
+
+  /** Re-reads the stored order into [groups] and redraws the list. */
+  function reorderGroups(): void {
+    const reordered = applyCategoryOrder(kind, groups);
+    groups.length = 0;
+    groups.push(...reordered);
+    renderSidebar();
+  }
+
+  /** Puts the highlight back on a named row after the list has been rebuilt under it. */
+  function focusCategory(group: string): void {
+    for (const row of sidebar.children) {
+      if (row.getAttribute('data-focus-id') === group) {
+        focus(row as HTMLElement);
+        return;
+      }
+    }
+  }
+
+  renderSidebar();
 
   const back = el('div', { class: 'browser-title' }, t(current === 'live' ? 'nav_live_tv' : current === 'movies' ? 'nav_movies' : 'nav_series'));
   app.append(back, el('div', { class: 'browser' }, sidebar, el('div', { class: 'browser-main' }, grid, current === 'live' ? guide : el('div'))));
@@ -675,6 +756,26 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   focus(sidebar.querySelector<HTMLElement>('[data-focus]'));
 
   const release = pushKeyHandler((key: RemoteKey) => {
+    // Hand-moving takes over Up and Down entirely: while a row is being carried, those keys move
+    // the row rather than the highlight, and OK or Back puts it down. Without the takeover the
+    // highlight would walk away from the row it is supposed to be moving.
+    if (reordering) {
+      if (key === 'up' || key === 'down') {
+        moveCategory(kind, groups, reordering, key === 'up');
+        const carried = reordering;
+        reorderGroups();
+        focusCategory(carried);
+        return true;
+      }
+      if (key === 'enter' || key === 'back') {
+        reordering = null;
+        renderSidebar();
+        return true;
+      }
+      // Everything else is swallowed while a row is being carried. Wandering off to the grid
+      // mid-move would leave a category picked up with nothing holding it.
+      return true;
+    }
     if (key !== 'back') return false;
     release();
     showSection(current);

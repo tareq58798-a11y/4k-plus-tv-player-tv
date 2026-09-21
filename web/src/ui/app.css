@@ -360,6 +360,15 @@ body.playing #app {
   background: var(--tone-glass-strong);
 }
 
+/* Being carried. Distinct from both selected and focused, because while a row is being hand-moved
+   those two mean something different: the highlight is not "where the next press goes" any more,
+   it is "the thing the next press moves". */
+.category.reordering {
+  background: rgba(255, 181, 71, 0.28);
+  box-shadow: inset 0 0 0 3px var(--tone-star);
+  color: var(--tone-text-primary);
+}
+
 .browser {
   display: flex;
   gap: var(--dim-gap-l);
@@ -370,6 +379,61 @@ body.playing #app {
 .status {
   font-size: 40px;
   color: var(--tone-text-secondary);
+}
+
+/* --------------------------------------------------------------- dialogs */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Dark enough to say the page behind is not the thing being used. A dialog that floats over a
+     fully lit page reads as part of it, and on a television the viewer cannot click elsewhere to
+     find out otherwise. */
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 10;
+}
+
+.dialog {
+  width: 760px;
+  padding: var(--dim-gap-l);
+  border-radius: var(--dim-radius-panel);
+  background: #071322;
+  border: 1px solid var(--tone-glass-border);
+}
+
+.dialog-title {
+  margin-bottom: var(--dim-gap-m);
+  font-size: 44px;
+  font-weight: 800;
+  /* A category name can be long, and a dialog that grows to fit one is a dialog whose buttons
+     move. Two lines, then an ellipsis. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dialog-action {
+  padding: 18px var(--dim-gap-l);
+  margin-bottom: var(--dim-gap-xs);
+  border-radius: var(--dim-radius-card);
+  background: var(--tone-glass);
+  font-size: 30px;
+  cursor: pointer;
+}
+
+.dialog-action.muted {
+  color: var(--tone-text-muted);
+}
+
+.dialog-action:focus {
+  outline: none;
+  background: var(--tone-category-gradient);
+  color: #04131f;
+  font-weight: 700;
 }
 
 /* --------------------------------------------------------- player chrome
