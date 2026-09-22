@@ -15,7 +15,16 @@
  */
 import { focus } from './focus';
 import { t } from '../shared/i18n';
-import { setVideoScaling, videoScaling, type VideoScalingPreference } from '../shared/preferences';
+import {
+  SKIP_CHOICES,
+  setSkipSeconds,
+  setSubtitleBackground,
+  setVideoScaling,
+  skipSeconds,
+  subtitleBackground,
+  videoScaling,
+  type VideoScalingPreference,
+} from '../shared/preferences';
 import type { MediaPlayer } from '../platform/video';
 import type { RemoteKey } from '../platform/keys';
 
@@ -36,7 +45,6 @@ export interface StripEpisode {
 export interface PlayerOverlayOptions {
   title: string;
   player: MediaPlayer;
-  skipSeconds: number;
   /**
    * The rest of the season, empty for a film.
    *
@@ -132,7 +140,10 @@ function setIcon(node: HTMLElement, path: string): void {
 }
 
 export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverlay {
-  const { player, skipSeconds } = options;
+  const { player } = options;
+  // Read once here and updated by the panel below, so a change takes effect on the next press
+  // rather than on the next film.
+  let skip = skipSeconds();
 
   /*
    * Two layers, not one.
@@ -163,6 +174,11 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   // seconds and the subtitles must not go with them.
   const captions = document.createElement('div');
   captions.className = 'pc-captions';
+  // The line goes in a span rather than straight on the box, so the optional dark backing can hug
+  // the words instead of drawing a slab the full width of the screen - see .pc-caption-text.
+  const captionText = document.createElement('span');
+  captionText.className = 'pc-caption-text';
+  captions.append(captionText);
   root.append(captions);
 
   // ---------------------------------------------------------------- transport
@@ -301,7 +317,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
         player.selectSubtitleTrack(choice.id);
         // Cleared at once rather than waiting for the decoder to stop sending cues, so turning
         // them off takes the line on screen off with it.
-        if (choice.id === null) captions.textContent = '';
+        if (choice.id === null) captionText.textContent = '';
         for (const other of subtitleRow.querySelectorAll('.pc-speed')) {
           other.setAttribute('aria-selected', String(other === option));
         }
@@ -309,6 +325,38 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       subtitleRow.append(option);
     }
   }
+
+  /*
+   * The dark backing behind the subtitle line.
+   *
+   * This app paints its own subtitles - the decoder hands over the text and nothing else - so the
+   * backing is a class on the caption element rather than anything the player has to be told
+   * about. It lives beside the track list because that is where somebody who is struggling to read
+   * a line will look for it, which is where the television app puts it too.
+   */
+  let captionBackground = subtitleBackground();
+  captions.classList.toggle('boxed', captionBackground);
+
+  const backingRow = document.createElement('div');
+  backingRow.className = 'pc-speeds';
+  const backingOption = document.createElement('div');
+  backingOption.className = 'pc-speed';
+  backingOption.tabIndex = -1;
+  backingOption.setAttribute('data-focus', '');
+  backingOption.setAttribute('data-focus-id', 'pc-sub-backing');
+  function paintBacking(): void {
+    backingOption.textContent = t('subtitle_background');
+    backingOption.setAttribute('aria-selected', String(captionBackground));
+  }
+  backingOption.addEventListener('click', () => {
+    captionBackground = !captionBackground;
+    setSubtitleBackground(captionBackground);
+    captions.classList.toggle('boxed', captionBackground);
+    paintBacking();
+  });
+  paintBacking();
+  backingRow.append(backingOption);
+  subtitleSection.append(backingRow);
 
   // Video scaling. Applied the moment it is chosen and remembered afterwards - see videoScaling.
   const scalingTitle = document.createElement('div');
@@ -343,6 +391,39 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     scalingRow.append(option);
   }
   panel.append(scalingRow);
+
+  /*
+   * How far the skip buttons jump.
+   *
+   * Ten seconds is right for an advert break and wrong for a title sequence, which is why the
+   * television app makes it a choice rather than a constant. The same five values, so somebody
+   * who has settled on thirty on their Android box finds thirty here.
+   */
+  const skipTitle = document.createElement('div');
+  skipTitle.className = 'pc-panel-title';
+  skipTitle.textContent = t('skip_interval');
+  panel.append(skipTitle);
+
+  const skipRow = document.createElement('div');
+  skipRow.className = 'pc-speeds';
+  for (const seconds of SKIP_CHOICES) {
+    const option = document.createElement('div');
+    option.className = 'pc-speed';
+    option.tabIndex = -1;
+    option.textContent = t('skip_seconds_format', String(seconds));
+    option.setAttribute('data-focus', '');
+    option.setAttribute('data-focus-id', `pc-skip-${seconds}`);
+    option.setAttribute('aria-selected', String(seconds === skip));
+    option.addEventListener('click', () => {
+      skip = seconds;
+      setSkipSeconds(seconds);
+      for (const other of skipRow.querySelectorAll('.pc-speed')) {
+        other.setAttribute('aria-selected', String(other === option));
+      }
+    });
+    skipRow.append(option);
+  }
+  panel.append(skipRow);
 
   const panelTitle = document.createElement('div');
   panelTitle.className = 'pc-panel-title';
@@ -534,8 +615,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }
   }
 
-  rewind.addEventListener('click', () => player.seekBy(-skipSeconds * 1000));
-  forward.addEventListener('click', () => player.seekBy(skipSeconds * 1000));
+  rewind.addEventListener('click', () => player.seekBy(-skip * 1000));
+  forward.addEventListener('click', () => player.seekBy(skip * 1000));
   playPause.addEventListener('click', togglePlayback);
   settingsButton.addEventListener('click', openPanel);
 
@@ -562,10 +643,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       case 'up':
         return stepUp();
       case 'left':
-        if (document.activeElement === track) { scrub(-skipSeconds * 1000); return true; }
+        if (document.activeElement === track) { scrub(-skip * 1000); return true; }
         return false;
       case 'right':
-        if (document.activeElement === track) { scrub(skipSeconds * 1000); return true; }
+        if (document.activeElement === track) { scrub(skip * 1000); return true; }
         return false;
       case 'enter':
         (document.activeElement as HTMLElement | null)?.click();
@@ -576,10 +657,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
         togglePlayback();
         return true;
       case 'rewind':
-        player.seekBy(-skipSeconds * 1000);
+        player.seekBy(-skip * 1000);
         return true;
       case 'forward':
-        player.seekBy(skipSeconds * 1000);
+        player.seekBy(skip * 1000);
         return true;
       default:
         return false;
@@ -605,7 +686,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       setIcon(playPause, next ? ICONS.play : ICONS.pause);
     },
     setCaption(text: string): void {
-      captions.textContent = text;
+      captionText.textContent = text;
     },
     setMessage(text: string): void {
       message.textContent = text;

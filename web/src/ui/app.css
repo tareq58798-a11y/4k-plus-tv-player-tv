@@ -795,6 +795,25 @@ body.playing #app {
   white-space: pre-wrap;
 }
 
+/*
+ * The optional dark backing, from the television app's subtitle menu.
+ *
+ * On the text, not on the box above it, and only while there is text. The note above is right
+ * that a slab across the picture between lines is worse than no backing at all - this is inline,
+ * so it is exactly as wide as the words and disappears with them. box-decoration-break makes a
+ * line that wraps get the same treatment on both halves instead of one long ragged ribbon.
+ */
+.pc-caption-text {
+  padding: 0 12px;
+  border-radius: 6px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.pc-captions.boxed .pc-caption-text:not(:empty) {
+  background: rgba(0, 0, 0, 0.66);
+}
+
 .pc-message {
   position: absolute;
   left: 50%;

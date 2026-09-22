@@ -49,3 +49,43 @@ export function videoScaling(): VideoScalingPreference {
 export function setVideoScaling(mode: VideoScalingPreference): void {
   writeJson(SCALING_KEY, mode);
 }
+
+/**
+ * Whether subtitles are drawn on a dark backing.
+ *
+ * On by default, which is the television app's default too. Subtitles are white text laid over
+ * whatever the film is showing, and a bright scene takes them with it - so the readable case is
+ * the one to start from, and turning it off is the choice somebody makes when they would rather
+ * see the picture.
+ *
+ * The key matches Android's own `subtitle_background`, so the same setting means the same thing
+ * in both apps even though neither can read the other's store.
+ */
+const SUBTITLE_BACKGROUND_KEY = 'subtitle_background';
+
+export function subtitleBackground(): boolean {
+  return readJson<boolean>(SUBTITLE_BACKGROUND_KEY, true) !== false;
+}
+
+export function setSubtitleBackground(on: boolean): void {
+  writeJson(SUBTITLE_BACKGROUND_KEY, on);
+}
+
+/**
+ * How far the skip buttons and Left/Right on the timeline move, in seconds.
+ *
+ * The same five choices the television app offers, and the same default. It was fixed at ten here,
+ * which is right for an advert break and wrong for a title sequence.
+ */
+const SKIP_KEY = 'skip_seconds';
+export const SKIP_CHOICES = [5, 10, 15, 30, 60] as const;
+export type SkipSeconds = (typeof SKIP_CHOICES)[number];
+
+export function skipSeconds(): SkipSeconds {
+  const stored = readJson<unknown>(SKIP_KEY, 10);
+  return SKIP_CHOICES.includes(stored as SkipSeconds) ? (stored as SkipSeconds) : 10;
+}
+
+export function setSkipSeconds(seconds: SkipSeconds): void {
+  writeJson(SKIP_KEY, seconds);
+}

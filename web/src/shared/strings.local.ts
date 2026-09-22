@@ -25,6 +25,10 @@ export const LOCAL_EN = {
   audio_track: 'Audio',
   subtitles_label: 'Subtitles',
   subtitles_off: 'Off',
+  // Both of these are hardcoded English inside the television app's own composable rather than
+  // resources, so there is nothing to extract and they start life here like the rest of this file.
+  subtitle_background: 'Background',
+  skip_seconds_format: '{1}s',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;

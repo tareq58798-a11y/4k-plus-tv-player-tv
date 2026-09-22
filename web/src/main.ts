@@ -1088,7 +1088,6 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = []): void {
   const overlay = createPlayerOverlay({
     title: item.name,
     player,
-    skipSeconds: 10,
     episodes: siblings,
     currentEpisodeId: item.channelId,
     onEpisode: (episode) => {
