@@ -676,19 +676,30 @@ function browseScreen(current: Section, favoritesOnly = false): void {
    * Live TV calls its resume list "Recently watched" and the others "Continue watching", because
    * a channel is not something you are part way through.
    */
-  const specials: [string, PlaylistItem[]][] = [];
-  const resumable = continueWatching(pool, 60);
-  if (resumable.length) {
-    specials.push([
+  const specials: [string, PlaylistItem[]][] = [
+    [
       current === 'live' ? t('section_recently_watched') : t('section_continue_watching'),
-      resumable,
-    ]);
-  }
-  const faves = favoriteItems(pool, 60);
-  if (faves.length) specials.push([t('section_favorites'), faves]);
+      continueWatching(pool, 60),
+    ],
+    [t('section_favorites'), favoriteItems(pool, 60)],
+  ];
   const specialNames = specials.map(([name]) => name);
 
-  let selected = specialNames[0] ?? groups[0] ?? '';
+  /*
+   * Listed whether or not they have anything in them, which is what the television app does -
+   * `val special = listOf("Continue watching", "Recently watched", "Favorites")`, with no check.
+   *
+   * They were conditional here, and the result was that a set with nothing starred and nothing
+   * part-watched showed no Favorites row at all - so the one place a viewer would look to find
+   * out where favourites go was missing precisely when they had not made any yet. An empty row
+   * that says "this is where they appear" is worth more than a tidy list.
+   *
+   * The one deviation: the highlight opens on the first category that has something in it rather
+   * than on the first in the list. Android opens on Continue watching regardless, which is fine
+   * on a set that has been in use and poor on a fresh install - it would greet a viewer with an
+   * empty grid while fifty thousand titles sit one press away.
+   */
+  let selected = specials.find(([, items]) => items.length)?.[0] ?? groups[0] ?? specialNames[0] ?? '';
   /** What the box above the category list is filtering by, across the whole section. */
   let search = '';
   let searchTimer: number | null = null;
@@ -841,8 +852,21 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     const shown = query
       ? pool.filter((entry) => entry.name.toLowerCase().includes(query))
       : base;
-    if (query && !shown.length) {
-      grid.append(el('div', { class: 'grid-empty' }, t('search_no_results', search.trim())));
+    // Said out loud rather than left as a blank area. An empty Favorites is the normal state
+    // before anybody has starred anything, and a screen that simply shows nothing there looks
+    // broken rather than empty.
+    if (!shown.length) {
+      grid.append(
+        el(
+          'div',
+          { class: 'grid-empty' },
+          query
+            ? t('search_no_results', search.trim())
+            : live
+              ? t('no_channels_yet')
+              : t('no_movies_found'),
+        ),
+      );
       return;
     }
     for (const item of shown.slice(0, 400)) {
@@ -1096,7 +1120,15 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   } else {
     // The category list, not the search box above it: arriving on this page should leave the
     // highlight where the next press is most likely to be wanted, and that is the list.
-    focus(sidebar.querySelector<HTMLElement>('.category[data-focus]'));
+    //
+    // And on the category `selected` chose, not simply the first row. Focusing a row is what
+    // selects it, so landing on the first one regardless quietly undid the choice made above -
+    // Series and Live TV both opened on an empty Continue watching even though the code had
+    // already worked out which category had something in it.
+    focus(
+      sidebar.querySelector<HTMLElement>(`.category[data-focus-id="${cssEscape(selected)}"]`)
+        ?? sidebar.querySelector<HTMLElement>('.category[data-focus]'),
+    );
   }
 
   /*
