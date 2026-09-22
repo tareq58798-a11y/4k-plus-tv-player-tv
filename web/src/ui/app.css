@@ -1356,9 +1356,19 @@ body.playing .backdrop-scrim {
   height: 940px;
 }
 
+/*
+ * 400 wide and 2:3, the same column the film page uses - the two are the same kind of page and
+ * were different sizes for no reason.
+ *
+ * align-self is the fix for the shape. A flex container stretches its children to its own height
+ * by default, and a stretched height beats an aspect ratio - so this was being drawn 300 by 940
+ * on a page whose container is 940 tall, which is a poster four times taller than it is wide.
+ * Measured on the set before the fix: series-poster 300x940, its image 296x936.
+ */
 .series-poster {
-  flex: 0 0 300px;
-  width: 300px;
+  align-self: flex-start;
+  flex: 0 0 400px;
+  width: 400px;
   aspect-ratio: 2 / 3;
   border-radius: var(--dim-radius-panel);
   overflow: hidden;
@@ -1375,11 +1385,30 @@ body.playing .backdrop-scrim {
 
 /* The header stays put and the list below it scrolls - a remote walks down into the episodes and
    the title should not walk away with it. Kept tight on purpose so the list gets the rest. */
+/*
+ * The text side of a title page carries its own backing.
+ *
+ * The page scrim is a horizontal gradient, 85% opaque on the left and clear by the right-hand
+ * edge. That is correct for a landing page, where the title and buttons sit on the left and the
+ * artwork is worth leaving visible on the right. These two pages are the other way round - poster
+ * left, words right - so their text was landing on the one part of the screen deliberately left
+ * bright, and on a vivid backdrop it could not be read at all.
+ *
+ * A gradient rather than a flat panel, and not fully opaque, so the artwork still shows through
+ * the way it is meant to.
+ */
+.series-right,
+.details-main {
+  background-image: linear-gradient(90deg, rgba(3, 7, 17, 0.78) 0%, rgba(3, 7, 17, 0.55) 100%);
+  border-radius: var(--dim-radius-panel);
+}
+
 .series-right {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  padding: var(--dim-gap-m);
 }
 
 .series-head h1 {
@@ -1485,8 +1514,9 @@ body.playing .backdrop-scrim {
   min-width: 0;
   overflow-y: auto;
   scrollbar-width: none;
-  /* Room for the focus ring on anything that ends up in here - see the note on .row. */
-  padding: 0 var(--dim-card-bleed);
+  /* Horizontal padding is room for the focus ring on anything that ends up in here - see the note
+     on .row - and the negative margin puts the column back where it was. */
+  padding: var(--dim-gap-m) calc(var(--dim-gap-m) + var(--dim-card-bleed));
   margin: 0 calc(var(--dim-card-bleed) * -1);
 }
 
