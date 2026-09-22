@@ -1013,7 +1013,10 @@ body.playing #app {
   gap: var(--dim-gap-s);
   overflow-x: auto;
   scrollbar-width: none;
-  padding: var(--dim-gap-xs) 0;
+  /* Padded and pulled back, so the focus ring is not cut off at the edge - see the note on .row,
+     which explains why every scrolling box on this page needs this. */
+  padding: var(--dim-gap-xs) var(--dim-card-bleed);
+  margin: 0 calc(var(--dim-card-bleed) * -1);
 }
 
 .pc-strip::-webkit-scrollbar {
@@ -1568,8 +1571,16 @@ body.playing .backdrop-scrim {
 .chips {
   display: flex;
   gap: var(--dim-gap-s);
-  margin: var(--dim-gap-s) 0;
   overflow-x: auto;
+  scrollbar-width: none;
+  /* Padded and pulled back, so the focus ring is not cut off at the edge - see the note on .row,
+     which explains why every scrolling box on this page needs this. */
+  padding: var(--dim-card-bleed);
+  margin: 0 calc(var(--dim-card-bleed) * -1);
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
 }
 
 .chip {
@@ -1590,7 +1601,15 @@ body.playing .backdrop-scrim {
 .episodes {
   flex: 1;
   overflow-y: auto;
-  padding-right: var(--dim-gap-s);
+  scrollbar-width: none;
+  /* Padded and pulled back, so the focus ring is not cut off at the edge - see the note on .row,
+     which explains why every scrolling box on this page needs this. */
+  padding: var(--dim-card-bleed);
+  margin: calc(var(--dim-card-bleed) * -1);
+}
+
+.episodes::-webkit-scrollbar {
+  display: none;
 }
 
 .episode {
@@ -1811,6 +1830,10 @@ body.playing .backdrop-scrim {
   max-height: 700px;
   overflow-y: auto;
   scrollbar-width: none;
+  /* Padded and pulled back, so the focus ring is not cut off at the edge - see the note on .row,
+     which explains why every scrolling box on this page needs this. */
+  padding: var(--dim-card-bleed);
+  margin: calc(var(--dim-card-bleed) * -1);
 }
 
 .category-visibility-list::-webkit-scrollbar {
