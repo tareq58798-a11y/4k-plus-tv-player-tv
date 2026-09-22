@@ -212,6 +212,19 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
   const onFocusIn = (event: FocusEvent) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+    /*
+     * Its own buttons do not count as leaving it.
+     *
+     * Down from a card lands on Play, which is inside this block - and this handler then cleared
+     * the block, destroying the button that had just taken focus. The browser has nowhere to put
+     * focus after that, so it went to BODY: the highlight vanished and every key stopped doing
+     * anything until something re-entered the page.
+     *
+     * So the two faults reported as separate - a dead remote at the end of a row, and Play and
+     * Add favorite being impossible to reach - were one fault. The buttons were always focusable.
+     * Focusing them is what destroyed them.
+     */
+    if (target.closest('.info')) return;
     if (!target.classList.contains('card') || target.classList.contains('tile')) describe(null);
   };
   document.addEventListener('focusin', onFocusIn);

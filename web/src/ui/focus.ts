@@ -74,13 +74,25 @@ function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
 
     let along: number;
     let across: number;
-    if (direction === 'up') {
-      if (dy >= -1) continue;
-      along = -dy;
-      across = Math.abs(dx);
-    } else if (direction === 'down') {
-      if (dy <= 1) continue;
-      along = dy;
+    if (direction === 'up' || direction === 'down') {
+      if (direction === 'up' ? dy >= -1 : dy <= 1) continue;
+      /*
+       * Vertical moves stay in their column, the same way sideways moves stay in their row below.
+       *
+       * Without this, Down from the only poster in a category found the nearest thing beneath it
+       * anywhere on screen - the search box in the category pane, four hundred pixels to the left -
+       * and the highlight left the grid sideways while the viewer was pressing Down. Android
+       * cannot do that: its grid is a real grid widget and vertical movement is trapped inside it,
+       * with Left and Right the only ways between the pane and the posters.
+       *
+       * Requiring the candidate to overlap the source horizontally is that rule, and it is the
+       * mirror of the one already applied to Left and Right. A column that has run out simply does
+       * not move, which is what the television app does and what tells a viewer they are at the
+       * end of it.
+       */
+      const rect = candidate.getBoundingClientRect();
+      if (rect.right <= fromRect.left || rect.left >= fromRect.right) continue;
+      along = Math.abs(dy);
       across = Math.abs(dx);
     } else {
       if (direction === 'left' ? dx >= -1 : dx <= 1) continue;
