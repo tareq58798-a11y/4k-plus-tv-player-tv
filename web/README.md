@@ -78,6 +78,22 @@ hls.js is a separate chunk on purpose. It exists only so this can be developed w
 television, and folding it into the main bundle would have a Samsung set parse 595 kB of code,
 on a slow engine, before the first frame, for a player it will never construct.
 
+### Things the television app has that this deliberately does not
+
+These are decided, not outstanding. Each one was looked at against the Android app and left out
+because the platform makes it a worse idea here, and writing that down is the only thing that
+stops it being reopened every few months.
+
+* **Mute.** The television app mutes its own ExoPlayer instance, which affects that stream and
+  nothing else. Tizen offers no per-stream volume for AVPlay; the available API,
+  `tizen.tvaudiocontrol`, mutes the *television*. An app that silences the whole set from its own
+  player button, and leaves it silenced for whatever the viewer switches to next, is doing
+  something materially different from what the button says. Left out on 2026-09-22.
+* **Player engine and connection mode.** Both are ExoPlayer settings - external players and
+  buffering strategy - with no AVPlay counterpart. See the note on `playbackPage` in `ui/settings.ts`.
+* **Start muted, and embedded-subtitle handling.** Decisions the decoder makes for us on this
+  platform. A switch that does nothing is worse than an absent one.
+
 ## State
 
 Working: the shared extraction, the Xtream client, the D-pad engine, the key map, storage, the
