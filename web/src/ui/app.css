@@ -414,8 +414,12 @@ body.playing #app {
   scrollbar-width: none;
   /* Room for the ring and the growth on the outer columns, then pulled back so the columns
      themselves keep their width - see the note on .row. */
-  padding: 0 var(--dim-card-bleed) var(--dim-gap-l);
-  margin: 0 calc(var(--dim-card-bleed) * -1);
+  /* Top as well as the sides. Left and right were padded and the top was not, so the first row
+     of posters had its ring sliced off along the top edge while every row below it was fine -
+     the same fault as the first card in a landing row, on the other axis. The negative margin
+     keeps the first row level with the top of the category pane beside it. */
+  padding: var(--dim-card-bleed) var(--dim-card-bleed) var(--dim-gap-l);
+  margin: calc(var(--dim-card-bleed) * -1);
 }
 
 .grid::-webkit-scrollbar {
@@ -579,8 +583,10 @@ body.playing #app {
   height: 880px;
   overflow-y: auto;
   scrollbar-width: none;
-  /* Symmetric, so a focused row's ring is not clipped on the left the way the cards were. */
-  padding: 0 var(--dim-gap-xs);
+  /* All four sides, so a focused row's ring is not clipped - on the left the way the cards
+     were, or along the top the way the first poster was. */
+  padding: var(--dim-gap-xs);
+  margin: calc(var(--dim-gap-xs) * -1);
 }
 
 .channel-list::-webkit-scrollbar {
@@ -1127,6 +1133,16 @@ body.playing .backdrop-scrim {
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
+  /*
+   * This box clips too, and it clips before .row does.
+   *
+   * overflow-y: auto with a visible overflow-x computes the other axis to auto as well, so this
+   * is a clip on both sides - and it sits on the page margin, which is exactly where the first
+   * card sits. Padding .row alone moved .row's own clip edge out and changed nothing, because
+   * the highlight was being cut by this box one level up. Both need the room.
+   */
+  padding: 0 var(--dim-card-bleed);
+  margin: 0 calc(var(--dim-card-bleed) * -1);
 }
 
 /* A scrollbar is furniture for a mouse. Nothing here has one. */
