@@ -76,6 +76,15 @@ export interface MediaPlayer {
   setScaling(mode: VideoScaling): void;
   /** The picture's size as `W x H`, or null while the stream has not reported one. */
   resolution(): string | null;
+  /**
+   * True when a picture is actually being decoded right now.
+   *
+   * Asked rather than announced, because AVPlay will accept a stream, report prepare success, and
+   * then tear itself down without telling anybody - which is what a channel the provider still
+   * lists but no longer carries does. A caller that has drawn something on the strength of
+   * playback starting needs a way to find out that it stopped.
+   */
+  isPlaying(): boolean;
   /** The subtitle tracks the stream carries, or an empty list. Only valid once playing. */
   subtitleTracks(): AudioTrack[];
   /** Null turns subtitles off. */
@@ -357,6 +366,14 @@ class TizenPlayer implements MediaPlayer {
    * defended for the reason given over languageOf: a missing field is a fine outcome, an exception
    * thrown while a film is playing is not.
    */
+  isPlaying(): boolean {
+    try {
+      return String(this.av.getState()).toUpperCase() === 'PLAYING';
+    } catch {
+      return false;
+    }
+  }
+
   resolution(): string | null {
     let tracks: AvTrack[];
     try {
@@ -558,6 +575,10 @@ class BrowserPlayer implements MediaPlayer {
    * television, and pretending to offer a control that the shipping platform implements
    * completely differently would make the development build a worse guide, not a better one.
    */
+  isPlaying(): boolean {
+    return !this.video.paused && !this.video.ended && this.video.readyState >= 2;
+  }
+
   /** The element knows its own picture size, unlike AVPlay, so this needs no digging. */
   resolution(): string | null {
     const { videoWidth, videoHeight } = this.video;

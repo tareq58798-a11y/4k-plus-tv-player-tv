@@ -814,6 +814,41 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           root.style.setProperty('--preview-right', `${Math.round(box.right)}px`);
           root.style.setProperty('--preview-bottom', `${Math.round(box.bottom)}px`);
           document.body.classList.add('previewing');
+          /*
+           * Confirmed a moment later, because prepare succeeding is not the same as playing.
+           *
+           * A provider's list outlives its streams: a channel it still carries an entry for but no
+           * longer serves will open, prepare, report success, and then tear the decoder down
+           * without telling the page. Nothing was watching for that, so the hole stayed cut over a
+           * decoder in state NONE - a black rectangle where the picture should be, which is what
+           * "the preview is gone" turned out to be. Measured on the set: the first channel of the
+           * first category is one of these, and every channel after it played.
+           *
+           * Closing the hole puts the artwork back, which is the honest thing to show for a
+           * channel that is not arriving.
+           *
+           * Watched repeatedly rather than looked at once. A channel that is merely slow passes
+           * through IDLE and READY on its way to PLAYING, so a single check a few seconds in
+           * would close the hole on a stream that was about to turn up - measured exactly that
+           * while testing this, with a fresh tune reading IDLE at two seconds and READY at eight.
+           * Twelve seconds, then give up.
+           */
+          let looks = 0;
+          const watch = window.setInterval(() => {
+            // Somebody has moved on, or the screen has gone. Whoever did that owns the class now.
+            if (previewing !== item.streamUrl) {
+              window.clearInterval(watch);
+              return;
+            }
+            if (player.isPlaying()) {
+              window.clearInterval(watch);
+              return;
+            }
+            if (++looks < 6) return;
+            window.clearInterval(watch);
+            previewing = null;
+            document.body.classList.remove('previewing');
+          }, 2000);
         })
         .catch(() => {
           // A channel that will not tune is not an error worth a dialog while browsing - the
