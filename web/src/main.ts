@@ -743,6 +743,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     // half-drawn frame ended up behind the Movies grid.
     previewing = null;
     player.stop();
+    // The hole closes with the picture. Leaving it open would show the plane's black rather than
+    // the page's own background on every screen that follows.
+    document.body.classList.remove('previewing');
   }
 
   function schedulePreview(item: PlaylistItem): void {
@@ -756,11 +759,25 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       player.stop();
       previewing = item.streamUrl;
       const box = preview.getBoundingClientRect();
-      void player.play(item.streamUrl, box).catch(() => {
-        // A channel that will not tune is not an error worth a dialog while browsing - the viewer
-        // is passing through. The listings beside it still say what is on.
-        previewing = null;
-      });
+      void player
+        .play(item.streamUrl, box)
+        .then(() => {
+          // The page has to get out of the way, or there is nothing to see.
+          //
+          // AVPlay paints on a plane *behind* the page, and this page is opaque: a body gradient
+          // over the whole screen and three full-size backdrop layers above that. The preview box
+          // being transparent reveals the page's own background, not the video - so before this,
+          // the decoder ran, the display rectangle was set correctly, and the viewer saw the
+          // Live TV gradient. Full screen already solves this with body.playing; a preview needs
+          // the same hole punched, and body.previewing is that.
+          document.body.classList.add('previewing');
+        })
+        .catch(() => {
+          // A channel that will not tune is not an error worth a dialog while browsing - the
+          // viewer is passing through. The listings beside it still say what is on.
+          previewing = null;
+          document.body.classList.remove('previewing');
+        });
     }, PREVIEW_DELAY_MS);
   }
 

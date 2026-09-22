@@ -41,11 +41,6 @@ body {
   background-image: linear-gradient(180deg, var(--tone-page-top), var(--tone-page-bottom));
 }
 
-body.playing {
-  background-image: none;
-  background: transparent;
-}
-
 /*
  * Live TV, darkened.
  *
@@ -69,6 +64,52 @@ body.section-live .backdrop-scrim {
 body.section-live .sidebar,
 body.section-live .channel-list {
   background: rgba(0, 0, 0, 0.42);
+}
+
+/*
+ * Getting the page out of the way so the decoder can be seen. These must come last.
+ *
+ * AVPlay paints on a plane *behind* the page, so a picture only shows where the page paints
+ * nothing. That makes these rules the ones that decide whether video is visible at all - and
+ * being single-class selectors they tie with body.section-live above, which means source order is
+ * the whole argument. Written earlier in the file they lost it silently: the backdrop layers went
+ * away, the body gradient did not, and the stream played perfectly behind it. Measured on the
+ * emulator, .previewing hid all three layers and left backgroundImage reading
+ * linear-gradient(rgb(2, 6, 13), rgb(0, 2, 8)).
+ *
+ * That was true of .playing too, not only the preview this was found through. Nothing clears
+ * section-live when a channel opens full screen - it is toggled per section, not per screen - so
+ * a channel watched full screen had the same opaque gradient over it.
+ *
+ * Anything added below here that paints the page had better be checked against them.
+ */
+body.playing,
+body.previewing {
+  background-image: none;
+  background: transparent;
+}
+
+body.playing .backdrop-base,
+body.playing .backdrop-layer,
+body.playing .backdrop-scrim,
+body.previewing .backdrop-base,
+body.previewing .backdrop-layer,
+body.previewing .backdrop-scrim {
+  display: none;
+}
+
+/*
+ * The preview differs from full screen in one respect: full screen wants the entire page gone,
+ * while this still has a category list, a channel list and a listings panel to show. With the
+ * page's own background removed those would be white text over whatever the channel is showing,
+ * so they carry their own - opaque, because the .42 tint above was made to sit over a gradient
+ * that is no longer there.
+ */
+body.previewing .browser-title,
+body.previewing .sidebar,
+body.previewing .channel-list,
+body.previewing .guide {
+  background: #02060d;
 }
 
 #video-plane {
