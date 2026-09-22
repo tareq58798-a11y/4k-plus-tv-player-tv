@@ -1721,15 +1721,29 @@ body.playing .backdrop-scrim {
 
 /* ----------------------------------------------------------- welcome page */
 
+/*
+ * The welcome screen has to fit 1080, and on a set that cannot be identified by its MAC it did
+ * not - measured on the emulator at 1454 tall, with the Connect button 133 pixels below the
+ * bottom of the screen and no way to reach it.
+ *
+ * It only shows up there because identification failing is what adds the warning block above it.
+ * A real television that activates normally never renders that block, which is why this screen
+ * looked fine on the set and is broken here - and "works unless activation fails" is the wrong
+ * way round for the screen whose whole job is handling activation.
+ *
+ * The heading is trimmed to buy back room, and the panels below it scroll as one, the same way
+ * the landing rows do. Between them the ordinary case fits with room to spare and the failing
+ * case stays reachable.
+ */
 .welcome-title {
-  margin: 40px 0 0;
-  font-size: 88px;
+  margin: var(--dim-gap-s) 0 0;
+  font-size: 64px;
   font-weight: 800;
 }
 
 .welcome-sub {
-  margin: 0 0 var(--dim-gap-l);
-  font-size: 34px;
+  margin: 0 0 var(--dim-gap-m);
+  font-size: 30px;
   color: var(--tone-text-secondary);
 }
 
@@ -1737,11 +1751,24 @@ body.playing .backdrop-scrim {
   display: flex;
   gap: var(--dim-gap-l);
   align-items: flex-start;
+  /* Takes the room left under the headings and scrolls inside it, rather than growing the page
+     past the screen - body is overflow:hidden, so anything past 1080 is simply gone. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.welcome::-webkit-scrollbar {
+  display: none;
 }
 
 .welcome .panel {
   width: 880px;
   margin: 0;
+  /* The panels size to their content and the row scrolls; a max-height here would give each one
+     its own scrollbar and two independent scrolls on one screen is one too many for a remote. */
+  max-height: none;
 }
 
 .welcome .panel h2 {
