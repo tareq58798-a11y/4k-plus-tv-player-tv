@@ -98,6 +98,25 @@ async function sha256(value: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', data));
 }
 
+/**
+ * The app's own version, as the set understands it.
+ *
+ * Read from the installed widget rather than compiled in, so it cannot disagree with what the
+ * television would report - the number in config.xml is the one that matters, and a constant here
+ * would be a second copy of it waiting to drift. Off a set there is no application to ask, so this
+ * says so rather than inventing a number.
+ */
+export function appVersion(): string {
+  try {
+    const api = (window as unknown as {
+      tizen?: { application?: { getCurrentApplication(): { appInfo?: { version?: string } } } };
+    }).tizen;
+    return api?.application?.getCurrentApplication().appInfo?.version || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
 export type IdentitySource = 'duid' | 'network' | 'generated';
 
 export interface DeviceIdentity {

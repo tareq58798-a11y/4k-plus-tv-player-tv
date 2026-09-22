@@ -38,6 +38,40 @@ export function resumePoints(): ResumeMap {
 }
 
 /**
+ * Forgets the favourites and resume points belonging to [items].
+ *
+ * Android keeps three separate stores - movie_library, series_library, favorite_channels - and
+ * clears one per button. This app keeps one of each, keyed by itemKey, and itemKey carries no
+ * notion of kind: it is the provider's id, or the group and name. So the kind has to come from
+ * the catalogue, and the caller passes the items it means rather than a label.
+ *
+ * Anything not in [items] is left alone, so clearing films cannot take a series resume point with
+ * it, and a title the provider has since dropped keeps its entry rather than being silently
+ * collected - it will be cleared by the button that matches it once it returns.
+ */
+export function clearActivity(items: PlaylistItem[]): void {
+  const keys = new Set(items.map(itemKey));
+  if (!keys.size) return;
+
+  const starred = favorites();
+  let touchedFavorites = false;
+  for (const key of keys) {
+    if (starred.delete(key)) touchedFavorites = true;
+  }
+  if (touchedFavorites) writeJson(FAVORITES, [...starred]);
+
+  const resume = resumePoints();
+  let touchedResume = false;
+  for (const key of keys) {
+    if (key in resume) {
+      delete resume[key];
+      touchedResume = true;
+    }
+  }
+  if (touchedResume) writeJson(RESUME, resume);
+}
+
+/**
  * Records where playback got to.
  *
  * The first and last minutes are deliberately not recorded. A title abandoned twenty seconds in

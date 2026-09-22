@@ -13,7 +13,9 @@ import { setLocale, isRtl, locale, t } from './shared/i18n';
 import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
-import { continueWatching, favoriteItems, recentlyAdded, rememberPosition } from './shared/library';
+import {
+  clearActivity, continueWatching, favoriteItems, recentlyAdded, rememberPosition,
+} from './shared/library';
 import { focus, handleKey, pushKeyHandler, setFocusDirection } from './ui/focus';
 import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
@@ -29,7 +31,7 @@ import {
   applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
 } from './shared/categories';
 import { openCategoryMenu } from './ui/categoryMenu';
-import { identity } from './platform/identity';
+import { appVersion, identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import { loadM3u } from './shared/m3u';
 import {
@@ -471,6 +473,23 @@ function settingsScreen(openAt?: 'language'): void {
     // Every word on screen changes, so the page behind is rebuilt rather than patched.
     onLanguageChanged: () => {
       setFocusDirection(isRtl());
+      settingsScreen();
+    },
+    // Asked for rather than captured, so App info describes the catalogue that is loaded now.
+    playlist: () => catalogue,
+    appVersion: appVersion(),
+    // One store here where Android keeps three, so the kind comes from the catalogue - see
+    // clearActivity. Redrawn afterwards so the row the viewer just pressed is still under them.
+    onClearMovieActivity: () => {
+      clearActivity((catalogue?.items ?? []).filter((item) => item.kind === 'movie'));
+      settingsScreen();
+    },
+    onClearSeriesActivity: () => {
+      clearActivity((catalogue?.items ?? []).filter((item) => item.kind === 'series'));
+      settingsScreen();
+    },
+    onClearLiveActivity: () => {
+      clearActivity((catalogue?.items ?? []).filter((item) => item.kind === 'live'));
       settingsScreen();
     },
     onClearCache: () => {

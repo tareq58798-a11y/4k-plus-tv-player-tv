@@ -11,7 +11,19 @@
  * missing row - it invites a press and answers with nothing.
  */
 import { availableLocales, locale, setLocale, t } from '../shared/i18n';
-import { backgroundMode, setBackgroundMode } from '../shared/preferences';
+import {
+  SKIP_CHOICES,
+  backgroundMode,
+  setBackgroundMode,
+  setSkipSeconds,
+  setSubtitleBackground,
+  setVideoScaling,
+  skipSeconds,
+  subtitleBackground,
+  videoScaling,
+  type VideoScalingPreference,
+} from '../shared/preferences';
+import type { LoadedPlaylist } from '../shared/models';
 import { cryptoAvailable, hasPin, parental, update } from '../shared/parental';
 import {
   hiddenCategories, hideCategory, unhideCategory, type CategoryKind,
@@ -75,11 +87,28 @@ export interface SettingsOptions {
   onLockCategories: () => void;
 
   onClearCache: () => void;
+
+  /** The loaded catalogue, for the App info page. Asked for, so it reflects the current one. */
+  playlist: () => LoadedPlaylist | null;
+  /** The app's own version, which only the caller knows - it comes from the widget manifest. */
+  appVersion: string;
+  onClearMovieActivity: () => void;
+  onClearSeriesActivity: () => void;
+  onClearLiveActivity: () => void;
   onBack: () => void;
 }
 
 /** Which page is showing. ROOT is the menu; the rest mirror the television app's pages. */
-type Page = 'root' | 'playlist' | 'appearance' | 'language' | 'parental' | 'categories';
+type Page =
+  | 'root'
+  | 'playlist'
+  | 'info'
+  | 'playback'
+  | 'appearance'
+  | 'language'
+  | 'history'
+  | 'parental'
+  | 'categories';
 
 /** The three catalogues, in the order the navigation bar puts them. */
 const KINDS: { kind: CategoryKind; label: () => string }[] = [
@@ -113,8 +142,11 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function title(): string {
     switch (page) {
       case 'playlist': return t('settings_playlists');
+      case 'info': return t('settings_app_info');
+      case 'playback': return t('settings_playback');
       case 'appearance': return t('settings_appearance');
       case 'language': return t('cd_language');
+      case 'history': return t('settings_privacy_history');
       case 'parental': return t('settings_parental_controls');
       case 'categories': return t('settings_category_visibility');
       default: return t('settings_title');
@@ -134,17 +166,173 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
 
   function rootPage(): HTMLElement {
     const menu = el('div', { class: 'settings-menu', 'data-focus-group': 'settings-menu' });
-    // Grouped as the television app groups them: what the viewer watches with, then what they
-    // restrict. Pages not yet ported - playback, app info, privacy - are absent rather than
-    // listed and dead.
+    // The television app's own order and grouping: what the viewer watches with, then how it
+    // looks, then what they restrict.
     menu.append(
       menuRow('playlist', t('settings_playlists'), 'playlist'),
+      menuRow('info', t('settings_app_info'), 'info'),
+      menuRow('playback', t('settings_playback'), 'playback'),
       menuRow('appearance', t('settings_appearance'), 'appearance'),
       menuRow('language', t('cd_language'), 'language'),
+      menuRow('history', t('settings_privacy_history'), 'history'),
       menuRow('categories', t('settings_category_visibility'), 'categories'),
       menuRow('parental', t('settings_parental_controls'), 'parental'),
     );
     return menu;
+  }
+
+  /** A label and a value, for the read-only facts on the App info page. */
+  function factRow(label: string, value: string): HTMLElement {
+    return el(
+      'div',
+      { class: 'settings-fact' },
+      el('span', { class: 'settings-fact-label' }, label),
+      el('span', { class: 'settings-fact-value' }, value),
+    );
+  }
+
+  /**
+   * What the app is and what it is signed in to. Read-only throughout.
+   *
+   * The Android version reports the Android release here; this reports the Tizen one, read from
+   * the user agent because a web app has no other way to ask. The playlist facts come from the
+   * catalogue the app already has rather than from a fresh request - this page is a statement of
+   * what is loaded, and going to the provider to draw it would let it disagree with the rest of
+   * the app.
+   */
+  function infoPage(): HTMLElement {
+    const group = el('div', { class: 'settings-group' });
+    const playlist = options.playlist();
+    const tizen = /Tizen ([\d.]+)/.exec(navigator.userAgent)?.[1];
+
+    group.append(el('div', { class: 'settings-note strong' }, t('application_label')));
+    group.append(factRow(t('app_name_label'), t('app_name')));
+    group.append(factRow(t('version_label'), options.appVersion));
+    if (tizen) group.append(factRow('Tizen', tizen));
+
+    group.append(el('div', { class: 'settings-note strong' }, t('active_playlist_label')));
+    group.append(factRow(t('name_label'), playlist?.name || t('no_active_playlist')));
+    group.append(factRow(t('status_label'), playlist?.accountStatus || t('not_provided')));
+    group.append(
+      factRow(
+        t('expiry_date_label'),
+        playlist?.expiryEpochSeconds
+          ? new Date(playlist.expiryEpochSeconds * 1000).toLocaleDateString(locale())
+          : t('not_provided'),
+      ),
+    );
+    group.append(factRow(t('items_label'), String(playlist?.items.length ?? 0)));
+    return group;
+  }
+
+  /**
+   * The playback choices that mean something on a television.
+   *
+   * Four of the Android page's rows are not here, and deliberately: the player engine and the
+   * connection mode are ExoPlayer settings with no AVPlay counterpart, and start-muted and
+   * embedded-subtitle handling are decisions the decoder makes for us on this platform. Listing
+   * them would be offering a switch that does nothing.
+   *
+   * The two that are here are the two the player's own panel writes, so changing one in either
+   * place shows up in the other.
+   */
+  function playbackPage(): HTMLElement {
+    const group = el('div', { class: 'settings-group', 'data-focus-group': 'playback' });
+
+    group.append(el('div', { class: 'settings-note strong' }, t('skip_interval')));
+    const currentSkip = skipSeconds();
+    for (const seconds of SKIP_CHOICES) {
+      const row = el(
+        'div',
+        {
+          class: 'settings-row',
+          tabindex: '-1',
+          'data-focus': '',
+          'data-focus-id': `skip-${seconds}`,
+          'aria-selected': String(seconds === currentSkip),
+        },
+        t('skip_seconds_format', String(seconds)),
+      );
+      row.addEventListener('click', () => {
+        setSkipSeconds(seconds);
+        draw();
+      });
+      group.append(row);
+    }
+
+    group.append(el('div', { class: 'settings-note strong' }, t('video_scaling')));
+    const currentScaling = videoScaling();
+    const SCALINGS: { mode: VideoScalingPreference; label: () => string; desc: () => string }[] = [
+      { mode: 'fit', label: () => t('video_fit'), desc: () => t('video_fit_desc') },
+      { mode: 'fill', label: () => t('video_fill'), desc: () => t('video_fill_desc') },
+      { mode: 'stretch', label: () => t('video_stretch'), desc: () => t('video_stretch_desc') },
+    ];
+    for (const entry of SCALINGS) {
+      const row = el(
+        'div',
+        {
+          class: 'settings-row',
+          tabindex: '-1',
+          'data-focus': '',
+          'data-focus-id': `scaling-${entry.mode}`,
+          'aria-selected': String(entry.mode === currentScaling),
+        },
+        entry.label(),
+      );
+      row.append(el('div', { class: 'settings-row-desc' }, entry.desc()));
+      row.addEventListener('click', () => {
+        setVideoScaling(entry.mode);
+        draw();
+      });
+      group.append(row);
+    }
+
+    group.append(el('div', { class: 'settings-note strong' }, t('subtitles_label')));
+    const backing = subtitleBackground();
+    const backingRow = el(
+      'div',
+      {
+        class: 'settings-row',
+        tabindex: '-1',
+        'data-focus': '',
+        'data-focus-id': 'subtitle-backing',
+        'aria-selected': String(backing),
+      },
+      t('subtitle_background'),
+    );
+    backingRow.addEventListener('click', () => {
+      setSubtitleBackground(!backing);
+      draw();
+    });
+    group.append(backingRow);
+    return group;
+  }
+
+  /**
+   * Forgetting things, which is the only thing this page does.
+   *
+   * Each row clears one kind of history and says so before it is pressed. Nothing here asks for
+   * confirmation, matching the television app - these are small, named, and losing a resume point
+   * is not the kind of loss a dialog earns.
+   */
+  function historyPage(): HTMLElement {
+    const group = el('div', { class: 'settings-group', 'data-focus-group': 'history' });
+    const rows: [string, string, string, () => void][] = [
+      ['movies', t('clear_movie_activity'), t('clear_movie_activity_desc'), options.onClearMovieActivity],
+      ['series', t('clear_series_activity'), t('clear_series_activity_desc'), options.onClearSeriesActivity],
+      ['live', t('clear_live_activity'), t('clear_live_activity_desc'), options.onClearLiveActivity],
+    ];
+    for (const [id, label, description, action] of rows) {
+      const row = el(
+        'div',
+        { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': `clear-${id}` },
+        label,
+      );
+      row.append(el('div', { class: 'settings-row-desc' }, description));
+      row.addEventListener('click', action);
+      group.append(row);
+    }
+    return group;
   }
 
   function languagePage(): HTMLElement {
@@ -359,6 +547,9 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function body(): HTMLElement {
     switch (page) {
       case 'playlist': return playlistPage();
+      case 'info': return infoPage();
+      case 'playback': return playbackPage();
+      case 'history': return historyPage();
       case 'appearance': return appearancePage();
       case 'language': return languagePage();
       case 'parental': return parentalPage();
