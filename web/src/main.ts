@@ -876,6 +876,26 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           // Handed over rather than left running: the preview and the full screen are the same
           // decoder, and two calls to play() without a stop between them is how a set ends up
           // showing the previous channel with the new one's sound.
+          /*
+           * A channel already on screen is handed over rather than stopped and reopened.
+           *
+           * The preview and full screen are the same decoder, so restarting it means several
+           * seconds of black for a picture that was already running. When the channel being
+           * opened is the one previewing, the timer is cancelled, the teardown that clear() would
+           * otherwise run is taken off the hook, and playScreen is told to resize rather than
+           * play. Any other channel still goes the long way round, because that genuinely is a
+           * different stream.
+           */
+          if (item.kind === 'live' && previewing === item.streamUrl) {
+            if (previewTimer !== null) {
+              window.clearTimeout(previewTimer);
+              previewTimer = null;
+            }
+            previewing = null;
+            leaveScreen = null;
+            playScreen(item, [], true);
+            return;
+          }
           stopPreview();
           // A channel is a thing you turn on; a film is a thing you choose. Picking a channel out
           // of the list means watch it now - there is nothing to read about it first, and the
@@ -1236,13 +1256,16 @@ async function detailsScreen(item: PlaylistItem): Promise<void> {
  * fetched by the screen that got us here and asking the provider for it twice would be a round
  * trip in front of the picture.
  */
-function playScreen(item: PlaylistItem, siblings: StripEpisode[] = []): void {
+function playScreen(item: PlaylistItem, siblings: StripEpisode[] = [], handover = false): void {
   if (item.kind === 'series') {
     void seriesScreen(item);
     return;
   }
   clear();
   document.body.classList.add('playing');
+  // The preview's hole in the backdrop goes with the preview. Full screen takes the whole backdrop
+  // away instead, which .playing above already does.
+  document.body.classList.remove('previewing');
 
   let durationMs = 0;
   let positionMs = 0;
@@ -1250,6 +1273,9 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = []): void {
   const overlay = createPlayerOverlay({
     title: item.name,
     player,
+    // A channel has no timeline to scrub and no end to run towards, so it gets a shorter set of
+    // controls - see PlayerOverlayOptions.live.
+    live: item.kind === 'live',
     episodes: siblings,
     currentEpisodeId: item.channelId,
     onEpisode: (episode) => {
@@ -1295,9 +1321,25 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = []): void {
     if (event.type === 'subtitle') overlay.setCaption(event.text);
   });
 
-  void player.play(item.streamUrl, new DOMRect(0, 0, window.innerWidth, window.innerHeight)).catch((error: unknown) => {
-    overlay.setMessage(error instanceof Error ? error.message : String(error));
-  });
+  const full = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  if (handover) {
+    /*
+     * Already playing. Grow the picture instead of starting it again.
+     *
+     * Opening a channel used to stop the preview and open the same stream over, which on AVPlay
+     * means close, open, prepare, play - several seconds of black on the way into a channel that
+     * was already decoding perfectly a moment earlier. Nothing about the stream has changed; only
+     * the rectangle it is drawn in has. The television app gets this for free by putting its
+     * fullscreen view in a dialog over the same player instance.
+     */
+    player.setRect(full);
+    overlay.setPaused(false);
+    player.setScaling(videoScaling());
+  } else {
+    void player.play(item.streamUrl, full).catch((error: unknown) => {
+      overlay.setMessage(error instanceof Error ? error.message : String(error));
+    });
+  }
 
   // Every key goes to the overlay, and nothing falls through to the page underneath. An arrow key
   // reaching the page would move a highlight the viewer cannot see, on a screen that is not there.

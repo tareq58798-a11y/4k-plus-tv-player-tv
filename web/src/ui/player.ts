@@ -46,6 +46,14 @@ export interface PlayerOverlayOptions {
   title: string;
   player: MediaPlayer;
   /**
+   * A channel rather than a recording, which changes what the controls are.
+   *
+   * There is nothing to seek through and no end to run towards, so the timeline, its two clocks
+   * and the skip buttons are all answering questions a live stream cannot be asked. The
+   * television app settles this by turning media3's controller off entirely for Live TV.
+   */
+  live?: boolean;
+  /**
    * The rest of the season, empty for a film.
    *
    * Its presence is what makes Down mean "show me the episodes" rather than "walk the controls" -
@@ -140,7 +148,7 @@ function setIcon(node: HTMLElement, path: string): void {
 }
 
 export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverlay {
-  const { player } = options;
+  const { player, live = false } = options;
   // Read once here and updated by the panel below, so a change takes effect on the next press
   // rather than on the next film.
   let skip = skipSeconds();
@@ -187,7 +195,9 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const rewind = button('pc-rewind', t('cd_rewind'), ICONS.rewind);
   const playPause = button('pc-playpause', t('play_action'), ICONS.pause);
   const forward = button('pc-forward', t('cd_forward'), ICONS.forward);
-  transport.append(rewind, playPause, forward);
+  // Skipping is for a recording. A live stream has no position to skip from.
+  if (live) transport.append(playPause);
+  else transport.append(rewind, playPause, forward);
   chrome.append(transport);
 
   // ----------------------------------------------------------------- timeline
@@ -218,7 +228,9 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   total.textContent = '0:00';
 
   bar.append(elapsed, track, total);
-  chrome.append(bar);
+  // Left out of the page rather than hidden, so the timeline is not a focus stop that cannot be
+  // seen - see stepDown, which walks what is actually there.
+  if (!live) chrome.append(bar);
 
   // ----------------------------------------------------------------- settings
   const tools = document.createElement('div');
@@ -594,6 +606,12 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // not the same walk a film gets.
     if (episodes.length) { openStrip(); return true; }
     const here = document.activeElement;
+    // A live stream has no timeline, so the walk is one stop shorter: transport, then settings.
+    if (live) {
+      if (here === settingsButton) { openPanel(); return true; }
+      focus(settingsButton);
+      return true;
+    }
     if (here === track) { focus(settingsButton); return true; }
     if (here === settingsButton) { openPanel(); return true; }
     focus(track);
@@ -605,7 +623,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // Up is the strip's way out, mirroring the way it was opened.
     if (stripOpen) { closeStrip(); focus(playPause); return true; }
     const here = document.activeElement;
-    if (here === settingsButton) { focus(track); return true; }
+    if (here === settingsButton) { focus(live ? playPause : track); return true; }
     if (here === track) { focus(playPause); return true; }
     return true;
   }
@@ -666,10 +684,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       case 'up':
         return stepUp();
       case 'left':
-        if (document.activeElement === track) { scrub(-skip * 1000); return true; }
+        if (!live && document.activeElement === track) { scrub(-skip * 1000); return true; }
         return false;
       case 'right':
-        if (document.activeElement === track) { scrub(skip * 1000); return true; }
+        if (!live && document.activeElement === track) { scrub(skip * 1000); return true; }
         return false;
       case 'enter':
         (document.activeElement as HTMLElement | null)?.click();
