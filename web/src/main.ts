@@ -792,6 +792,16 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           // the decoder ran, the display rectangle was set correctly, and the viewer saw the
           // Live TV gradient. Full screen already solves this with body.playing; a preview needs
           // the same hole punched, and body.previewing is that.
+          //
+          // A hole exactly the size of the picture, not the whole screen. Taking the backdrop away
+          // altogether was the first attempt and it made the rest of the page black, because
+          // outside the decoder's rectangle the video plane has nothing on it - see the clip-path
+          // these four values drive.
+          const root = document.documentElement;
+          root.style.setProperty('--preview-x', `${Math.round(box.x)}px`);
+          root.style.setProperty('--preview-y', `${Math.round(box.y)}px`);
+          root.style.setProperty('--preview-right', `${Math.round(box.right)}px`);
+          root.style.setProperty('--preview-bottom', `${Math.round(box.bottom)}px`);
           document.body.classList.add('previewing');
         })
         .catch(() => {

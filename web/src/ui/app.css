@@ -51,11 +51,19 @@ body {
  * readable here.
  */
 body.section-live {
-  background-image: linear-gradient(180deg, #02060d, #000208);
+  background-image: linear-gradient(180deg, #050b16, #01030a);
 }
 
+/*
+ * Eased back from 0.55, which was too much.
+ *
+ * Three things darken this screen and they multiply: this flat layer, the scrim gradients it sits
+ * on, and the tint on the two columns. At 0.55 on top of the rest the artwork had stopped being
+ * artwork and become a texture, which is not what "a little bit darker" asked for. The gradient
+ * above is back to the app's own page colours too - it had been taken almost to black.
+ */
 body.section-live .backdrop-scrim {
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.3);
 }
 
 /* Deliberately not .card. The television app darkens Live TV's own columns, not the artwork
@@ -89,27 +97,40 @@ body.previewing {
   background: transparent;
 }
 
+/* Full screen wants the whole backdrop gone: the picture is the page. */
 body.playing .backdrop-base,
 body.playing .backdrop-layer,
-body.playing .backdrop-scrim,
-body.previewing .backdrop-base,
-body.previewing .backdrop-layer,
-body.previewing .backdrop-scrim {
+body.playing .backdrop-scrim {
   display: none;
 }
 
 /*
- * The preview differs from full screen in one respect: full screen wants the entire page gone,
- * while this still has a category list, a channel list and a listings panel to show. With the
- * page's own background removed those would be white text over whatever the channel is showing,
- * so they carry their own - opaque, because the .42 tint above was made to sit over a gradient
- * that is no longer there.
+ * A preview wants a hole the size of the picture, not the whole backdrop taken away.
+ *
+ * Removing it altogether was the first attempt and it was reported back as the screen being too
+ * dark, correctly: outside the decoder's rectangle the video plane has nothing on it, so the rest
+ * of the page went black. Everywhere the picture is not, the artwork should still be there.
+ *
+ * The polygon is one path that doubles back on itself - the outer ring clockwise and the inner
+ * ring anticlockwise - which under the default fill rule leaves the inner rectangle empty. The
+ * four values come from the preview element's own measured box, set as custom properties when
+ * playback starts, because only the page knows where it put that box.
  */
-body.previewing .browser-title,
-body.previewing .sidebar,
-body.previewing .channel-list,
-body.previewing .guide {
-  background: #02060d;
+body.previewing .backdrop-base,
+body.previewing .backdrop-layer,
+body.previewing .backdrop-scrim {
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    0 0,
+    var(--preview-x, 0px) var(--preview-y, 0px),
+    var(--preview-x, 0px) var(--preview-bottom, 0px),
+    var(--preview-right, 0px) var(--preview-bottom, 0px),
+    var(--preview-right, 0px) var(--preview-y, 0px),
+    var(--preview-x, 0px) var(--preview-y, 0px)
+  );
 }
 
 #video-plane {
