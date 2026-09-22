@@ -1333,6 +1333,8 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = [], handover 
     },
   });
   app.append(overlay.element);
+  // After it is in the page, not before - see PlayerOverlay.focusFirst.
+  overlay.focusFirst();
 
   player.on((event) => {
     if (event.type === 'error') overlay.setMessage(event.message);

@@ -71,6 +71,14 @@ export interface PlayerOverlayOptions {
 
 export interface PlayerOverlay {
   readonly element: HTMLElement;
+  /**
+   * Puts the highlight on the first control - the play button, or the settings gear on a channel.
+   *
+   * Called by the caller after the overlay is in the page rather than done here, because an
+   * element that is not in a document cannot take focus. Doing it in the constructor failed
+   * silently, and the player opened with nothing highlighted until the first press woke it up.
+   */
+  focusFirst(): void;
   /** Feeds a remote press in. Returns true when the overlay consumed it. */
   handleKey(key: RemoteKey): boolean;
   setPosition(positionMs: number, durationMs: number): void;
@@ -195,10 +203,23 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const rewind = button('pc-rewind', t('cd_rewind'), ICONS.rewind);
   const playPause = button('pc-playpause', t('play_action'), ICONS.pause);
   const forward = button('pc-forward', t('cd_forward'), ICONS.forward);
-  // Skipping is for a recording. A live stream has no position to skip from.
-  if (live) transport.append(playPause);
-  else transport.append(rewind, playPause, forward);
-  chrome.append(transport);
+  /*
+   * A channel has no transport row at all, which is what the television app means by turning
+   * media3's controller off for Live TV.
+   *
+   * Skipping needs a position to skip from and pausing needs something to come back to, and a
+   * broadcast has neither - a paused channel is a still frame that falls further behind for as
+   * long as it is held, and the button that got you there is the only way back out of it.
+   * Everything a viewer legitimately wants here - the soundtrack, the subtitles, how the picture
+   * fills the screen - is in the settings panel, which stays.
+   */
+  if (!live) {
+    transport.append(rewind, playPause, forward);
+    chrome.append(transport);
+  }
+
+  /** Where the highlight goes when the controls come up. A channel has no play button. */
+  const firstStop = (): HTMLElement => (live ? settingsButton : playPause);
 
   // ----------------------------------------------------------------- timeline
   const bar = document.createElement('div');
@@ -414,7 +435,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const skipTitle = document.createElement('div');
   skipTitle.className = 'pc-panel-title';
   skipTitle.textContent = t('skip_interval');
-  panel.append(skipTitle);
+  if (!live) panel.append(skipTitle);
 
   const skipRow = document.createElement('div');
   skipRow.className = 'pc-speeds';
@@ -435,7 +456,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     });
     skipRow.append(option);
   }
-  panel.append(skipRow);
+  if (!live) panel.append(skipRow);
 
   /*
    * What the picture actually is.
@@ -462,7 +483,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const panelTitle = document.createElement('div');
   panelTitle.className = 'pc-panel-title';
   panelTitle.textContent = t('playback_speed');
-  panel.append(panelTitle);
+  if (!live) panel.append(panelTitle);
 
   let speed = 1;
   const speedRow = document.createElement('div');
@@ -484,7 +505,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     });
     speedRow.append(option);
   }
-  panel.append(speedRow);
+  if (!live) panel.append(speedRow);
   chrome.append(panel);
 
   // ------------------------------------------------------------- episode strip
@@ -621,9 +642,9 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   function stepUp(): boolean {
     if (panelOpen) { closePanel(); focus(settingsButton); return true; }
     // Up is the strip's way out, mirroring the way it was opened.
-    if (stripOpen) { closeStrip(); focus(playPause); return true; }
+    if (stripOpen) { closeStrip(); focus(firstStop()); return true; }
     const here = document.activeElement;
-    if (here === settingsButton) { focus(live ? playPause : track); return true; }
+    if (here === settingsButton) { focus(live ? firstStop() : track); return true; }
     if (here === track) { focus(playPause); return true; }
     return true;
   }
@@ -666,14 +687,14 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // exception is Back, which leaves whether or not the controls are up.
     if (key === 'back') {
       if (panelOpen) { closePanel(); focus(settingsButton); return true; }
-      if (stripOpen) { closeStrip(); focus(playPause); return true; }
+      if (stripOpen) { closeStrip(); focus(firstStop()); return true; }
       if (visible) { setVisible(false); return true; }
       options.onExit(positionMs);
       return true;
     }
     if (!visible) {
       setVisible(true);
-      focus(playPause);
+      focus(firstStop());
       return true;
     }
     armHide();
@@ -695,12 +716,18 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       case 'playpause':
       case 'play':
       case 'pause':
-        togglePlayback();
+        // Swallowed rather than obeyed on a channel. Holding a broadcast still leaves it falling
+        // further behind for as long as it is paused, and with no button on screen there is
+        // nothing to press to come back - so the key that got you there is the only way out, and
+        // a viewer who pressed it by accident has no way of knowing that.
+        if (!live) togglePlayback();
         return true;
       case 'rewind':
+        if (live) return true;
         player.seekBy(-skip * 1000);
         return true;
       case 'forward':
+        if (live) return true;
         player.seekBy(skip * 1000);
         return true;
       default:
@@ -709,10 +736,12 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   }
 
   setVisible(true);
-  focus(playPause);
 
   return {
     element: root,
+    focusFirst(): void {
+      focus(firstStop());
+    },
     handleKey,
     setPosition(next: number, length: number): void {
       positionMs = next;
