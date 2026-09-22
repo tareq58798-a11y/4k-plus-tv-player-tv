@@ -92,8 +92,23 @@ function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
        */
       const rect = candidate.getBoundingClientRect();
       if (rect.right <= fromRect.left || rect.left >= fromRect.right) continue;
+      /*
+       * Once they overlap, distance decides - centre offset only breaks ties.
+       *
+       * Weighting the horizontal offset heavily is right for deciding which column something is
+       * in, and wrong once that is already settled. Down from a card used to reach the row below
+       * rather than the Play button between them: the button is left-aligned with the card but
+       * much narrower, so their centres differ by 84 pixels, and at four times weight that cost
+       * it 336 points - more than the 220 pixels of extra distance down to the next row. Measured
+       * on the set: Play scored 676 and the row below scored 560, so the row won while sitting
+       * twice as far away.
+       *
+       * Centre-to-centre is simply the wrong measure for two things of different widths in the
+       * same column. They overlap, which is what "same column" means, so the offset is demoted to
+       * a tiebreak between candidates at the same height.
+       */
       along = Math.abs(dy);
-      across = Math.abs(dx);
+      across = Math.abs(dx) / 1000;
     } else {
       if (direction === 'left' ? dx >= -1 : dx <= 1) continue;
       // Sideways moves stay in their band. Without this, Right from the only box in a row finds
