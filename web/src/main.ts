@@ -610,7 +610,34 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     kind,
     [...new Set(pool.map((item) => item.group))].sort((a, b) => a.localeCompare(b)),
   );
-  let selected = groups[0] ?? '';
+
+  /*
+   * The rows the television app puts above the provider's own categories.
+   *
+   * They are not groups - nothing in the catalogue carries them - so they are held beside the
+   * category list and looked up by name when the grid is drawn. An empty one is left out rather
+   * than shown empty, which is what Android does: a "Continue watching" with nothing behind it is
+   * a row that teaches the viewer to ignore the top of the list.
+   *
+   * Live TV calls its resume list "Recently watched" and the others "Continue watching", because
+   * a channel is not something you are part way through.
+   */
+  const specials: [string, PlaylistItem[]][] = [];
+  const resumable = continueWatching(pool, 60);
+  if (resumable.length) {
+    specials.push([
+      current === 'live' ? t('section_recently_watched') : t('section_continue_watching'),
+      resumable,
+    ]);
+  }
+  const faves = favoriteItems(pool, 60);
+  if (faves.length) specials.push([t('section_favorites'), faves]);
+  const specialNames = specials.map(([name]) => name);
+
+  let selected = specialNames[0] ?? groups[0] ?? '';
+  /** What the box above the category list is filtering by, across the whole section. */
+  let search = '';
+  let searchTimer: number | null = null;
   /** The category being hand-moved after the menu's first action - Up and Down nudge it. */
   let reordering: string | null = null;
 
@@ -724,7 +751,20 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       grid.append(prompt);
       return;
     }
-    for (const item of pool.filter((entry) => entry.group === selected).slice(0, 400)) {
+    // A special row is looked up by name; everything else is a real category on the items. A
+    // search replaces whichever is showing and runs across the whole section, as it does on the
+    // television - searching inside one category is rarely what somebody means by searching.
+    const base = specials.find(([name]) => name === selected)?.[1]
+      ?? pool.filter((entry) => entry.group === selected);
+    const query = search.trim().toLowerCase();
+    const shown = query
+      ? pool.filter((entry) => entry.name.toLowerCase().includes(query))
+      : base;
+    if (query && !shown.length) {
+      grid.append(el('div', { class: 'grid-empty' }, t('search_no_results', search.trim())));
+      return;
+    }
+    for (const item of shown.slice(0, 400)) {
       const card = el('div', {
         class: live ? 'channel-row' : 'poster',
         tabindex: '-1',
@@ -773,11 +813,38 @@ function browseScreen(current: Section, favoritesOnly = false): void {
    */
   function renderSidebar(): void {
     sidebar.textContent = '';
-    for (const group of groups) {
+    // The box sits above the list, where the television app puts it. Typing in it is the one thing
+    // on this screen that is not a D-pad move, so it is first in the focus order rather than
+    // buried under a hundred categories.
+    const field = el('input', {
+      class: 'category-search',
+      type: 'text',
+      placeholder: current === 'live' ? t('search_channels') : current === 'movies' ? t('search_all_movies') : t('search_all_series'),
+      tabindex: '-1',
+      'data-focus': '',
+      'data-focus-id': 'browse-search',
+      'data-focus-up': 'none',
+    }) as HTMLInputElement;
+    field.value = search;
+    field.addEventListener('input', () => {
+      search = field.value;
+      // Debounced for the reason the television app debounces it: a provider list runs to tens of
+      // thousands of titles, and re-filtering and re-drawing on every keystroke is what made
+      // typing feel like it was lagging a letter behind.
+      if (searchTimer !== null) window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => {
+        searchTimer = null;
+        renderGrid();
+      }, 320);
+    });
+    sidebar.append(field);
+
+    for (const group of [...specialNames, ...groups]) {
+    const special = specialNames.includes(group);
     const row = el(
       'div',
       {
-        class: 'category',
+        class: special ? 'category special' : 'category',
         // Without this the browser refuses focus and the whole screen is unusable - see
         // ensureFocusable in ui/focus.ts.
         tabindex: '-1',
@@ -792,7 +859,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     // without needing a press for each one.
     row.addEventListener('focus', () => {
       selected = group;
-      for (const other of sidebar.children) {
+      for (const other of sidebar.querySelectorAll('.category')) {
         other.setAttribute('aria-selected', String(other.getAttribute('data-focus-id') === group));
       }
       renderGrid();
@@ -801,6 +868,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     // remote can express it on the web - see openCategoryMenu.
     row.addEventListener('keydown', (event) => {
       if (!event.repeat) return;
+      // Continue watching, Recently watched and Favorites are not the provider's categories:
+      // there is nothing behind them to hide, reorder or move, so they carry no menu.
+      if (special) return;
       const key = keyOf(event, platform);
       if (key !== 'enter') return;
       event.preventDefault();
@@ -887,7 +957,30 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     app.append(back, el('div', { class: 'browser' }, sidebar, grid));
   }
   renderGrid();
-  focus(sidebar.querySelector<HTMLElement>('[data-focus]'));
+  // The category list, not the search box above it: arriving on this page should leave the
+  // highlight where the next press is most likely to be wanted, and that is the list.
+  focus(sidebar.querySelector<HTMLElement>('.category[data-focus]'));
+
+  /*
+   * Live TV opens with the first channel already tuning behind the list.
+   *
+   * The preview is otherwise started by a channel row taking focus, and on arrival focus is on the
+   * category list - so the picture stayed black until the viewer stepped right into the channels,
+   * which made the screen look broken rather than idle. This is the same call the focus handler
+   * makes, including its debounce, so stepping straight off onto another channel cancels it
+   * before it ever becomes a request.
+   */
+  if (live) {
+    const first = pool.find((item) => item.group === selected)
+      ?? specials.find(([name]) => name === selected)?.[1][0];
+    if (first) {
+      focusedChannelId = first.channelId;
+      guide.textContent = '';
+      guide.append(el('div', { class: 'guide-now' }, first.name));
+      epg.request(first);
+      schedulePreview(first);
+    }
+  }
 
   const release = pushKeyHandler((key: RemoteKey) => {
     // Hand-moving takes over Up and Down entirely: while a row is being carried, those keys move
