@@ -754,14 +754,16 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   let focusedChannelId: string | null = null;
 
   /**
-   * The box the preview picture is aimed at, and the machinery to keep it aimed there.
+   * The machinery that keeps the background picture on whatever channel is under the highlight.
    *
    * Debounced like the backdrop, and for the same reason: holding the D-pad through thirty
    * channels must cost one stream, not thirty. A provider will throttle or simply refuse an app
    * that opens a connection per keypress, and on a set the tuning delay would make the list feel
    * broken rather than responsive.
+   *
+   * There is no element to aim at any more. The picture fills the screen and the lists sit over
+   * it, so the rectangle is the window - see schedulePreview.
    */
-  const preview = el('div', { class: 'live-preview' });
   let previewTimer: number | null = null;
   let previewing: string | null = null;
 
@@ -791,7 +793,20 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       if (isChannelLocked(itemKey(item)) && !isUnlocked()) return;
       player.stop();
       previewing = item.streamUrl;
-      const box = preview.getBoundingClientRect();
+      /*
+       * The whole screen, not a pane.
+       *
+       * The television app puts its preview in a box beside the channel list; here it is the
+       * background, with the two columns over it. That is a deliberate difference and it is the
+       * better arrangement on a set this size - a 636 by 358 window on a 1920 panel is a
+       * thumbnail, and what a viewer running down a channel list actually wants to see is the
+       * channel.
+       *
+       * It also removes the hole entirely. There is nothing left to cut around, because the
+       * picture is behind everything, and going full screen from here becomes a change of
+       * controls rather than a change of picture.
+       */
+      const box = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
       void player
         .play(item.streamUrl, box)
         .then(() => {
@@ -804,15 +819,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           // Live TV gradient. Full screen already solves this with body.playing; a preview needs
           // the same hole punched, and body.previewing is that.
           //
-          // A hole exactly the size of the picture, not the whole screen. Taking the backdrop away
-          // altogether was the first attempt and it made the rest of the page black, because
-          // outside the decoder's rectangle the video plane has nothing on it - see the clip-path
-          // these four values drive.
-          const root = document.documentElement;
-          root.style.setProperty('--preview-x', `${Math.round(box.x)}px`);
-          root.style.setProperty('--preview-y', `${Math.round(box.y)}px`);
-          root.style.setProperty('--preview-right', `${Math.round(box.right)}px`);
-          root.style.setProperty('--preview-bottom', `${Math.round(box.bottom)}px`);
+          // The whole backdrop goes, not a rectangle of it, because the picture is now the whole
+          // screen - see the rect above. An earlier version cut a hole around a preview pane, and
+          // the hole went when the pane did.
           document.body.classList.add('previewing');
           /*
            * Confirmed a moment later, because prepare succeeding is not the same as playing.
@@ -1118,7 +1127,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         { class: 'browser' },
         sidebar,
         grid,
-        el('div', { class: 'browser-main' }, preview, guide),
+        // No preview pane any more: the picture is the whole background, so this column carries
+        // only what is on - see the rect in schedulePreview.
+        el('div', { class: 'browser-main' }, guide),
       ),
     );
   } else {

@@ -105,32 +105,40 @@ body.playing .backdrop-scrim {
 }
 
 /*
- * A preview wants a hole the size of the picture, not the whole backdrop taken away.
+ * The channel is the background, so the artwork goes entirely - there is nothing left to see
+ * around it.
  *
- * Removing it altogether was the first attempt and it was reported back as the screen being too
- * dark, correctly: outside the decoder's rectangle the video plane has nothing on it, so the rest
- * of the page went black. Everywhere the picture is not, the artwork should still be there.
- *
- * The polygon is one path that doubles back on itself - the outer ring clockwise and the inner
- * ring anticlockwise - which under the default fill rule leaves the inner rectangle empty. The
- * four values come from the preview element's own measured box, set as custom properties when
- * playback starts, because only the page knows where it put that box.
+ * An earlier version cut a hole the shape of a preview pane and kept the artwork everywhere else,
+ * which was right while the picture was a 636 by 358 box in the corner. It is the whole screen
+ * now, so the hole is the screen and the backdrop underneath it would never be visible.
  */
 body.previewing .backdrop-base,
 body.previewing .backdrop-layer,
 body.previewing .backdrop-scrim {
-  clip-path: polygon(
-    0 0,
-    100% 0,
-    100% 100%,
-    0 100%,
-    0 0,
-    var(--preview-x, 0px) var(--preview-y, 0px),
-    var(--preview-x, 0px) var(--preview-bottom, 0px),
-    var(--preview-right, 0px) var(--preview-bottom, 0px),
-    var(--preview-right, 0px) var(--preview-y, 0px),
-    var(--preview-x, 0px) var(--preview-y, 0px)
-  );
+  display: none;
+}
+
+/*
+ * With moving video behind them, the two columns need to carry more than a tint.
+ *
+ * 0.42 was measured against a dark page gradient. A channel is whatever it happens to be showing
+ * - a football pitch, a news studio, a white caption card - and white text over that is legible
+ * for some frames and not others, which is worse than consistently hard to read. These are close
+ * to opaque, and the picture is still the whole of the rest of the screen.
+ */
+body.previewing .sidebar,
+body.previewing .channel-list {
+  background: rgba(2, 6, 13, 0.88);
+}
+
+body.previewing .guide {
+  background: rgba(2, 6, 13, 0.82);
+}
+
+/* The page title sits directly on the picture, so it gets a shadow rather than a panel - a box
+   around two words looks like a mistake, and a shadow travels with the letters. */
+body.previewing .browser-title {
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 1);
 }
 
 #video-plane {
