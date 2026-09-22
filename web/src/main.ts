@@ -11,7 +11,7 @@ import { readJson, writeJson, remove as removeStored } from './platform/storage'
 import { cacheKey, clearCatalogue, readCatalogue, writeCatalogue } from './platform/cache';
 import { setLocale, isRtl, locale, t } from './shared/i18n';
 import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
-import type { LoadedPlaylist, PlaylistItem, ProviderLogin } from './shared/models';
+import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
 import {
   clearActivity, continueWatching, favoriteItems, recentlyAdded, rememberPosition,
@@ -21,6 +21,7 @@ import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
 import { renderNav, trackNavHighlight, type Section } from './ui/nav';
 import { renderSeries } from './ui/series';
+import { renderDetails } from './ui/details';
 import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
@@ -63,6 +64,27 @@ let login: ProviderLogin | null = null;
 let catalogue: LoadedPlaylist | null = null;
 let section: Section = 'home';
 let detachNav: (() => void) | null = null;
+
+/**
+ * Where the browser should put the highlight when it is next entered, or null for its default.
+ *
+ * Set when a film's page is opened and cleared by the arrival that uses it. Module scope because
+ * browseScreen is torn down and rebuilt on the way there and back - a closure would not survive
+ * the round trip, which is the whole problem this solves.
+ */
+let browseReturn: { section: Section; category: string; focusKey: string } | null = null;
+
+/**
+ * Escapes a string for use inside an attribute selector.
+ *
+ * Category names and item keys come from the provider, and they contain quotes, brackets and
+ * backslashes often enough to matter - a group called `Movies "4K"` would otherwise build a
+ * selector that throws, taking the whole screen down with it. CSS.escape is not on the engine
+ * these sets run, so the three characters that can break out are escaped by hand.
+ */
+function cssEscape(value: string): string {
+  return value.replace(/["\\\n]/g, (c) => (c === '\n' ? ' ' : `\\${c}`));
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -845,7 +867,18 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           // decoder, and two calls to play() without a stop between them is how a set ends up
           // showing the previous channel with the new one's sound.
           stopPreview();
-          playScreen(item);
+          // A channel is a thing you turn on; a film is a thing you choose. Picking a channel out
+          // of the list means watch it now - there is nothing to read about it first, and the
+          // listings beside the list have already said what is on. A film has a plot, a cast and a
+          // running time, and starting it was the only way to see any of them.
+          if (item.kind === 'movie') {
+            // Noted on the way out, so Back can land on this poster in this category rather than
+            // at the top of the list - see the matching block where the grid is first focused.
+            browseReturn = { section: current, category: selected, focusKey: itemKey(item) };
+            void detailsScreen(item);
+          } else {
+            playScreen(item);
+          }
         }),
       );
       grid.append(card);
@@ -1006,9 +1039,35 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     app.append(back, el('div', { class: 'browser' }, sidebar, grid));
   }
   renderGrid();
-  // The category list, not the search box above it: arriving on this page should leave the
-  // highlight where the next press is most likely to be wanted, and that is the list.
-  focus(sidebar.querySelector<HTMLElement>('.category[data-focus]'));
+
+  /*
+   * Coming back from a film's page lands on that film, in the category it was picked from.
+   *
+   * Without this, opening a film and pressing Back returned to the top of whichever category the
+   * browser happens to open on - so looking at three films in a row meant finding your place in a
+   * four-hundred-poster grid three times. The television app calls this restoreFocusKey and it is
+   * the reason it is possible to browse there at all.
+   *
+   * Consumed on use. It describes one return, not a standing preference, and leaving it set would
+   * have the next arrival from the navigation bar land somewhere the viewer did not ask for.
+   */
+  const returning = browseReturn && browseReturn.section === current ? browseReturn : null;
+  browseReturn = null;
+
+  const category = returning
+    ? sidebar.querySelector<HTMLElement>(`.category[data-focus-id="${cssEscape(returning.category)}"]`)
+    : null;
+  if (category) {
+    // Focusing it is what selects it and redraws the grid - see the row's own focus handler - so
+    // the grid below is the right one by the time the poster is looked for.
+    focus(category);
+    const poster = grid.querySelector<HTMLElement>(`[data-focus-id="${cssEscape(returning!.focusKey)}"]`);
+    if (poster) focus(poster);
+  } else {
+    // The category list, not the search box above it: arriving on this page should leave the
+    // highlight where the next press is most likely to be wanted, and that is the list.
+    focus(sidebar.querySelector<HTMLElement>('.category[data-focus]'));
+  }
 
   /*
    * Live TV opens with the first channel already tuning behind the list.
@@ -1113,6 +1172,50 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
       return true;
     });
   }
+}
+
+/**
+ * A film's page, before playing it.
+ *
+ * Drawn twice on purpose. The first pass uses only what the catalogue already holds - poster,
+ * title, category, and whether there is a position to resume from - so the page is on screen
+ * immediately; the second replaces it once the provider has answered with the plot and credits.
+ * Waiting for the lookup before drawing anything would put a spinner in front of every film, and
+ * most of what somebody needs to decide is known before the request is even sent.
+ *
+ * The highlight is placed once, on the first pass. Moving it on the redraw would take the viewer
+ * back to Play from wherever they had walked to in the meantime.
+ */
+async function detailsScreen(item: PlaylistItem): Promise<void> {
+  clear();
+  document.body.classList.remove('playing');
+
+  const back = (): void => browseScreen(section);
+  const open = (): void => playScreen(item);
+
+  const draw = (details: MovieDetails | null, loading: boolean): HTMLElement =>
+    renderDetails(app, { movie: item, details, loading, backdrop, onPlay: open, onBack: back });
+
+  focus(draw(null, true));
+
+  if (!login || !item.channelId) return;
+  let details: MovieDetails | null = null;
+  try {
+    details = await movieDetails(login, item.channelId);
+  } catch {
+    // A panel that will not answer is not worth a dialog: the page already carries the poster, the
+    // title and the Play button, and those are the parts somebody came here to use.
+    details = null;
+  }
+  // Only if the viewer is still here. An await outlives the screen that started it, and redrawing
+  // over whatever replaced this one is how a film's plot ends up on the settings page.
+  if (!app.querySelector('.details')) return;
+  const held = document.activeElement instanceof HTMLElement
+    ? document.activeElement.getAttribute('data-focus-id')
+    : null;
+  clear();
+  const play = draw(details, false);
+  focus(app.querySelector<HTMLElement>(`[data-focus-id="${held}"]`) ?? play);
 }
 
 /**

@@ -1427,6 +1427,102 @@ body.playing .backdrop-scrim {
   overflow: hidden;
 }
 
+/* --------------------------------------------------------------- details
+ *
+ * A film's page. The television app's arrangement: a fixed left column with the poster and the
+ * actions, and a right column that scrolls. 200dp for the column, which is 400 here.
+ */
+.details {
+  display: flex;
+  gap: var(--dim-gap-l);
+  height: 880px;
+}
+
+.details-side {
+  flex: 0 0 400px;
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dim-gap-s);
+}
+
+.details-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--dim-radius-panel);
+  overflow: hidden;
+  background: var(--tone-glass-strong);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+
+.details-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Shorter than a form's .button, which is sized for a page with three fields on it. These sit
+   under a poster that has already used most of the column's height. */
+.details-play,
+.details-favourite {
+  width: 100%;
+  height: 92px;
+  padding: 0 var(--dim-gap-m);
+  font-size: 30px;
+  flex: 0 0 auto;
+}
+
+/* Lit when the film is a favourite, so the button reports the state as well as offering to
+   change it - the star alone is easy to miss across a room. */
+.details-favourite[aria-selected='true'] {
+  color: #04131f;
+  background: var(--tone-star);
+}
+
+.details-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* Room for the focus ring on anything that ends up in here - see the note on .row. */
+  padding: 0 var(--dim-card-bleed);
+  margin: 0 calc(var(--dim-card-bleed) * -1);
+}
+
+.details-main::-webkit-scrollbar {
+  display: none;
+}
+
+.details-main h1 {
+  margin: 0;
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.details-alt {
+  margin-top: 4px;
+  font-size: 28px;
+  color: var(--tone-text-muted);
+}
+
+/* Not clamped, unlike the series plot and the landing block. This is the page somebody opened in
+   order to read it, so the whole thing is here and the column scrolls. */
+.details-plot {
+  margin: var(--dim-gap-s) 0;
+  font-size: 30px;
+  line-height: 1.45;
+  color: var(--tone-text-secondary);
+}
+
+.details-loading,
+.details-note {
+  margin: var(--dim-gap-s) 0;
+  font-size: 26px;
+  color: var(--tone-text-muted);
+}
+
 .credit {
   font-size: 22px;
   color: var(--tone-text-secondary);
