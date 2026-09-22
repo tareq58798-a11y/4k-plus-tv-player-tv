@@ -74,6 +74,8 @@ export interface MediaPlayer {
    * inventing anything - which is why there are three rather than two.
    */
   setScaling(mode: VideoScaling): void;
+  /** The picture's size as `W x H`, or null while the stream has not reported one. */
+  resolution(): string | null;
   /** The subtitle tracks the stream carries, or an empty list. Only valid once playing. */
   subtitleTracks(): AudioTrack[];
   /** Null turns subtitles off. */
@@ -342,6 +344,47 @@ class TizenPlayer implements MediaPlayer {
     }
   }
 
+  /**
+   * What the picture actually is, as "1920 x 1080", or null while that is not yet knowable.
+   *
+   * Android reads this off a video-size callback; AVPlay has no such event, so it has to be asked
+   * for - and it can only answer once the stream is prepared and decoding, which is why this
+   * returns null rather than a placeholder. The panel calls it each time it opens, so a stream
+   * that was not ready a moment ago reports properly the next time somebody looks.
+   *
+   * The numbers live in the video track's extra_info, which is the same untyped JSON blob the
+   * language comes out of, under any of several names depending on the container. Every step is
+   * defended for the reason given over languageOf: a missing field is a fine outcome, an exception
+   * thrown while a film is playing is not.
+   */
+  resolution(): string | null {
+    let tracks: AvTrack[];
+    try {
+      tracks = this.av.getTotalTrackInfo?.() ?? [];
+    } catch {
+      return null;
+    }
+    const video = tracks.find((track) => String(track.type).toUpperCase() === 'VIDEO');
+    if (!video?.extra_info) return null;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(video.extra_info) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+    const pick = (...names: string[]): number | null => {
+      for (const name of names) {
+        const value = parsed[name];
+        const numeric = typeof value === 'string' ? Number(value) : value;
+        if (typeof numeric === 'number' && Number.isFinite(numeric) && numeric > 0) return numeric;
+      }
+      return null;
+    };
+    const width = pick('Width', 'width', 'WIDTH');
+    const height = pick('Height', 'height', 'HEIGHT');
+    return width && height ? `${width} x ${height}` : null;
+  }
+
   subtitleTracks(): AudioTrack[] {
     let tracks: AvTrack[];
     try {
@@ -515,6 +558,12 @@ class BrowserPlayer implements MediaPlayer {
    * television, and pretending to offer a control that the shipping platform implements
    * completely differently would make the development build a worse guide, not a better one.
    */
+  /** The element knows its own picture size, unlike AVPlay, so this needs no digging. */
+  resolution(): string | null {
+    const { videoWidth, videoHeight } = this.video;
+    return videoWidth > 0 && videoHeight > 0 ? `${videoWidth} x ${videoHeight}` : null;
+  }
+
   subtitleTracks(): AudioTrack[] {
     return [];
   }

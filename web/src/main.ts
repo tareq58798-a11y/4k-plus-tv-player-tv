@@ -26,7 +26,7 @@ import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { createPlayerOverlay, type StripEpisode } from './ui/player';
-import { backgroundMode, videoScaling } from './shared/preferences';
+import { backgroundMode, liveChannelSort, videoScaling } from './shared/preferences';
 import {
   applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
 } from './shared/categories';
@@ -625,6 +625,19 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   // categories, and "hidden" would only mean "hidden from this one list".
   const hidden = new Set(hiddenCategories(kind));
   pool = pool.filter((item) => !hidden.has(item.group));
+
+  // Channel order, for Live TV only - the other two are grids of artwork where the provider's
+  // order means much less. Applied to the pool rather than per category, so every category and
+  // the Favorites row all run the same way round. localeCompare rather than a plain comparison,
+  // because half these names are Arabic and a codepoint sort puts them in an order no reader of
+  // Arabic would call alphabetical.
+  if (kind === 'live') {
+    const order = liveChannelSort();
+    if (order !== 'default') {
+      const direction = order === 'az' ? 1 : -1;
+      pool = [...pool].sort((a, b) => direction * a.name.localeCompare(b.name, locale()));
+    }
+  }
   const groups = applyCategoryOrder(
     kind,
     [...new Set(pool.map((item) => item.group))].sort((a, b) => a.localeCompare(b)),

@@ -14,6 +14,8 @@ import { availableLocales, locale, setLocale, t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
   backgroundMode,
+  liveChannelSort,
+  setLiveChannelSort,
   setBackgroundMode,
   setSkipSeconds,
   setSubtitleBackground,
@@ -21,6 +23,7 @@ import {
   skipSeconds,
   subtitleBackground,
   videoScaling,
+  type LiveChannelSort,
   type VideoScalingPreference,
 } from '../shared/preferences';
 import type { LoadedPlaylist } from '../shared/models';
@@ -282,6 +285,36 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       row.append(el('div', { class: 'settings-row-desc' }, entry.desc()));
       row.addEventListener('click', () => {
         setVideoScaling(entry.mode);
+        draw();
+      });
+      group.append(row);
+    }
+
+    // Live TV only, and the whole section says so. On Movies and Series the provider's order
+    // barely registers - those are walls of artwork the eye searches rather than lists it reads -
+    // and a sort control that silently applied to all three would be doing something different
+    // from what it says.
+    group.append(el('div', { class: 'settings-note strong' }, t('live_channel_sort')));
+    const currentSort = liveChannelSort();
+    const SORTS: { order: LiveChannelSort; label: () => string }[] = [
+      { order: 'default', label: () => t('sort_default') },
+      { order: 'az', label: () => t('sort_az') },
+      { order: 'za', label: () => t('sort_za') },
+    ];
+    for (const entry of SORTS) {
+      const row = el(
+        'div',
+        {
+          class: 'settings-row',
+          tabindex: '-1',
+          'data-focus': '',
+          'data-focus-id': `sort-${entry.order}`,
+          'aria-selected': String(entry.order === currentSort),
+        },
+        entry.label(),
+      );
+      row.addEventListener('click', () => {
+        setLiveChannelSort(entry.order);
         draw();
       });
       group.append(row);

@@ -29,6 +29,10 @@ export const LOCAL_EN = {
   // resources, so there is nothing to extract and they start life here like the rest of this file.
   subtitle_background: 'Background',
   skip_seconds_format: '{1}s',
+  current_resolution: 'Resolution',
+  // Not "unknown". The stream has not said yet, which is a different thing from there being no
+  // answer, and it stops being true a second later.
+  resolution_unavailable: 'Not reported yet',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;

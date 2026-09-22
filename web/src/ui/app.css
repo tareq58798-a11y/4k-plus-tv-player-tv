@@ -1044,6 +1044,14 @@ body.playing #app {
   margin-bottom: var(--dim-gap-s);
 }
 
+/* A read-only line in the player panel - the resolution. Sits under its heading where an option
+   would, but with no focus ring and no pointer, because it is a fact and not a choice. */
+.pc-fact {
+  padding: 14px 26px;
+  font-size: var(--type-info-meta);
+  color: var(--tone-text-secondary);
+}
+
 .pc-speeds {
   display: flex;
   gap: var(--dim-gap-xs);

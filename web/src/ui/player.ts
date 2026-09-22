@@ -425,6 +425,28 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   }
   panel.append(skipRow);
 
+  /*
+   * What the picture actually is.
+   *
+   * Read when the panel opens rather than kept up to date, because AVPlay has no video-size event
+   * to subscribe to - Android gets one and this does not. Asking on open is enough: nobody wants
+   * this number except at the moment they have gone looking for it, and a stream that had not
+   * reported a size a moment ago will have by the next time the panel is opened.
+   *
+   * Not focusable. It is a fact, not a choice, and a stop on the walk that does nothing when
+   * pressed is a stop that has to be explained.
+   */
+  const resolutionTitle = document.createElement('div');
+  resolutionTitle.className = 'pc-panel-title';
+  resolutionTitle.textContent = t('current_resolution');
+  const resolutionValue = document.createElement('div');
+  resolutionValue.className = 'pc-fact';
+  panel.append(resolutionTitle, resolutionValue);
+
+  function paintResolution(): void {
+    resolutionValue.textContent = player.resolution() ?? t('resolution_unavailable');
+  }
+
   const panelTitle = document.createElement('div');
   panelTitle.className = 'pc-panel-title';
   panelTitle.textContent = t('playback_speed');
@@ -550,6 +572,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // exist.
     buildAudioOptions();
     buildSubtitleOptions();
+    paintResolution();
     // Lands on the first section that has anything in it, so the highlight never opens on a
     // heading with nothing under it.
     const firstOption = panel.querySelector<HTMLElement>('div:not([hidden]) > .pc-speeds > .pc-speed');

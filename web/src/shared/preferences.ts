@@ -89,3 +89,27 @@ export function skipSeconds(): SkipSeconds {
 export function setSkipSeconds(seconds: SkipSeconds): void {
   writeJson(SKIP_KEY, seconds);
 }
+
+/**
+ * What order the channel list runs in.
+ *
+ * "Default" is the provider's own order and is the default here, because a provider generally has
+ * a reason for it - the channels people watch most are near the top, and alphabetising throws that
+ * away. It is a choice rather than a fix for the same reason it is one on Android: a list of two
+ * thousand channels is easier to search alphabetically and easier to browse as sent, and which of
+ * those somebody is doing is not something the app can know.
+ *
+ * Key and values match Android's `live_channel_sort`.
+ */
+const LIVE_SORT_KEY = 'live_channel_sort';
+const LIVE_SORTS = ['default', 'az', 'za'] as const;
+export type LiveChannelSort = (typeof LIVE_SORTS)[number];
+
+export function liveChannelSort(): LiveChannelSort {
+  const stored = readJson<unknown>(LIVE_SORT_KEY, 'default');
+  return LIVE_SORTS.includes(stored as LiveChannelSort) ? (stored as LiveChannelSort) : 'default';
+}
+
+export function setLiveChannelSort(order: LiveChannelSort): void {
+  writeJson(LIVE_SORT_KEY, order);
+}
