@@ -118,6 +118,25 @@ there through the set's own web inspector rather than judged on the desktop - se
 [TIZEN-RELEASE.md](TIZEN-RELEASE.md) for how to open that, and for what publishing this to anyone
 other than ourselves actually involves.
 
+Measured on that set, against a 50,299-item catalogue, at version 8.2.0 on Tizen 9.0:
+
+| | |
+| --- | --- |
+| Live TV preview | starts on arrival; AVPlay `PLAYING`, clock advancing in real time |
+| Page cleared for video | `body` background `none`, all three backdrop layers `none` |
+| Resolution readout | `1920 x 1080`, from `{"fourCC":"video/x-h264","Width":"1920",…}` |
+| Channel sort | default / A-Z / Z-A each produce a different first three |
+| Browse grid | 400 posters, 7 across, 168x252, first row level with the pane, none zero-height |
+| Focus ring, Home | card scales to 335, ring at 67.5, both clip edges at 64 |
+| Focus ring, grid | exactly one ring; top 103.3 against a clip at 95 |
+| App info | version and Tizen release read from the installed widget, not compiled in |
+
+Several commit messages from the days before this carry a line saying their change was built but
+not seen working, because the emulator would not hold an inspector session against a catalogue
+this size. Those are now stale: everything in the table has been watched on the set. The commits
+are left as they were written rather than rewritten, since what somebody knew at the time is part
+of the record.
+
 ## Installing on a Samsung emulator or television
 
 Three things here are not what the general Tizen documentation says, and each cost an hour:
