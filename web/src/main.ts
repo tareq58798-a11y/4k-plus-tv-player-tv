@@ -971,10 +971,14 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           // of the list means watch it now - there is nothing to read about it first, and the
           // listings beside the list have already said what is on. A film has a plot, a cast and a
           // running time, and starting it was the only way to see any of them.
-          if (item.kind === 'movie') {
-            // Noted on the way out, so Back can land on this poster in this category rather than
-            // at the top of the list - see the matching block where the grid is first focused.
+          // Noted on the way out, so Back can land on this poster in this category rather than
+          // at the top of the list - see the matching block where the grid is first focused.
+          // A series needs it as much as a film does: both open a page, and both used to come
+          // back to whichever category the browser opens on rather than the one being browsed.
+          if (item.kind !== 'live') {
             browseReturn = { section: current, category: selected, focusKey: itemKey(item) };
+          }
+          if (item.kind === 'movie') {
             void detailsScreen(item);
           } else {
             playScreen(item, [], false, live ? shown : []);
@@ -1271,14 +1275,37 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
               streamUrl: entry.streamUrl,
             })),
         ),
-      onBack: () => showSection(section),
+      // Back to the browser when that is where this was opened from, and to the landing when it
+      // was not - a series reached from a Home row should not drop the viewer into a category
+      // browser they never asked for. browseReturn is only set by the grid, and it is not
+      // consumed until the browser next draws, so its presence is the question being asked.
+      onBack: () => (browseReturn ? browseScreen(section) : showSection(section)),
     });
   } catch (error) {
+    /*
+     * A dead end needs a way out that can be seen.
+     *
+     * This used to be the message and nothing else: measured on the emulator with the provider
+     * unreachable, the screen had zero focusable elements and focus sat on BODY. Back worked, but
+     * nothing on screen said so and there was no highlight anywhere - which on a remote is
+     * indistinguishable from the app having stopped responding.
+     */
     status.textContent = error instanceof Error ? error.message : t('episodes_unavailable');
-    const release = pushKeyHandler((key: RemoteKey) => {
-      if (key !== 'back') return false;
+    const back = el(
+      'div',
+      { class: 'button ghost', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'series-error-back' },
+      t('press_back_to_return'),
+    );
+    const leave = (): void => {
       release();
       showSection(section);
+    };
+    back.addEventListener('click', leave);
+    app.append(back);
+    focus(back);
+    const release = pushKeyHandler((key: RemoteKey) => {
+      if (key !== 'back') return false;
+      leave();
       return true;
     });
   }
