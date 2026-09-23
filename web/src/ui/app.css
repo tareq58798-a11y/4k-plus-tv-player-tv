@@ -884,6 +884,44 @@ body.playing #app {
   background: rgba(0, 0, 0, 0.66);
 }
 
+/*
+ * What is on, under the channel name.
+ *
+ * Sits inside the chrome, so it withdraws with the controls after five seconds - unlike the
+ * subtitles, which must not. Somebody who wants it back presses any key, which is the same
+ * gesture that brings the rest of the controls back.
+ */
+.pc-guide {
+  margin-top: var(--dim-gap-s);
+  max-width: 60%;
+}
+
+.pc-guide-now {
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--tone-text-primary);
+}
+
+/* How far through the programme is, which is the one thing a listing cannot say in words. */
+.pc-guide-bar {
+  height: 6px;
+  margin: 10px 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.28);
+  overflow: hidden;
+}
+
+.pc-guide-fill {
+  height: 100%;
+  width: 0;
+  background: var(--tone-accent);
+}
+
+.pc-guide-next {
+  font-size: 26px;
+  color: var(--tone-text-secondary);
+}
+
 .pc-message {
   position: absolute;
   left: 50%;

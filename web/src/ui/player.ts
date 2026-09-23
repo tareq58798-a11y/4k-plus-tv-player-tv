@@ -85,6 +85,14 @@ export interface PlayerOverlay {
   setPaused(paused: boolean): void;
   /** A line of subtitle, or an empty string to clear it. */
   setCaption(text: string): void;
+  /**
+   * What is on now and next, for a channel. Ignored for a recording.
+   *
+   * Null for either line leaves that line out rather than showing an empty one - a channel whose
+   * panel carries no listings should look like a channel with no listings, not like one whose
+   * listings failed to load.
+   */
+  setGuide(now: string | null, next: string | null, progress: number | null): void;
   setMessage(message: string): void;
   destroy(): void;
 }
@@ -180,6 +188,28 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   title.className = 'pc-title';
   title.textContent = options.title;
   chrome.append(title);
+
+  /*
+   * What is on, for a channel.
+   *
+   * The listings sit beside the channel list right up until somebody commits to watching, and then
+   * they disappear - which is the moment they are most wanted, because the name of the channel is
+   * no longer the question. A recording has no counterpart to this, so it is built only for live.
+   */
+  const guide = document.createElement('div');
+  guide.className = 'pc-guide';
+  guide.hidden = true;
+  const guideNow = document.createElement('div');
+  guideNow.className = 'pc-guide-now';
+  const guideBar = document.createElement('div');
+  guideBar.className = 'pc-guide-bar';
+  const guideFill = document.createElement('div');
+  guideFill.className = 'pc-guide-fill';
+  guideBar.append(guideFill);
+  const guideNext = document.createElement('div');
+  guideNext.className = 'pc-guide-next';
+  guide.append(guideNow, guideBar, guideNext);
+  if (live) chrome.append(guide);
 
   const message = document.createElement('div');
   message.className = 'pc-message';
@@ -755,6 +785,17 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       paused = next;
       setIcon(playPause, next ? ICONS.play : ICONS.pause);
     },
+    setGuide(now: string | null, next: string | null, progress: number | null): void {
+      if (!live) return;
+      guideNow.textContent = now ?? '';
+      guideNow.hidden = !now;
+      guideNext.textContent = next ?? '';
+      guideNext.hidden = !next;
+      guideBar.hidden = progress === null;
+      if (progress !== null) guideFill.style.width = `\%`;
+      guide.hidden = !now && !next;
+    },
+
     setCaption(text: string): void {
       captionText.textContent = text;
     },

@@ -1382,6 +1382,34 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = [], handover 
   // After it is in the page, not before - see PlayerOverlay.focusFirst.
   overlay.focusFirst();
 
+  /*
+   * What is on, for a channel being watched.
+   *
+   * The listings are beside the channel list right up to the moment somebody commits to watching,
+   * and then they vanish - which is when they are most wanted, because by then the name of the
+   * channel is not the question any more.
+   *
+   * Asked again every couple of minutes. A programme that started before the viewer arrived ends
+   * while they are still there, and a panel that says what was on half an hour ago is worse than
+   * one that says nothing.
+   */
+  let guideTimer: number | null = null;
+  if (item.kind === 'live' && login) {
+    const guide = createEpgLoader(login, (_channel, result) => {
+      overlay.setGuide(
+        result.now ? t('epg_now_format', `${clockTime(result.now.startEpochSeconds, locale())}  ${result.now.title}`) : null,
+        result.next ? t('epg_next_format', `${clockTime(result.next.startEpochSeconds, locale())}  ${result.next.title}`) : null,
+        result.progress,
+      );
+    });
+    guide.request(item);
+    guideTimer = window.setInterval(() => guide.request(item), 120000);
+    leaveScreen = () => {
+      guide.cancel();
+      if (guideTimer !== null) window.clearInterval(guideTimer);
+    };
+  }
+
   player.on((event) => {
     if (event.type === 'error') overlay.setMessage(event.message);
     if (event.type === 'ready') {
