@@ -10,6 +10,23 @@
 }
 
 /*
+ * The hidden attribute, made to mean it.
+ *
+ * `hidden` is display:none in the user-agent sheet, which is the weakest rule there is - any
+ * author rule that sets display at all beats it, silently. That is not a hypothetical: .pc-strip
+ * is display:flex, so an empty episode strip stayed laid out while hidden and painted its own
+ * black gradient in a 16px band across the foot of every player, live and recorded alike. It was
+ * reported as a line across the picture, and it was the second one.
+ *
+ * This is the rule that stops the whole class of it. !important because the point is to outrank
+ * whatever display the element is given elsewhere; an element the code has called hidden should
+ * not be on screen under any circumstances.
+ */
+[hidden] {
+  display: none !important;
+}
+
+/*
  * How much of the bottom of the screen the info block owns.
  *
  * Not a generated token: Tokens.kt has nothing to say about it, because on Android the equivalent
@@ -647,6 +664,18 @@ body.playing #app {
  * the picture and the listings beside the list, not underneath a grid of squares.
  */
 
+/*
+ * The channel column, and the black line that used to run down it.
+ *
+ * This is a card, exactly like .sidebar beside it, and for a long time it was not: it had the
+ * tint those two share but none of the radius, so it drew as a hard-edged slab next to a rounded
+ * one. The negative margin made that worse rather than better - it pulled the painted box 8px
+ * out on every side, so the column also started 8px higher than the categories next to it.
+ * Measured on the set at .sidebar y=111 against .channel-list y=103.
+ *
+ * The padding stays, because that is what keeps a focused row's ring off the edge; only the
+ * margin that cancelled it goes. The cost is 16px of row width, which is the right trade.
+ */
 .channel-list {
   flex: 0 0 var(--dim-channel-pane-width);
   width: var(--dim-channel-pane-width);
@@ -656,13 +685,22 @@ body.playing #app {
   /* All four sides, so a focused row's ring is not clipped - on the left the way the cards
      were, or along the top the way the first poster was. */
   padding: var(--dim-gap-xs);
-  margin: calc(var(--dim-gap-xs) * -1);
+  border-radius: var(--dim-radius-pane);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08);
 }
 
 .channel-list::-webkit-scrollbar {
   display: none;
 }
 
+/*
+ * Transparent, the way the television app's channel rows are.
+ *
+ * They used to carry their own 72%-black fill inside a column tinted at 88%, which meant the gaps
+ * between rows were darker than the rows themselves - a set of black lines ruled across the list,
+ * and the other half of what was reported. A row is a place to put a name, not a tile; only the
+ * selected one and the focused one are filled.
+ */
 .channel-row {
   display: flex;
   align-items: center;
@@ -670,7 +708,7 @@ body.playing #app {
   padding: 10px var(--dim-gap-s);
   margin-bottom: 10px;
   border-radius: var(--dim-radius-card);
-  background: rgba(3, 9, 18, 0.72);
+  background: transparent;
   cursor: pointer;
 }
 
@@ -807,16 +845,34 @@ body.playing #app {
   pointer-events: auto;
 }
 
+/*
+ * The scrim, and why it is flat rather than a gradient.
+ *
+ * media3 dims the whole picture while its controller is up - exo_controls_background is a plain
+ * #98000000 across the video, which is 60% black. This used to draw a gradient at the foot
+ * instead, on the reasoning that a full scrim dims the film somebody is trying to watch; that is
+ * true, and it is also not what the television does, and the two players being the same is the
+ * thing being asked for here. Five seconds, then it withdraws.
+ */
 .player-chrome {
   position: absolute;
   inset: 0;
   pointer-events: none;
   opacity: 1;
   transition: opacity var(--motion-focus-ms) ease;
-  /* A gradient only at the foot, where the controls are. A full-screen scrim would dim the film
-     the viewer is trying to watch for the five seconds the controls are up. */
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%,
-    rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.78) 100%);
+  background: rgba(0, 0, 0, 0.596);
+}
+
+/*
+ * A channel gets no scrim at all.
+ *
+ * The television app turns media3's controller off for Live TV, so there is no
+ * exo_controls_background to draw - the options row and the banner sit straight on the broadcast.
+ * Dimming the picture here would be inventing something the television does not do, and on a
+ * channel the picture is the entire point.
+ */
+.player-chrome.is-live {
+  background: none;
 }
 
 .player-chrome.is-hidden {
@@ -830,14 +886,87 @@ body.playing #app {
   pointer-events: auto;
 }
 
+/*
+ * What is playing, top left, opposite the options row.
+ *
+ * The television app's own numbers: 18dp from the side and 14dp from the top, 20sp semi-bold, no
+ * more than 55% of the width and no more than two lines. Closer to the edge than the rest of this
+ * app sits, because the player is edge-to-edge on Android too - there is no safe-area inset on
+ * this screen there and adding one here would put the two titles in different places.
+ */
 .pc-title {
   position: absolute;
-  left: var(--dim-safe-horizontal);
-  top: var(--dim-safe-vertical);
+  left: 36px;
+  top: 28px;
   max-width: 55%;
   font-size: 40px;
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.25;
+  /* Two lines, then stop, exactly as maxLines = 2 does. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* No box behind it, so the letters carry their own shadow - the same treatment the channel
+     banner uses, and for the same reason: a panel around two words looks like a mistake. */
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+}
+
+/*
+ * The channel banner, bottom left.
+ *
+ * The television app draws this instead of a title for Live TV: a logo tile beside a stack of
+ * lines, 22dp in from the corner, with no panel behind any of it. Its four lines are the channel,
+ * the resolution, what is on now and what is on next, in that order and in those colours.
+ */
+.pc-banner {
+  position: absolute;
+  left: 44px;
+  bottom: 44px;
+  max-width: 60%;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 20px 28px;
+}
+
+.pc-banner-logo {
+  flex: 0 0 112px;
+  width: 112px;
+  height: 112px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.pc-banner-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.pc-banner-lines {
+  min-width: 0;
+}
+
+/* Every line shadowed rather than boxed: white text sits directly on a broadcast here, and some
+   broadcasts are mostly white. */
+.pc-banner-lines > * {
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pc-banner-name {
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.pc-banner-resolution {
+  font-size: 24px;
+  color: var(--tone-accent);
 }
 
 /*
@@ -885,38 +1014,30 @@ body.playing #app {
 }
 
 /*
- * What is on, under the channel name.
+ * What is on now and next, the last two lines of the banner.
  *
- * Sits inside the chrome, so it withdraws with the controls after five seconds - unlike the
- * subtitles, which must not. Somebody who wants it back presses any key, which is the same
- * gesture that brings the rest of the controls back.
+ * Now in the television app's orange and next in dimmed white, both 12sp, which is what
+ * LiveChannelPreview draws under the channel name. They sit inside the chrome, so they withdraw
+ * with the controls after five seconds - unlike the subtitles, which must not. Any key brings
+ * them back.
  */
-/*
- * Positioned, because the title above it is.
- *
- * .pc-title is absolute, so a sibling left in normal flow does not sit under it - it sits at the
- * chrome's own origin, which is the corner of the screen. Measured before this: the guide drew at
- * x=0, flush to the edge and overlapping the title it was meant to be explaining. The offset is
- * the title's own top plus its line, so the two read as one block.
- */
-.pc-guide {
-  position: absolute;
-  left: var(--dim-safe-horizontal);
-  top: calc(var(--dim-safe-vertical) + 64px);
-  max-width: 55%;
-}
-
 .pc-guide-now {
-  font-size: 30px;
-  font-weight: 600;
-  color: var(--tone-text-primary);
+  font-size: 24px;
+  color: var(--tone-star);
 }
 
-/* How far through the programme is, which is the one thing a listing cannot say in words. */
+/*
+ * How far through the programme is.
+ *
+ * The one line on this banner the television app does not draw - see the note in player.ts. Kept
+ * thin and unobtrusive so it reads as part of the stack rather than as a control.
+ */
 .pc-guide-bar {
-  height: 6px;
-  margin: 10px 0;
-  border-radius: 3px;
+  height: 4px;
+  width: 260px;
+  max-width: 100%;
+  margin: 8px 0;
+  border-radius: 2px;
   background: rgba(255, 255, 255, 0.28);
   overflow: hidden;
 }
@@ -928,8 +1049,8 @@ body.playing #app {
 }
 
 .pc-guide-next {
-  font-size: 26px;
-  color: var(--tone-text-secondary);
+  font-size: 24px;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .pc-message {
@@ -943,72 +1064,109 @@ body.playing #app {
   text-align: center;
 }
 
+/* exo_center_controls: rewind, play/pause, forward, centred on the picture. */
 .pc-transport {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   display: flex;
-  gap: var(--dim-gap-m);
+  align-items: center;
 }
 
+/*
+ * A player button, at rest and focused.
+ *
+ * Transparent at rest and an oval fill with a cyan stroke when focused, which is exactly what
+ * exo_control_focus_selector.xml paints on the television: #D9041C2B with a 3dp #23D7EE ring.
+ * The fill matters as much as the ring - it is the constant backing that stops the glyph having
+ * to fight a bright frame - but only while focused, so an unfocused row of controls is glyphs on
+ * the picture rather than a row of dark discs.
+ */
 .pc-button {
-  width: 96px;
-  height: 96px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  font-size: 40px;
-  /* Near-opaque rather than a tint: this is the constant backing that means the glyph never has
-     to fight a bright frame. */
-  background: rgba(4, 28, 43, 0.85);
-  border: 3px solid transparent;
+  background: transparent;
+  border: 6px solid transparent;
   transition: background var(--motion-focus-ms) ease, border-color var(--motion-focus-ms) ease;
 }
 
 .pc-button svg {
-  width: 44px;
-  height: 44px;
   display: block;
+  /* The glyph keeps its own shadow, because at rest there is nothing behind it. */
+  filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.95));
 }
 
 .pc-button:focus {
   outline: none;
-  background: var(--tone-accent-deep);
+  background: rgba(4, 28, 43, 0.851);
   border-color: var(--tone-accent);
 }
 
-.pc-bar {
-  position: absolute;
-  left: var(--dim-safe-horizontal);
-  right: var(--dim-safe-horizontal);
-  bottom: 148px;
-  display: flex;
-  align-items: center;
-  gap: var(--dim-gap-s);
+/* exo_media_button_width/height, 71dp by 52dp. The selector is an oval on that box, so these are
+   ellipses on the television too rather than circles. */
+.pc-transport .pc-button {
+  width: 142px;
+  height: 104px;
 }
 
+.pc-transport .pc-button svg {
+  width: 56px;
+  height: 56px;
+}
+
+/*
+ * The timeline: full width, above the bottom bar.
+ *
+ * exo_progress_placeholder is match_parent with a 48dp band 52dp up from the foot - 96px and
+ * 104px here - so the line itself lands at 76dp, halfway up the band. Full width, not inset: the
+ * two clocks live in the bar below rather than at either end of this, which is where this used to
+ * put them.
+ */
+.pc-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 104px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+}
+
+/*
+ * The clocks, at the start of the bottom bar.
+ *
+ * One field, not two: exo_time is a single LinearLayout holding position, a separator and
+ * duration, 14sp bold, with 10dp of padding around it and 4dp around each number.
+ */
 .pc-time {
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
   font-size: 28px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   /* Latin digits whatever the interface language is, for the same reason the MAC and device key
      are: a timeline is a number the viewer compares against itself, and mixing numeral systems
      mid-session makes that harder, not easier. */
   font-feature-settings: 'tnum';
-  min-width: 120px;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
 }
 
-.pc-time:last-of-type {
-  text-align: right;
+.pc-time > span {
+  padding: 0 8px;
+}
+
+.pc-time-separator {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .pc-track {
   position: relative;
   flex: 1;
-  height: 8px;
-  border-radius: 4px;
+  /* exo_styled_progress_bar_height, 2dp. */
+  height: 4px;
   background: rgba(255, 255, 255, 0.28);
   transition: height var(--motion-focus-ms) ease;
 }
@@ -1022,9 +1180,9 @@ body.playing #app {
   transition: background var(--motion-focus-ms) ease;
 }
 
-/* The dot the viewer asked to be able to see. It exists at rest too - a bar with no marker gives
-   no sense of where "now" is once the played portion is dark against dark video - but focus is
-   what makes it cyan and large enough to be unmistakable from across a room. */
+/* exo_styled_progress_enabled_thumb_size, 10dp, and the same size focused or not - media3 grows
+   the scrubber while it is being dragged and does nothing for focus, which on a remote never
+   happens. What focus changes is the colour, below. */
 .pc-thumb {
   position: absolute;
   right: -10px;
@@ -1035,13 +1193,17 @@ body.playing #app {
   border-radius: 50%;
   background: #ffffff;
   box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
-  transition: width var(--motion-focus-ms) ease, height var(--motion-focus-ms) ease,
-    background var(--motion-focus-ms) ease, right var(--motion-focus-ms) ease;
+  transition: background var(--motion-focus-ms) ease;
 }
 
+/*
+ * Cyan while the remote is on it, which is applyTvTimeBarFocusHighlight's whole job on the
+ * television: setScrubberColor and setPlayedColor to #23D7EE, because a line the width of the
+ * screen with a small dot on it cannot otherwise say whether the next press will seek or go
+ * somewhere else entirely. The bar does not change size - that was this port's own invention.
+ */
 .pc-track:focus {
   outline: none;
-  height: 12px;
 }
 
 .pc-track:focus .pc-played {
@@ -1049,29 +1211,128 @@ body.playing #app {
 }
 
 .pc-track:focus .pc-thumb {
-  width: 36px;
-  height: 36px;
-  right: -18px;
   background: var(--tone-accent);
   box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.6), 0 0 22px rgba(34, 211, 238, 0.85);
 }
 
-.pc-tools {
+/*
+ * exo_bottom_bar: 60dp of #b0000000 across the foot, with the clocks pinned to the start and the
+ * icon cluster to the end. It is a real bar with its own fill, darker than the scrim above it,
+ * which is what gives the television player its weighted foot.
+ */
+.pc-bottom {
   position: absolute;
-  right: var(--dim-safe-horizontal);
-  bottom: 56px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 120px;
   display: flex;
-  gap: var(--dim-gap-s);
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.69);
 }
 
-.pc-tools .pc-button {
-  width: 72px;
-  height: 72px;
+/* exo_basic_controls: the buttons that survive in this app are the subtitle track chooser and the
+   settings gear, in that order, each a 48dp box with 12dp of padding and 2dp between. */
+.pc-bottom-icons {
+  display: flex;
+  align-items: center;
+  padding-right: 20px;
 }
 
-.pc-tools .pc-button svg {
-  width: 34px;
-  height: 34px;
+.pc-bottom-icons .pc-button {
+  width: 96px;
+  height: 96px;
+  margin: 0 4px;
+}
+
+.pc-bottom-icons .pc-button svg {
+  width: 48px;
+  height: 48px;
+}
+
+/*
+ * The options row, top right.
+ *
+ * PlaybackOptionsOverlay's own shape: a 68%-black bar with a 13dp radius, 4dp of padding along
+ * and 2dp down, holding 38dp buttons. It sits 8dp in from the corner, opposite the title.
+ */
+.pc-options {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 26px;
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.pc-options .pc-button {
+  width: 76px;
+  height: 76px;
+}
+
+.pc-options .pc-button svg {
+  width: 48px;
+  height: 48px;
+  /* No shadow needed: unlike the transport buttons these have the row's own fill behind them. */
+  filter: none;
+}
+
+/* Cyan for the ones that are on, or that are always worth aiming at - the television app tints
+   the aspect-ratio button permanently and the subtitle button while subtitles are showing. */
+.pc-options .pc-button.is-accent {
+  color: var(--tone-accent);
+}
+
+/*
+ * What an option button opens.
+ *
+ * The television app anchors a DropdownMenu under each icon, so this is positioned under whichever
+ * one was pressed rather than in a fixed place - see openMenu, which measures the button.
+ */
+.pc-menu {
+  position: absolute;
+  min-width: 340px;
+  max-width: 560px;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(2, 6, 13, 0.96);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+}
+
+.pc-menu-item {
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 26px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.pc-menu-item:focus {
+  outline: none;
+  background: var(--tone-category-gradient);
+  color: #04131f;
+}
+
+/* Already chosen, marked with a tick the way a DropdownMenu's leadingIcon does. Not the focus
+   colour: chosen and "where the next press goes" are different things. */
+.pc-menu-item[aria-selected='true']::before {
+  content: '✓ ';
+  color: var(--tone-accent);
+}
+
+.pc-menu-item[aria-selected='true']:focus::before {
+  color: #04131f;
+}
+
+/* A readout rather than a choice, like the resolution dropdown's single item. */
+.pc-menu-item.is-fact {
+  color: var(--tone-text-secondary);
+  cursor: default;
 }
 
 /*
@@ -1152,10 +1413,13 @@ body.playing #app {
   -webkit-box-orient: vertical;
 }
 
+/* What the gear opens, sitting just clear of the bottom bar it is anchored in. On a channel the
+   gear is at the other end of the screen, in the options row - the panel stays here either way,
+   because it is a sheet rather than a dropdown and the foot is where media3 slides its own in. */
 .pc-panel {
   position: absolute;
-  right: var(--dim-safe-horizontal);
-  bottom: 148px;
+  right: 24px;
+  bottom: 136px;
   min-width: 620px;
   padding: var(--dim-gap-m);
   border-radius: var(--dim-radius-card);

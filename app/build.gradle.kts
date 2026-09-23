@@ -37,9 +37,11 @@ android {
         minSdk = 26
         targetSdk = 35
         // versionName is what people see and must match the GitHub release tag and the APK
-        // filename exactly, so there is only ever one number to reason about. The 1.2 - 2.3 range
-        // was internal churn during development and was never published; the last public build was
-        // 1.1, so this is 2.0.
+        // filename exactly, so there is only ever one number to reason about. It is also what
+        // web/tizen/config.xml carries, because the Android app and the Samsung port are one
+        // product and a viewer asking which build they have should not get a different answer
+        // depending on which set they are standing in front of. The two drifted once - Android on
+        // 8.4 against a widget still declaring 8.2.0 - so changing one now means changing both.
         //
         // versionCode is what Android compares to decide whether something is an update. It must
         // only ever increase, and is deliberately not reset to match versionName.
@@ -48,8 +50,8 @@ android {
         // already installed, with a bare "App not installed" and no reason given, so this skips
         // past it rather than reusing 129 for different bytes. 7.8 is deliberately never reused
         // as a name either: one number, one build, always.
-        versionCode = 135
-        versionName = "8.4"
+        versionCode = 136
+        versionName = "8.5"
     }
 
     // Two builds from one source tree, and never one build pretending to be both. They carry

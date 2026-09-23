@@ -1,17 +1,48 @@
 /**
- * The controls drawn over a playing stream, ported from the television app's player chrome.
+ * The controls drawn over a playing stream, laid out to match the television app's player.
  *
  * On Samsung the video is not in the page - it is on a hardware plane *behind* it, and the page is
  * transparent over the top. So this is not a `<video>` with controls; it is an overlay that knows
  * the position and duration only because the player reports them, and every drawing decision has
- * to assume there is a moving picture underneath. That is why nearly everything here sits on a
- * scrim and why focus is a fill rather than an outline: an outline has to win against whatever
- * frame happens to be behind it, and some frames are white.
+ * to assume there is a moving picture underneath.
  *
- * The stops, and the order Down walks them, are the ones the remote user learned on Android:
- * transport row, then the timeline, then settings. Down from the last stop does nothing rather
- * than wrapping, because a remote user cannot see that they have reached the end of a list except
- * by the highlight refusing to move.
+ * ## Where the layout comes from
+ *
+ * Not from a screenshot. The television app draws a recording with media3's own PlayerControlView
+ * and a Compose options row on top of it, so the arrangement is fixed by
+ * `exo_player_control_view.xml` plus `PlaybackOptionsOverlay` in PlayerComponents.kt, and both were
+ * read rather than eyeballed. Every number below is that layout's dp doubled, because a television
+ * runs at 960dp on a 1920px panel and 1dp is exactly 2px.
+ *
+ *   recording          live channel
+ *   ---------------    ------------------------------------------------
+ *   full scrim         no scrim at all - the television app turns media3's
+ *   (#98000000)        controller off for Live TV (useController = false),
+ *                      so there is nothing to dim the picture for
+ *   title, top left    channel banner, bottom left: logo, name, resolution,
+ *                      now, next - every line shadowed, no panel behind it
+ *   options, top right options, top right
+ *   rewind / play /    -
+ *   forward, centred
+ *   timeline, full     -
+ *   width
+ *   bottom bar:        -
+ *   position/duration
+ *   left, subtitles
+ *   and settings right
+ *
+ * ## Two buttons the television app has that this cannot
+ *
+ * Mute is absent because Tizen offers no per-stream volume: `tizen.tvaudiocontrol` mutes the
+ * *television*, which is a different thing from what the button says. Fullscreen is absent because
+ * this player has no smaller state to return to. Both are recorded in web/README.md under the
+ * things this port deliberately does not have; the remaining buttons keep the television app's
+ * order rather than closing the gaps.
+ *
+ * The one addition is the settings gear on a channel. The television app has no gear there because
+ * it has no controller there, and so no way to change soundtrack on a channel at all; this does,
+ * and dropping a working thing to match an absence would be a strange trade. It goes at the end of
+ * the row, after the buttons that do mirror.
  */
 import { focus } from './focus';
 import { t } from '../shared/i18n';
@@ -53,6 +84,8 @@ export interface PlayerOverlayOptions {
    * television app settles this by turning media3's controller off entirely for Live TV.
    */
   live?: boolean;
+  /** The channel's mark, for the banner. Live only; a recording's banner is its title. */
+  logoUrl?: string | null;
   /**
    * The rest of the season, empty for a film.
    *
@@ -81,7 +114,7 @@ export interface PlayerOverlayOptions {
 export interface PlayerOverlay {
   readonly element: HTMLElement;
   /**
-   * Puts the highlight on the first control - the play button, or the settings gear on a channel.
+   * Puts the highlight on the first control - the play button, or the first option on a channel.
    *
    * Called by the caller after the overlay is in the page rather than done here, because an
    * element that is not in a document cannot take focus. Doing it in the constructor failed
@@ -126,6 +159,10 @@ function clockOf(ms: number): string {
  * somebody else's colour, at somebody else's weight, and on an older WebKit they may not arrive at
  * all. A path renders identically on every set and takes `currentColor`, which is what lets the
  * focused state recolour the icon along with the button.
+ *
+ * The four in the options row are the Material icons the television app names in
+ * PlaybackOptionsOverlay - Subtitles, MoreTime, HighQuality, AspectRatio - so the row reads the
+ * same on both.
  */
 const ICONS = {
   rewind: 'M11 7v10l-8-5 8-5zm10 0v10l-8-5 8-5z',
@@ -133,6 +170,10 @@ const ICONS = {
   play: 'M8 5v14l11-7L8 5z',
   pause: 'M6 5h4v14H6V5zm8 0h4v14h-4V5z',
   settings: 'M19.4 13a7.8 7.8 0 000-2l2.1-1.6-2-3.4-2.5 1a7.6 7.6 0 00-1.7-1L15 3H9l-.3 2.9a7.6 7.6 0 00-1.7 1l-2.5-1-2 3.4L4.6 11a7.8 7.8 0 000 2l-2.1 1.6 2 3.4 2.5-1c.5.4 1.1.8 1.7 1L9 21h6l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.4L19.4 13zM12 15.5A3.5 3.5 0 1112 8.5a3.5 3.5 0 010 7z',
+  subtitles: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z',
+  skip: 'M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9a8.994 8.994 0 007.03-14.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z',
+  quality: 'M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H9.5v-2h-2v2H6V9h1.5v2.5h2V9H11v6zm7-1c0 .55-.45 1-1 1h-.75v1.5h-1.5V15H14c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v4zm-3.5-.5h2v-3h-2v3z',
+  aspect: 'M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z',
 } as const;
 
 function icon(path: string): SVGSVGElement {
@@ -174,7 +215,7 @@ function setIcon(node: HTMLElement, path: string): void {
 
 export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverlay {
   const { player, live = false } = options;
-  // Read once here and updated by the panel below, so a change takes effect on the next press
+  // Read once here and updated by the menu below, so a change takes effect on the next press
   // rather than on the next film.
   let skip = skipSeconds();
 
@@ -190,35 +231,62 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   root.className = 'player-layer';
 
   const chrome = document.createElement('div');
-  chrome.className = 'player-chrome';
+  chrome.className = live ? 'player-chrome is-live' : 'player-chrome';
   root.append(chrome);
 
+  /*
+   * What is playing.
+   *
+   * A recording gets the television app's title: top left, two lines at most, no panel behind it
+   * and a shadow on the letters instead. A channel gets its banner: bottom left, logo beside four
+   * stacked lines. Both are built, and the CSS shows whichever this player is.
+   */
   const title = document.createElement('div');
   title.className = 'pc-title';
   title.textContent = options.title;
-  chrome.append(title);
 
-  /*
-   * What is on, for a channel.
-   *
-   * The listings sit beside the channel list right up until somebody commits to watching, and then
-   * they disappear - which is the moment they are most wanted, because the name of the channel is
-   * no longer the question. A recording has no counterpart to this, so it is built only for live.
-   */
-  const guide = document.createElement('div');
-  guide.className = 'pc-guide';
-  guide.hidden = true;
+  const banner = document.createElement('div');
+  banner.className = 'pc-banner';
+  const bannerLogo = document.createElement('div');
+  bannerLogo.className = 'pc-banner-logo';
+  if (options.logoUrl) {
+    const image = document.createElement('img');
+    image.src = options.logoUrl;
+    image.alt = '';
+    // A mark that will not load leaves the tile plain rather than showing a broken-image glyph.
+    image.addEventListener('error', () => image.remove());
+    bannerLogo.append(image);
+  }
+  const bannerLines = document.createElement('div');
+  bannerLines.className = 'pc-banner-lines';
+  const bannerName = document.createElement('div');
+  bannerName.className = 'pc-banner-name';
+  bannerName.textContent = options.title;
+  const bannerResolution = document.createElement('div');
+  bannerResolution.className = 'pc-banner-resolution';
+  bannerResolution.hidden = true;
   const guideNow = document.createElement('div');
   guideNow.className = 'pc-guide-now';
+  guideNow.hidden = true;
+  /*
+   * How far through the programme is.
+   *
+   * The one thing on this banner the television app does not draw. It is kept because it was
+   * already built and says the single thing a listing cannot say in words; it is two pixels of
+   * line under the title rather than a control, so it costs the match almost nothing.
+   */
   const guideBar = document.createElement('div');
   guideBar.className = 'pc-guide-bar';
+  guideBar.hidden = true;
   const guideFill = document.createElement('div');
   guideFill.className = 'pc-guide-fill';
   guideBar.append(guideFill);
   const guideNext = document.createElement('div');
   guideNext.className = 'pc-guide-next';
-  guide.append(guideNow, guideBar, guideNext);
-  if (live) chrome.append(guide);
+  guideNext.hidden = true;
+  bannerLines.append(bannerName, bannerResolution, guideNow, guideBar, guideNext);
+  banner.append(bannerLogo, bannerLines);
+  chrome.append(live ? banner : title);
 
   const message = document.createElement('div');
   message.className = 'pc-message';
@@ -249,24 +317,19 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    * Skipping needs a position to skip from and pausing needs something to come back to, and a
    * broadcast has neither - a paused channel is a still frame that falls further behind for as
    * long as it is held, and the button that got you there is the only way back out of it.
-   * Everything a viewer legitimately wants here - the soundtrack, the subtitles, how the picture
-   * fills the screen - is in the settings panel, which stays.
    */
   if (!live) {
     transport.append(rewind, playPause, forward);
     chrome.append(transport);
   }
 
-  /** Where the highlight goes when the controls come up. A channel has no play button. */
-  const firstStop = (): HTMLElement => (live ? settingsButton : playPause);
-
   // ----------------------------------------------------------------- timeline
+  /*
+   * Full width, above the bottom bar, exactly where exo_progress_placeholder puts it: 52dp up
+   * from the foot with a 48dp touch band, which is 104px and 96px here.
+   */
   const bar = document.createElement('div');
   bar.className = 'pc-bar';
-
-  const elapsed = document.createElement('span');
-  elapsed.className = 'pc-time';
-  elapsed.textContent = '0:00';
 
   const track = document.createElement('div');
   track.className = 'pc-track';
@@ -282,23 +345,241 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   thumb.className = 'pc-thumb';
   played.append(thumb);
   track.append(played);
+  bar.append(track);
 
+  /*
+   * The bottom bar: clocks at one end, icons at the other.
+   *
+   * exo_bottom_bar is 60dp of #b0000000 across the foot with exo_time pinned to the start and
+   * exo_basic_controls to the end. The two clocks are one field there - position, a separator,
+   * duration - not two fields at opposite edges, which is what this used to draw.
+   */
+  const bottom = document.createElement('div');
+  bottom.className = 'pc-bottom';
+  const clocks = document.createElement('div');
+  clocks.className = 'pc-time';
+  const elapsed = document.createElement('span');
+  elapsed.textContent = '0:00';
+  const separator = document.createElement('span');
+  separator.className = 'pc-time-separator';
+  separator.textContent = ' / ';
   const total = document.createElement('span');
-  total.className = 'pc-time';
   total.textContent = '0:00';
+  clocks.append(elapsed, separator, total);
 
-  bar.append(elapsed, track, total);
-  // Left out of the page rather than hidden, so the timeline is not a focus stop that cannot be
-  // seen - see stepDown, which walks what is actually there.
-  if (!live) chrome.append(bar);
-
-  // ----------------------------------------------------------------- settings
-  const tools = document.createElement('div');
-  tools.className = 'pc-tools';
+  const bottomIcons = document.createElement('div');
+  bottomIcons.className = 'pc-bottom-icons';
   const settingsButton = button('pc-settings', t('settings_title'), ICONS.settings);
-  tools.append(settingsButton);
-  chrome.append(tools);
+  bottom.append(clocks, bottomIcons);
 
+  // Left out of the page rather than hidden, so neither is a focus stop that cannot be seen - see
+  // stepDown, which walks what is actually there.
+  if (!live) {
+    chrome.append(bar, bottom);
+    bottomIcons.append(settingsButton);
+  }
+
+  // ------------------------------------------------------------- options row
+  /*
+   * Top right, in the television app's order.
+   *
+   * PlaybackOptionsOverlay lays out mute, subtitles, skip interval, resolution, aspect ratio,
+   * fullscreen - each a 38dp button on a 68%-black bar with a 13dp radius. Mute and fullscreen
+   * cannot exist here (see the note at the top of this file), so what is left is subtitles, skip,
+   * resolution, aspect, in those positions; skip and resolution belong to a recording and are not
+   * built for a channel, which is what `showSkipInterval = false` does on the television.
+   */
+  const optionsRow = document.createElement('div');
+  optionsRow.className = 'pc-options';
+  optionsRow.setAttribute('data-focus-group', 'pc-options');
+
+  const subtitlesButton = button('pc-opt-subtitles', t('subtitles_label'), ICONS.subtitles);
+  const skipButton = button('pc-opt-skip', t('skip_interval'), ICONS.skip);
+  const qualityButton = button('pc-opt-quality', t('current_resolution'), ICONS.quality);
+  const aspectButton = button('pc-opt-aspect', t('video_scaling'), ICONS.aspect);
+  // Always tinted, like Icons.Default.AspectRatio is on the television - it is the button people
+  // go looking for when a broadcast arrives in the wrong shape, and a row of identical white
+  // glyphs gives them nothing to aim at.
+  aspectButton.classList.add('is-accent');
+
+  optionsRow.append(subtitlesButton);
+  if (!live) optionsRow.append(skipButton, qualityButton);
+  optionsRow.append(aspectButton);
+  // The gear has no home on a channel - there is no bottom bar to put it in - so it goes here,
+  // after the buttons that do mirror the television app. See the note at the top of this file.
+  if (live) optionsRow.append(settingsButton);
+  chrome.append(optionsRow);
+
+  /** Every option button, left to right, for the walk along the row. */
+  const optionButtons = (): HTMLElement[] =>
+    Array.from(optionsRow.querySelectorAll<HTMLElement>('.pc-button'));
+
+  // ---------------------------------------------------------------- menus
+  /*
+   * One menu element, refilled per button.
+   *
+   * The television app gives each icon its own DropdownMenu anchored under it. A single element
+   * that is moved and refilled behaves the same from the remote and means one set of focus rules
+   * rather than four that have to agree.
+   */
+  const menu = document.createElement('div');
+  menu.className = 'pc-menu';
+  menu.hidden = true;
+  chrome.append(menu);
+
+  let menuOwner: HTMLElement | null = null;
+
+  interface MenuEntry {
+    label: string;
+    id: string;
+    selected?: boolean;
+    /** A fact rather than a choice - drawn, but not a stop the highlight can land on. */
+    inert?: boolean;
+    onPick?: () => void;
+  }
+
+  function openMenu(owner: HTMLElement, entries: MenuEntry[]): void {
+    menuOwner = owner;
+    menu.textContent = '';
+    menu.hidden = false;
+    // Under its own button rather than under the row, so four menus do not all open in the same
+    // place. Measured against the chrome, which is the positioned ancestor.
+    const anchor = owner.getBoundingClientRect();
+    const frame = chrome.getBoundingClientRect();
+    menu.style.right = `${Math.max(0, frame.right - anchor.right)}px`;
+    menu.style.top = `${anchor.bottom - frame.top + 8}px`;
+    for (const entry of entries) {
+      const option = document.createElement('div');
+      option.className = entry.inert ? 'pc-menu-item is-fact' : 'pc-menu-item';
+      option.textContent = entry.label;
+      if (!entry.inert) {
+        option.tabIndex = -1;
+        option.setAttribute('data-focus', '');
+        option.setAttribute('data-focus-id', entry.id);
+        option.setAttribute('aria-selected', String(Boolean(entry.selected)));
+        option.addEventListener('click', () => {
+          entry.onPick?.();
+          closeMenu();
+          focus(owner);
+        });
+      }
+      menu.append(option);
+    }
+    const first = menu.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?? menu.querySelector<HTMLElement>('[data-focus]');
+    // A menu of nothing but facts keeps the highlight on the button that opened it, so Back and
+    // Up still have somewhere to return from.
+    focus(first ?? owner);
+  }
+
+  function closeMenu(): void {
+    menu.hidden = true;
+    menu.textContent = '';
+    menuOwner = null;
+  }
+
+  const menuOpen = (): boolean => menuOwner !== null;
+
+  /*
+   * Subtitles: on or off, and whether the line carries a dark backing.
+   *
+   * The television app's dropdown has two more entries - loading an SRT or VTT from storage, and
+   * removing one - which this port has no file picker for. They are left out rather than shown
+   * doing nothing.
+   */
+  let captionBackground = subtitleBackground();
+  captions.classList.toggle('boxed', captionBackground);
+  let subtitlesOn = true;
+
+  function applySubtitlesOn(next: boolean): void {
+    subtitlesOn = next;
+    subtitlesButton.classList.toggle('is-accent', next);
+    if (!next) {
+      player.selectSubtitleTrack(null);
+      selectedSubtitle = null;
+      // Cleared at once rather than waiting for the decoder to stop sending cues, so turning them
+      // off takes the line on screen off with it.
+      captionText.textContent = '';
+    }
+  }
+
+  subtitlesButton.addEventListener('click', () => {
+    openMenu(subtitlesButton, [
+      {
+        label: subtitlesOn ? t('subtitles_turn_off') : t('subtitles_turn_on'),
+        id: 'pc-menu-subtitles-toggle',
+        selected: subtitlesOn,
+        onPick: () => applySubtitlesOn(!subtitlesOn),
+      },
+      {
+        label: t('subtitle_background'),
+        id: 'pc-menu-subtitle-backing',
+        selected: captionBackground,
+        onPick: () => {
+          captionBackground = !captionBackground;
+          setSubtitleBackground(captionBackground);
+          captions.classList.toggle('boxed', captionBackground);
+        },
+      },
+    ]);
+  });
+
+  /*
+   * How far the skip buttons jump.
+   *
+   * Ten seconds is right for an advert break and wrong for a title sequence, which is why the
+   * television app makes it a choice rather than a constant. The same five values, so somebody
+   * who has settled on thirty on their Android box finds thirty here.
+   */
+  skipButton.addEventListener('click', () => {
+    openMenu(skipButton, SKIP_CHOICES.map((seconds) => ({
+      label: t('skip_seconds_format', String(seconds)),
+      id: `pc-menu-skip-${seconds}`,
+      selected: seconds === skip,
+      onPick: () => { skip = seconds; setSkipSeconds(seconds); },
+    })));
+  });
+
+  /*
+   * What the picture actually is.
+   *
+   * Read when the menu opens rather than kept up to date, because AVPlay has no video-size event
+   * to subscribe to - Android gets one and this does not. Asking on open is enough: nobody wants
+   * this number except at the moment they have gone looking for it. It is a fact, not a choice,
+   * so like the television app's single-item dropdown it cannot be picked.
+   */
+  qualityButton.addEventListener('click', () => {
+    openMenu(qualityButton, [{
+      label: player.resolution() ?? t('resolution_unavailable'),
+      id: 'pc-menu-quality',
+      inert: true,
+    }]);
+  });
+
+  // How the picture fills the screen. Applied the moment it is chosen and remembered afterwards.
+  // The television app offers seven shapes; AVPlay has three, so three is what this offers.
+  let scaling = videoScaling();
+  const SCALINGS: { mode: VideoScalingPreference; label: () => string }[] = [
+    { mode: 'fit', label: () => t('video_fit') },
+    { mode: 'fill', label: () => t('video_fill') },
+    { mode: 'stretch', label: () => t('video_stretch') },
+  ];
+
+  aspectButton.addEventListener('click', () => {
+    openMenu(aspectButton, SCALINGS.map((entry) => ({
+      label: entry.label(),
+      id: `pc-menu-scale-${entry.mode}`,
+      selected: entry.mode === scaling,
+      onPick: () => { scaling = entry.mode; setVideoScaling(entry.mode); player.setScaling(entry.mode); },
+    })));
+  });
+
+  // ----------------------------------------------------- the settings panel
+  /*
+   * What the gear opens, which is what media3's own settings sheet carries: how fast, which
+   * soundtrack, which subtitle track. The on-and-off switch for subtitles is not here - it is in
+   * the options row, where the television app puts it.
+   */
   const panel = document.createElement('div');
   panel.className = 'pc-panel';
   panel.hidden = true;
@@ -349,11 +630,11 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   }
 
   /**
-   * Subtitles: Off, then whatever the stream carries.
+   * Which subtitle track, for a stream that carries more than one.
    *
-   * Built when the panel opens, like the soundtracks and for the same reason - a decoder cannot
-   * list what is in a stream it has not opened. Unlike soundtracks, a single track is still worth
-   * showing: the choice here is "on or off", and one track answers it.
+   * Built when the panel opens, like the soundtracks and for the same reason. "Off" is not an
+   * entry here: that switch lives on the options row, and offering it in two places invites the
+   * two to disagree.
    */
   const subtitleSection = document.createElement('div');
   subtitleSection.hidden = true;
@@ -372,151 +653,27 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     subtitleRow.textContent = '';
     subtitleSection.hidden = tracks.length === 0;
     if (!tracks.length) return;
-    const choices: { id: number | null; label: string }[] = [
-      { id: null, label: t('subtitles_off') },
-      ...tracks.map((track) => ({ id: track.id, label: track.label })),
-    ];
-    for (const choice of choices) {
+    for (const track of tracks) {
       const option = document.createElement('div');
       option.className = 'pc-speed';
       option.tabIndex = -1;
-      option.textContent = choice.label;
+      option.textContent = track.label;
       option.setAttribute('data-focus', '');
-      option.setAttribute('data-focus-id', `pc-sub-${choice.id ?? 'off'}`);
-      option.setAttribute('aria-selected', String(choice.id === selectedSubtitle));
+      option.setAttribute('data-focus-id', `pc-sub-${track.id}`);
+      option.setAttribute('aria-selected', String(track.id === selectedSubtitle));
       option.addEventListener('click', () => {
-        selectedSubtitle = choice.id;
-        player.selectSubtitleTrack(choice.id);
-        // Cleared at once rather than waiting for the decoder to stop sending cues, so turning
-        // them off takes the line on screen off with it.
-        if (choice.id === null) captionText.textContent = '';
+        selectedSubtitle = track.id;
+        player.selectSubtitleTrack(track.id);
+        // Choosing a track is a way of turning them on, so the row's switch follows rather than
+        // being left saying the opposite of what is on screen.
+        subtitlesOn = true;
+        subtitlesButton.classList.add('is-accent');
         for (const other of subtitleRow.querySelectorAll('.pc-speed')) {
           other.setAttribute('aria-selected', String(other === option));
         }
       });
       subtitleRow.append(option);
     }
-  }
-
-  /*
-   * The dark backing behind the subtitle line.
-   *
-   * This app paints its own subtitles - the decoder hands over the text and nothing else - so the
-   * backing is a class on the caption element rather than anything the player has to be told
-   * about. It lives beside the track list because that is where somebody who is struggling to read
-   * a line will look for it, which is where the television app puts it too.
-   */
-  let captionBackground = subtitleBackground();
-  captions.classList.toggle('boxed', captionBackground);
-
-  const backingRow = document.createElement('div');
-  backingRow.className = 'pc-speeds';
-  const backingOption = document.createElement('div');
-  backingOption.className = 'pc-speed';
-  backingOption.tabIndex = -1;
-  backingOption.setAttribute('data-focus', '');
-  backingOption.setAttribute('data-focus-id', 'pc-sub-backing');
-  function paintBacking(): void {
-    backingOption.textContent = t('subtitle_background');
-    backingOption.setAttribute('aria-selected', String(captionBackground));
-  }
-  backingOption.addEventListener('click', () => {
-    captionBackground = !captionBackground;
-    setSubtitleBackground(captionBackground);
-    captions.classList.toggle('boxed', captionBackground);
-    paintBacking();
-  });
-  paintBacking();
-  backingRow.append(backingOption);
-  subtitleSection.append(backingRow);
-
-  // Video scaling. Applied the moment it is chosen and remembered afterwards - see videoScaling.
-  const scalingTitle = document.createElement('div');
-  scalingTitle.className = 'pc-panel-title';
-  scalingTitle.textContent = t('video_scaling');
-  panel.append(scalingTitle);
-
-  let scaling = videoScaling();
-  const scalingRow = document.createElement('div');
-  scalingRow.className = 'pc-speeds';
-  const SCALINGS: { mode: VideoScalingPreference; label: () => string }[] = [
-    { mode: 'fit', label: () => t('video_fit') },
-    { mode: 'fill', label: () => t('video_fill') },
-    { mode: 'stretch', label: () => t('video_stretch') },
-  ];
-  for (const entry of SCALINGS) {
-    const option = document.createElement('div');
-    option.className = 'pc-speed';
-    option.tabIndex = -1;
-    option.textContent = entry.label();
-    option.setAttribute('data-focus', '');
-    option.setAttribute('data-focus-id', `pc-scale-${entry.mode}`);
-    option.setAttribute('aria-selected', String(entry.mode === scaling));
-    option.addEventListener('click', () => {
-      scaling = entry.mode;
-      setVideoScaling(entry.mode);
-      player.setScaling(entry.mode);
-      for (const other of scalingRow.querySelectorAll('.pc-speed')) {
-        other.setAttribute('aria-selected', String(other === option));
-      }
-    });
-    scalingRow.append(option);
-  }
-  panel.append(scalingRow);
-
-  /*
-   * How far the skip buttons jump.
-   *
-   * Ten seconds is right for an advert break and wrong for a title sequence, which is why the
-   * television app makes it a choice rather than a constant. The same five values, so somebody
-   * who has settled on thirty on their Android box finds thirty here.
-   */
-  const skipTitle = document.createElement('div');
-  skipTitle.className = 'pc-panel-title';
-  skipTitle.textContent = t('skip_interval');
-  if (!live) panel.append(skipTitle);
-
-  const skipRow = document.createElement('div');
-  skipRow.className = 'pc-speeds';
-  for (const seconds of SKIP_CHOICES) {
-    const option = document.createElement('div');
-    option.className = 'pc-speed';
-    option.tabIndex = -1;
-    option.textContent = t('skip_seconds_format', String(seconds));
-    option.setAttribute('data-focus', '');
-    option.setAttribute('data-focus-id', `pc-skip-${seconds}`);
-    option.setAttribute('aria-selected', String(seconds === skip));
-    option.addEventListener('click', () => {
-      skip = seconds;
-      setSkipSeconds(seconds);
-      for (const other of skipRow.querySelectorAll('.pc-speed')) {
-        other.setAttribute('aria-selected', String(other === option));
-      }
-    });
-    skipRow.append(option);
-  }
-  if (!live) panel.append(skipRow);
-
-  /*
-   * What the picture actually is.
-   *
-   * Read when the panel opens rather than kept up to date, because AVPlay has no video-size event
-   * to subscribe to - Android gets one and this does not. Asking on open is enough: nobody wants
-   * this number except at the moment they have gone looking for it, and a stream that had not
-   * reported a size a moment ago will have by the next time the panel is opened.
-   *
-   * Not focusable. It is a fact, not a choice, and a stop on the walk that does nothing when
-   * pressed is a stop that has to be explained.
-   */
-  const resolutionTitle = document.createElement('div');
-  resolutionTitle.className = 'pc-panel-title';
-  resolutionTitle.textContent = t('current_resolution');
-  const resolutionValue = document.createElement('div');
-  resolutionValue.className = 'pc-fact';
-  panel.append(resolutionTitle, resolutionValue);
-
-  function paintResolution(): void {
-    resolutionValue.textContent = player.resolution() ?? t('resolution_unavailable');
   }
 
   const panelTitle = document.createElement('div');
@@ -626,10 +783,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   function armHide(): void {
     if (hideTimer !== null) window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(() => {
-      // Never while the settings panel or the episode strip is open: the viewer is reading one of
-      // them, not idle, and taking the controls away under a list somebody is choosing from is
-      // the one moment it is least welcome.
-      if (panelOpen || stripOpen) { armHide(); return; }
+      // Never while a menu, the settings panel or the episode strip is open: the viewer is reading
+      // one of them, not idle, and taking the controls away under a list somebody is choosing from
+      // is the one moment it is least welcome.
+      if (panelOpen || stripOpen || menuOpen()) { armHide(); return; }
       setVisible(false);
     }, CONTROLS_TIMEOUT_MS);
   }
@@ -638,15 +795,42 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     visible = next;
     chrome.classList.toggle('is-hidden', !next);
     if (next) {
+      // The banner's resolution line is the television app's, and like it this is read rather
+      // than subscribed to - there is no video-size event on this platform. Every time the chrome
+      // comes up is often enough for a number nobody looks at with the controls down.
+      paintBannerResolution();
       armHide();
     } else {
       closeStrip();
       closePanel();
+      closeMenu();
       // Focus goes nowhere when the chrome is down. Leaving it on a hidden control means the next
       // press acts on something invisible.
       focus(null);
     }
   }
+
+  /*
+   * The resolution line, re-read on a tick rather than once.
+   *
+   * The television app is told: it subscribes to a video-size listener and repaints when one
+   * arrives. AVPlay has no such event, and asking once is not enough - measured on the set after
+   * a channel change, getCurrentStreamInfo reported 1920x1080 while this line was still blank,
+   * because the overlay is built and shown before the decoder has opened the stream, and nothing
+   * came back to ask again. A second is also often enough to catch a stream that changes size
+   * partway through, which the listener would have caught for free.
+   */
+  function paintBannerResolution(): void {
+    if (!live) return;
+    const label = player.resolution();
+    if (bannerResolution.textContent === (label ?? '')) return;
+    bannerResolution.textContent = label ?? '';
+    bannerResolution.hidden = !label;
+  }
+
+  const resolutionTimer = live
+    ? window.setInterval(() => { if (visible) paintBannerResolution(); }, 1000)
+    : null;
 
   function openPanel(): void {
     panelOpen = true;
@@ -656,11 +840,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // exist.
     buildAudioOptions();
     buildSubtitleOptions();
-    paintResolution();
     // Lands on the first section that has anything in it, so the highlight never opens on a
     // heading with nothing under it.
     const firstOption = panel.querySelector<HTMLElement>('div:not([hidden]) > .pc-speeds > .pc-speed');
-    focus(firstOption ?? speedRow.querySelector<HTMLElement>('.pc-speed'));
+    focus(firstOption ?? speedRow.querySelector<HTMLElement>('.pc-speed') ?? settingsButton);
   }
 
   function closePanel(): void {
@@ -668,37 +851,91 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     panel.hidden = true;
   }
 
-  // The order Down walks. Derived from what currently holds focus rather than counted, for the
-  // reason given in advanceDownThroughControls on Android: a counter drifts the moment anything
-  // else moves the highlight, and the viewer has no way to get it back in step.
+  /** Where the highlight goes when the controls come up. A channel has no play button. */
+  const firstStop = (): HTMLElement => (live ? optionButtons()[0] ?? settingsButton : playPause);
+
+  /*
+   * The order Down walks, which is the television app's:
+   *
+   *   options row -> play/pause -> timeline -> settings gear -> episode strip
+   *
+   * onExitDown on the options row hands straight to play/pause there;
+   * advanceDownThroughControls walks the three below it. Derived from what currently holds focus
+   * rather than counted, for the reason given in that function: a counter drifts the moment
+   * anything else moves the highlight, and the viewer has no way to get it back in step.
+   */
   function stepDown(): boolean {
+    if (menuOpen()) return true;
     if (panelOpen) return true;
     if (stripOpen) return true;
-    // An episode goes straight to the season. See PlayerOverlayOptions.episodes for why this is
-    // not the same walk a film gets.
-    if (episodes.length) { openStrip(); return true; }
     const here = document.activeElement;
-    // A live stream has no timeline, so the walk is one stop shorter: transport, then settings.
-    if (live) {
-      if (here === settingsButton) { openPanel(); return true; }
-      focus(settingsButton);
-      return true;
-    }
+    const inOptions = here instanceof HTMLElement && optionsRow.contains(here);
+    // An episode goes straight to the season. See PlayerOverlayOptions.episodes for why this is
+    // not the same walk a film gets - but not from the options row, which has its own step down
+    // into the controls first.
+    if (episodes.length && !inOptions) { openStrip(); return true; }
+    // A live stream has no transport, no timeline and no gear in the bottom bar, so there is
+    // nothing under the options row to step to.
+    if (live) return true;
+    if (inOptions) { focus(playPause); return true; }
     if (here === track) { focus(settingsButton); return true; }
-    if (here === settingsButton) { openPanel(); return true; }
+    // The gear is the last stop. Down from it does nothing rather than wrapping or opening the
+    // panel - advanceDownThroughControls returns false here, and a remote user cannot see they
+    // have reached the end of a list except by the highlight refusing to move. OK on the gear is
+    // what opens the panel, on both.
+    if (here === settingsButton) return true;
     focus(track);
     return true;
   }
 
   function stepUp(): boolean {
+    if (menuOpen()) { const owner = menuOwner; closeMenu(); focus(owner); return true; }
     if (panelOpen) { closePanel(); focus(settingsButton); return true; }
     // Up is the strip's way out, mirroring the way it was opened - and it leaves the picture
     // bare rather than putting the controls back, because the press said 'not this' rather than
     // 'something else'. Any key brings them back.
     if (stripOpen) { closeStrip(); focus(null); return true; }
     const here = document.activeElement;
-    if (here === settingsButton) { focus(live ? firstStop() : track); return true; }
+    // The options row is the top of the screen and the top of the walk; there is nothing above it.
+    if (here instanceof HTMLElement && optionsRow.contains(here)) return true;
+    if (here === settingsButton) { focus(track); return true; }
     if (here === track) { focus(playPause); return true; }
+    // Up from the transport row reaches the options row, which is where it sits on screen and
+    // where Compose's own focus search sends it on the television.
+    focus(optionButtons()[0] ?? playPause);
+    return true;
+  }
+
+  /**
+   * Left and right along whichever row holds the highlight.
+   *
+   * There are three rows and the highlight is only ever in one of them, so which row to walk is
+   * read off the element rather than tracked. Running off either end stops, because the rows do
+   * not wrap and nothing sits beside them - with one exception, below.
+   */
+  // `rightward` rather than `forward`, which is the fast-forward button three lines down - the
+  // two collided, and the row came out holding a boolean where a button should have been.
+  function stepAcross(rightward: boolean): boolean {
+    const here = document.activeElement;
+    if (!(here instanceof HTMLElement)) return false;
+    const inOptions = optionsRow.contains(here);
+    let row: HTMLElement[] | null = null;
+    if (inOptions) row = optionButtons();
+    else if (transport.contains(here)) row = [rewind, playPause, forward];
+    else if (bottomIcons.contains(here)) row = Array.from(bottomIcons.children) as HTMLElement[];
+    if (!row) return false;
+    const at = row.indexOf(here);
+    const next = row[at + (rightward ? 1 : -1)];
+    if (next) { focus(next); return true; }
+    /*
+     * On a channel, outward from the end of the options row puts the controls away.
+     *
+     * That is onCollapseOnDpad on the television, and it exists because on a channel this row is
+     * the whole of the chrome - there is nowhere else for the highlight to go, so the key may as
+     * well mean "done". A recording has a transport row and a timeline below, so there the press
+     * simply stops at the end like any other row.
+     */
+    if (live && inOptions) { setVisible(false); return true; }
     return true;
   }
 
@@ -739,6 +976,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // Any press brings the chrome back rather than acting, so nothing happens unseen. The one
     // exception is Back, which leaves whether or not the controls are up.
     if (key === 'back') {
+      if (menuOpen()) { const owner = menuOwner; closeMenu(); focus(owner); return true; }
       if (panelOpen) { closePanel(); focus(settingsButton); return true; }
       if (stripOpen) { closeStrip(); focus(null); return true; }
       if (visible) { setVisible(false); return true; }
@@ -797,10 +1035,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
         return stepUp();
       case 'left':
         if (!live && document.activeElement === track) { scrub(-skip * 1000); return true; }
-        return false;
+        return stepAcross(false);
       case 'right':
         if (!live && document.activeElement === track) { scrub(skip * 1000); return true; }
-        return false;
+        return stepAcross(true);
       case 'enter':
         (document.activeElement as HTMLElement | null)?.click();
         return true;
@@ -853,8 +1091,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       guideNext.textContent = next ?? '';
       guideNext.hidden = !next;
       guideBar.hidden = progress === null;
-      if (progress !== null) guideFill.style.width = `\%`;
-      guide.hidden = !now && !next;
+      if (progress !== null) guideFill.style.width = `${Math.round(progress * 100)}%`;
     },
 
     setCaption(text: string): void {
@@ -868,6 +1105,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     },
     destroy(): void {
       if (hideTimer !== null) window.clearTimeout(hideTimer);
+      if (resolutionTimer !== null) window.clearInterval(resolutionTimer);
       root.remove();
     },
   };

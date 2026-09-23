@@ -1414,6 +1414,9 @@ function playScreen(
     // A channel has no timeline to scrub and no end to run towards, so it gets a shorter set of
     // controls - see PlayerOverlayOptions.live.
     live: item.kind === 'live',
+    // The mark beside the name in the channel banner, the way the television app's
+    // LiveChannelPreview draws it. Ignored for a recording, which has a title instead.
+    logoUrl: item.logoUrl,
     onZap: channels.length > 1
       ? (forward) => {
           const here = channels.findIndex((c) => itemKey(c) === itemKey(item));

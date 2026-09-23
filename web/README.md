@@ -89,6 +89,9 @@ stops it being reopened every few months.
   `tizen.tvaudiocontrol`, mutes the *television*. An app that silences the whole set from its own
   player button, and leaves it silenced for whatever the viewer switches to next, is doing
   something materially different from what the button says. Left out on 2026-09-22.
+* **The fullscreen button.** Last in the television app's options row, and meaningless here: this
+  player has no smaller state to return to. Left out on 2026-09-24, when the row was rebuilt to
+  match; the buttons that remain keep their original positions rather than closing the gap.
 * **Player engine and connection mode.** Both are ExoPlayer settings - external players and
   buffering strategy - with no AVPlay counterpart. See the note on `playbackPage` in `ui/settings.ts`.
 * **Start muted, and embedded-subtitle handling.** Decisions the decoder makes for us on this
@@ -136,6 +139,37 @@ not seen working, because the emulator would not hold an inspector session again
 this size. Those are now stale: everything in the table has been watched on the set. The commits
 are left as they were written rather than rewritten, since what somebody knew at the time is part
 of the record.
+
+### The player's layout is copied, not approximated
+
+The television app does not draw its own controls for a recording - it uses media3's
+`PlayerControlView` with a Compose options row on top. So the arrangement is not a matter of taste
+anywhere: it is fixed by `exo_player_control_view.xml` and its dimens inside `media3-ui-1.5.1.aar`,
+plus `PlaybackOptionsOverlay` in `PlayerComponents.kt`. Both were read out of the AAR and the
+source rather than judged from screenshots, and every number in `ui/player.ts` and the `.pc-*`
+rules is that layout's dp doubled, because a television is 960dp wide on a 1920px panel.
+
+What that fixes in place:
+
+| | |
+| --- | --- |
+| Scrim | `exo_black_opacity_60`, flat across the whole picture - not the foot gradient this used to draw |
+| Title | 18dp in, 14dp down, 20sp semi-bold, two lines, 55% width |
+| Options row | top right, 68% black at a 13dp radius, 38dp buttons: subtitles, skip, resolution, aspect |
+| Transport | `exo_center_controls`, 71dp by 52dp, rewind / play-pause / forward |
+| Timeline | full width, 2dp line, 10dp scrubber, 52dp up from the foot |
+| Bottom bar | 60dp of `#b0000000`, `position / duration` at the start, the settings gear at the end |
+| Focus | transparent at rest; focused is `#D9041C2B` under a 3dp `#23D7EE` ring, from `exo_control_focus_selector.xml` |
+| Down walks | options -> play/pause -> timeline -> gear, then stops |
+
+A channel gets none of it, which is also copied: `useController = false` in `LiveChannelPreview`
+means Live TV on the television has no controller at all, so there is no scrim, no transport, no
+timeline and no bottom bar - only the options row and a banner in the bottom-left corner carrying
+the logo, the name, the resolution, and what is on now and next.
+
+There is no subtitle button in the bottom bar because there is none on the television either:
+media3 hides `exo_subtitle` unless `setShowSubtitleButton(true)` is called, and the television app
+never calls it. The gear is the only icon down there on both.
 
 ### The listings work, and the commit that says otherwise is wrong
 

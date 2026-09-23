@@ -25,6 +25,11 @@ export const LOCAL_EN = {
   audio_track: 'Audio',
   subtitles_label: 'Subtitles',
   subtitles_off: 'Off',
+  // The two halves of the switch at the top of the player's subtitle menu. Worded the way the
+  // television app words them in PlaybackOptionsOverlay - the label says what the press will do,
+  // not what the state currently is, which is the difference between a button and a readout.
+  subtitles_turn_on: 'Turn subtitles on',
+  subtitles_turn_off: 'Turn subtitles off',
   // Both of these are hardcoded English inside the television app's own composable rather than
   // resources, so there is nothing to extract and they start life here like the rest of this file.
   subtitle_background: 'Background',
