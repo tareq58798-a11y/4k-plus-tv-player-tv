@@ -45,7 +45,7 @@
  * the row, after the buttons that do mirror.
  */
 import { focus } from './focus';
-import { t } from '../shared/i18n';
+import { isRtl, t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
   setSkipSeconds,
@@ -990,6 +990,17 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   /** Where the highlight goes when the controls come up. A channel has no play button. */
   const firstStop = (): HTMLElement => (live ? optionButtons()[0] ?? settingsButton : playPause);
 
+  /**
+   * The key that points at the options row, and its opposite.
+   *
+   * The row is anchored to the trailing edge of the screen, so which arrow points at it mirrors
+   * with the language exactly as `towardsBar` and `awayFromBar` do on the television: Right and
+   * Left in English, Left and Right in Arabic. One fetches the controls, the other puts them away
+   * from the far end of the row.
+   */
+  const towardsControls = (): RemoteKey => (isRtl() ? 'left' : 'right');
+  const awayFromControls = (): RemoteKey => (isRtl() ? 'right' : 'left');
+
   /*
    * The order Down walks, which is the television app's:
    *
@@ -1084,14 +1095,17 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     const next = row[at + (rightward ? 1 : -1)];
     if (next) { focus(next); return true; }
     /*
-     * On a channel, outward from the end of the options row puts the controls away.
+     * On a channel, running off the *inner* end of the options row puts the controls away.
      *
-     * That is onCollapseOnDpad on the television, and it exists because on a channel this row is
-     * the whole of the chrome - there is nowhere else for the highlight to go, so the key may as
-     * well mean "done". A recording has a transport row and a timeline below, so there the press
-     * simply stops at the end like any other row.
+     * That is onCollapseOnDpad on the television, fired from the first button by `awayFromBar`,
+     * and it exists because on a channel this row is the whole of the chrome - there is nowhere
+     * else for the highlight to go, so the key may as well mean "done". Only that end: the far
+     * end is where the key that opened the row points, and having it close the row too would mean
+     * the same press opened and shut it depending on where the highlight happened to be. A
+     * recording has a transport row and a timeline below, so there the press simply stops.
      */
-    if (live && inOptions) { setVisible(false); return true; }
+    const outward = (rightward ? 'right' : 'left') === awayFromControls();
+    if (live && inOptions && outward) { setVisible(false); return true; }
     return true;
   }
 
@@ -1142,17 +1156,17 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     /*
      * Channel change, before anything else gets a look at the press.
      *
-     * This has to come before the branch below, which treats any key as 'wake the controls'. On a
-     * channel with the controls down, Down is not navigation - there is nothing to navigate to -
-     * so it changes channel, downward, the way Key.DirectionDown does on the television.
+     * This has to come before the branch below, which decides what wakes the controls. On a
+     * channel with the controls down, Up and Down are not navigation - there is nothing to
+     * navigate to - so they change channel, which is what Key.DirectionUp and Key.DirectionDown
+     * do on the television and what those buttons mean on every set a viewer has used.
      *
-     * Up used to do the same thing upward and no longer does: it is the key that brings the
-     * controls up, which is what was asked for. So zapping by arrow is one-directional now. The
-     * way back up a list is Back to the channel list and in again, which is the journey Back was
-     * already making.
+     * Up briefly did something else - it was the key that fetched the controls - and that made
+     * zapping one-directional. The controls moved to the outward key instead, below, which is
+     * where the television has always had them and which leaves both of these free again.
      */
-    if (live && options.onZap && !visible && !stripOpen && key === 'down') {
-      if (options.onZap(false)) return true;
+    if (live && options.onZap && !visible && !stripOpen && (key === 'up' || key === 'down')) {
+      if (options.onZap(key === 'up')) return true;
     }
 
     /*
@@ -1182,17 +1196,21 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }
 
     /*
-     * Waking the controls on a channel: Up, and only Up.
+     * Waking the controls on a channel: the key that points at them, and only that one.
      *
-     * A channel opens with the picture clean - no highlight sitting on a row of icons nobody
-     * asked for - so something has to be the key that goes and gets them, and Up is it. Any other
-     * key is swallowed rather than acting, because on a bare picture there is nothing else for it
-     * to act on and a press that silently does nothing is better than one that does something
-     * unseen. A recording keeps the old behaviour, where any key wakes them: there the controls
-     * are the point, and Down in particular has a timeline to reach.
+     * A channel opens with the picture clean, so something has to be the key that goes and fetches
+     * the options row, and it is the one pointing towards the corner the row sits in - Right in
+     * English, Left in Arabic, mirroring the way the row itself is anchored. That is `towardsBar`
+     * on the television, and the same key closes the row from its far end (see stepAcross), so
+     * the gesture is symmetrical: out to the controls, back in to the picture.
+     *
+     * Any other key is swallowed rather than acting. On a bare picture there is nothing else for
+     * a press to act on, and a key that silently does nothing is better than one that does
+     * something the viewer cannot see. A recording keeps the old behaviour, where any key wakes
+     * the controls: there the controls are the point, and Down has a timeline to reach.
      */
     if (!visible && !stripOpen) {
-      if (live && key !== 'up') return true;
+      if (live && key !== towardsControls()) return true;
       setVisible(true);
       focus(firstStop());
       return true;

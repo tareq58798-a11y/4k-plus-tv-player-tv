@@ -174,11 +174,17 @@ the resolution to arrive rather than running a fixed timer - that line is the on
 is waiting for, and a slow channel would otherwise lose it - and then stays 3s longer, capped at
 3.5s of waiting. Both numbers are `RESOLUTION_WAIT_MS` and `RESOLUTION_READ_MS`.
 
-The keys differ from the television here, at request. Up brings the options row up and five
-seconds of inactivity takes it away again; the television uses Right and keeps its bar up until
-Left dismisses it. Down still changes channel, downward, as `Key.DirectionDown` does there - but
-Up no longer changes channel upward, because Up is now the key that fetches the controls, so
-zapping by arrow is one-directional. Back to the channel list and in again is the way up.
+The keys are the television's, with one addition. Right fetches the options row and Left from its
+first button puts it away - `towardsBar` and `awayFromBar`, which mirror with the language, so in
+Arabic they swap. Running off the far end does nothing, because that is the direction the opening
+key points and one press should not both open and shut the row. Up and Down change channel while
+the row is down. The addition is a five-second inactivity timeout on the row, which the television
+does not have: there it stays up until Left dismisses it.
+
+Back closes the row when it is up, and leaves the channel when it is already down - the same two
+stages as `BackHandler(enabled = controllerVisible)` on the television, where Back is only claimed
+while the bar is visible and otherwise falls through to leaving fullscreen. OK also leaves a
+channel, so there are two ways out and neither depends on the row's state.
 
 The aspect-ratio menu carries all seven of the television's shapes. Three are AVPlay display
 methods; the four named frames are built from the display *rectangle*, which is the only thing on
