@@ -1,19 +1,17 @@
 package com.fourkplus.tvplayer.data
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.KeyStore
 
 /** Encrypted, on-device CRUD for the user's saved playlist sources and which one is active. */
 internal class PlaylistSourceStore(context: Context) {
-    private val preferences = EncryptedSharedPreferences.create(
-        context, "playlist_source",
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    private val preferences = openStore(context)
 
     // Sources only ever enter this store already validated — either through the manual/login UI's
     // own ApprovedServers.allows() check, or via the trusted device-activation backend, which
@@ -125,5 +123,64 @@ internal class PlaylistSourceStore(context: Context) {
             .putString("name", input.name.trim()).putString("kind", input.kind.name)
             .putString("address", input.address.trim()).putString("username", input.username)
             .putString("password", input.password).apply()
+    }
+
+    internal companion object {
+        private const val FILE = "playlist_source"
+
+        /** androidx.security's own name for the key it creates. Deleting it forces a fresh one. */
+        private const val MASTER_KEY_ALIAS = "_androidx_security_master_key_"
+
+        /**
+         * The encrypted store, or the nearest thing that works on this device.
+         *
+         * This used to be a bare call to EncryptedSharedPreferences.create in a field
+         * initialiser, which meant any failure inside it took the whole app down before the first
+         * frame - the object could not be constructed, so neither could the repository that owns
+         * it, nor the view model that owns that.
+         *
+         * And it does fail. The library is androidx.security-crypto 1.1.0-alpha06, an alpha that
+         * has since been abandoned, and its master key lives in the hardware keystore, whose
+         * behaviour is the manufacturer's rather than Android's. The failures it throws -
+         * "master key exists but is unusable", AEADBadTagException, a protobuf parse error on the
+         * key file - are all well known and all device-specific. A key can also be invalidated
+         * out from under the app by a restore, a clone, or an OEM's own maintenance, at which
+         * point a working install starts crashing on launch and nothing the viewer does fixes it.
+         *
+         * So: try, and if that fails, throw away both halves of the state and try once more. The
+         * saved playlist goes with it and the viewer has to activate again, which is a bad
+         * afternoon rather than an app that will not open.
+         *
+         * If even that fails the store falls back to plain preferences. That is a real reduction
+         * in protection and it is a deliberate one: what is kept here is a provider address and
+         * login, the same thing the Tizen port already keeps in the clear because a web app has
+         * no key store to reach for at all. An app that cannot be opened protects nothing.
+         */
+        fun openStore(context: Context): SharedPreferences {
+            fun create(): SharedPreferences = EncryptedSharedPreferences.create(
+                context, FILE,
+                MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+
+            runCatching { return create() }.onFailure {
+                Log.w("PlaylistSourceStore", "encrypted store unusable, rebuilding it", it)
+            }
+
+            // Both halves, because either can be the broken one: the key in the keystore, or the
+            // file it was used to encrypt. Leaving one behind leaves the same mismatch.
+            runCatching { context.deleteSharedPreferences(FILE) }
+            runCatching {
+                KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                    .deleteEntry(MASTER_KEY_ALIAS)
+            }
+
+            runCatching { return create() }.onFailure {
+                Log.w("PlaylistSourceStore", "encrypted store still unusable, storing in the clear", it)
+            }
+
+            return context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        }
     }
 }
