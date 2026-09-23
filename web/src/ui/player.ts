@@ -770,6 +770,19 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       return true;
     }
 
+    /*
+     * A series with the controls down: Down opens the strip, not the controls.
+     *
+     * "One press of Down goes to the episodes" has to hold from the state a viewer is actually
+     * in, and five seconds into an episode the controls have already withdrawn. Without this the
+     * press was spent waking them and the strip needed a second one - which is the same two-press
+     * walk the whole change was meant to remove, just moved somewhere less obvious.
+     */
+    if (episodes.length && !visible && !stripOpen && key === 'down') {
+      openStrip();
+      return true;
+    }
+
     if (!visible && !stripOpen) {
       setVisible(true);
       focus(firstStop());
