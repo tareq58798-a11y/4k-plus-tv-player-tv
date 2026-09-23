@@ -941,9 +941,18 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       });
       card.addEventListener('click', () =>
         behindPin(isCategoryLocked(item.group) || isChannelLocked(itemKey(item)), () => {
-          // Handed over rather than left running: the preview and the full screen are the same
-          // decoder, and two calls to play() without a stop between them is how a set ends up
-          // showing the previous channel with the new one's sound.
+          /*
+           * Noted first, before any of the branching below.
+           *
+           * Back and OK use this to return to this row in this category rather than to the top of
+           * whichever one the browser opens on. It was written further down, after the handover
+           * branch had already returned - so the one path a channel normally takes, pressing OK on
+           * the channel the preview is already showing, never set it, and leaving that channel
+           * still landed on the page. Every kind needs it and every path has to set it: a film and
+           * a series open a page, a channel opens full screen, and a viewer picking a channel is
+           * usually part way down a list of hundreds.
+           */
+          browseReturn = { section: current, category: selected, focusKey: itemKey(item) };
           /*
            * A channel already on screen is handed over rather than stopped and reopened.
            *
@@ -971,13 +980,6 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           // of the list means watch it now - there is nothing to read about it first, and the
           // listings beside the list have already said what is on. A film has a plot, a cast and a
           // running time, and starting it was the only way to see any of them.
-          // Noted on the way out, so Back can land on this poster in this category rather than
-          // at the top of the list - see the matching block where the grid is first focused.
-          // A series needs it as much as a film does: both open a page, and both used to come
-          // back to whichever category the browser opens on rather than the one being browsed.
-          if (item.kind !== 'live') {
-            browseReturn = { section: current, category: selected, focusKey: itemKey(item) };
-          }
           if (item.kind === 'movie') {
             void detailsScreen(item);
           } else {
@@ -1193,7 +1195,24 @@ function browseScreen(current: Section, favoritesOnly = false): void {
    * before it ever becomes a request.
    */
   if (live) {
-    const first = pool.find((item) => item.group === selected)
+    /*
+     * The first real channel, not the first row.
+     *
+     * This provider - and it is a common habit - uses rows like "####### 1001 #######" as
+     * headings inside a category. They are entries in the playlist like any other, they are
+     * always first, and they carry no stream: measured on the set, the first row of every
+     * category tried was one of these, and every one reported the decoder in state NONE while
+     * every real channel after it played.
+     *
+     * So Live TV was opening on the one row in the category guaranteed not to work, which is what
+     * was reported as the preview having stopped working. They are left in the list, because they
+     * are the provider's own organisation of it and hiding them would be editing what the viewer
+     * subscribed to - but nothing is gained by tuning one.
+     */
+    const isSeparator = (item: PlaylistItem): boolean => /^\s*#{3,}/.test(item.name);
+    const inCategory = pool.filter((item) => item.group === selected);
+    const first = inCategory.find((item) => !isSeparator(item))
+      ?? inCategory[0]
       ?? specials.find(([name]) => name === selected)?.[1][0];
     if (first) {
       focusedChannelId = first.channelId;
@@ -1430,7 +1449,11 @@ function playScreen(
       player.stop();
       overlay.destroy();
       release();
-      showSection(section);
+      // Back to the list this was opened from, and to the landing when it was opened from there.
+      // Leaving a channel dropped the viewer on the landing however deep into a category they
+      // had been, which for a list of hundreds is the whole way back to the start.
+      if (browseReturn) browseScreen(section);
+      else showSection(section);
     },
   });
   app.append(overlay.element);
