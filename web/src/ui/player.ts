@@ -575,7 +575,9 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     });
     strip.append(card);
   }
-  chrome.append(strip);
+  // In the outer layer, not the chrome. The strip has to be able to be on screen while the
+  // controls are not - see openStrip - and anything inside the chrome goes when the chrome goes.
+  root.append(strip);
 
   let stripOpen = false;
 
@@ -583,6 +585,16 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     if (!episodes.length) return;
     stripOpen = true;
     strip.hidden = false;
+    /*
+     * The strip replaces the controls rather than joining them.
+     *
+     * Two things on screen for one press is the visible half of the problem. The other half is
+     * that the controls keep the highlight, so Up - which is the strip's way of closing itself -
+     * never reaches the strip at all. Taking the controls down is what lets the strip hold focus,
+     * and so what makes Up work. The same change was made in the television app.
+     */
+    chrome.classList.add('is-hidden');
+    visible = false;
     // Opens on the episode that is playing rather than on the first, so the viewer starts where
     // they are and moves outwards from it.
     const current = strip.querySelector<HTMLElement>('[aria-selected="true"]');
@@ -671,8 +683,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
 
   function stepUp(): boolean {
     if (panelOpen) { closePanel(); focus(settingsButton); return true; }
-    // Up is the strip's way out, mirroring the way it was opened.
-    if (stripOpen) { closeStrip(); focus(firstStop()); return true; }
+    // Up is the strip's way out, mirroring the way it was opened - and it leaves the picture
+    // bare rather than putting the controls back, because the press said 'not this' rather than
+    // 'something else'. Any key brings them back.
+    if (stripOpen) { closeStrip(); focus(null); return true; }
     const here = document.activeElement;
     if (here === settingsButton) { focus(live ? firstStop() : track); return true; }
     if (here === track) { focus(playPause); return true; }
@@ -717,12 +731,12 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // exception is Back, which leaves whether or not the controls are up.
     if (key === 'back') {
       if (panelOpen) { closePanel(); focus(settingsButton); return true; }
-      if (stripOpen) { closeStrip(); focus(firstStop()); return true; }
+      if (stripOpen) { closeStrip(); focus(null); return true; }
       if (visible) { setVisible(false); return true; }
       options.onExit(positionMs);
       return true;
     }
-    if (!visible) {
+    if (!visible && !stripOpen) {
       setVisible(true);
       focus(firstStop());
       return true;

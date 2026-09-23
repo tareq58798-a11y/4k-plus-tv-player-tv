@@ -1071,7 +1071,11 @@ body.playing #app {
  * width a poster wants that is all series and no episode - precisely the part being chosen
  * between. Same reasoning as the television app's strip, which went from 88dp to 158dp for it.
  */
+/* Its own scrim now that it lives outside the chrome. It used to sit on the chrome's foot
+   gradient; with the controls gone there is nothing under it but the film, and episode titles are
+   white text over whatever frame happens to be paused behind them. */
 .pc-strip {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.72) 30%, rgba(0, 0, 0, 0.85) 100%);
   position: absolute;
   left: var(--dim-safe-horizontal);
   right: var(--dim-safe-horizontal);
