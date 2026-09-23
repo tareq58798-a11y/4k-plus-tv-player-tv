@@ -36,11 +36,26 @@ export function setBackgroundMode(mode: BackgroundMode): void {
  * again each time would be answering a standing complaint with a temporary fix.
  */
 const SCALING_KEY = 'video_scaling';
-const SCALING_VALUES = ['fit', 'fill', 'stretch'] as const;
+
+/**
+ * All seven, under the television app's own keys.
+ *
+ * The first three are the ones its Settings screen offers and are what a viewer is most likely to
+ * want standing; the four named frames come from the player's own menu. `zoom` is what the
+ * television calls the crop-to-fill mode in its `video_mode` preference - this used to call it
+ * `fill`, which is only the label, and two apps disagreeing about the key for the same choice is
+ * how a setting ends up meaning different things on different screens. See MIGRATED below.
+ */
+const SCALING_VALUES = ['fit', 'stretch', 'zoom', '16:9', '4:3', '21:9', '1:1'] as const;
 export type VideoScalingPreference = (typeof SCALING_VALUES)[number];
+
+/** Anything written under the old name, read back under the new one. */
+const MIGRATED: Record<string, VideoScalingPreference> = { fill: 'zoom' };
 
 export function videoScaling(): VideoScalingPreference {
   const stored = readJson<unknown>(SCALING_KEY, 'fit');
+  const renamed = typeof stored === 'string' ? MIGRATED[stored] : undefined;
+  if (renamed) return renamed;
   return SCALING_VALUES.includes(stored as VideoScalingPreference)
     ? (stored as VideoScalingPreference)
     : 'fit';

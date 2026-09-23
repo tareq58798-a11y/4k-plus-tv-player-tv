@@ -30,6 +30,21 @@ export const LOCAL_EN = {
   // not what the state currently is, which is the difference between a button and a readout.
   subtitles_turn_on: 'Turn subtitles on',
   subtitles_turn_off: 'Turn subtitles off',
+  /*
+   * The player's aspect-ratio menu, worded as the television app words it.
+   *
+   * Its Settings screen has three of these as resources - Fit, Fill, Stretch - but the player's
+   * own dropdown spells them out at more length and adds four named frames, all hardcoded English
+   * inside the composable. So they start life here, like the rest of this file, and the Settings
+   * screen keeps using the extracted resource strings for the three it offers.
+   */
+  scale_fit: 'Fit video',
+  scale_stretch: 'Stretch to screen',
+  scale_zoom: 'Fill and crop',
+  scale_16_9: '16:9 Standard',
+  scale_4_3: '4:3 Traditional',
+  scale_21_9: '21:9 Ultrawide',
+  scale_1_1: '1:1 Square',
   // Both of these are hardcoded English inside the television app's own composable rather than
   // resources, so there is nothing to extract and they start life here like the rest of this file.
   subtitle_background: 'Background',

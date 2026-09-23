@@ -30,7 +30,24 @@ export type PlayerEvent =
   | { type: 'error'; message: string };
 
 /** Matches the television app's video_mode preference: fit, fill, stretch. */
-export type VideoScaling = 'fit' | 'fill' | 'stretch';
+/**
+ * The seven shapes the television app's aspect-ratio menu offers, under its own keys.
+ *
+ * Three of them are display methods - show it all, crop to fill, stretch to fill - and four are
+ * requests to force the picture into a named frame whatever shape it arrived in. `zoom` rather
+ * than `fill` because that is the string the television writes into its own `video_mode`
+ * preference, and having the two apps disagree about what to call the same choice is how a
+ * setting ends up meaning different things on different screens.
+ */
+export type VideoScaling = 'fit' | 'stretch' | 'zoom' | '16:9' | '4:3' | '21:9' | '1:1';
+
+/** The four named frames, as width over height. The other three modes reshape nothing. */
+export const FIXED_RATIOS: Partial<Record<VideoScaling, number>> = {
+  '16:9': 16 / 9,
+  '4:3': 4 / 3,
+  '21:9': 21 / 9,
+  '1:1': 1,
+};
 
 /** One selectable soundtrack: a dub, a commentary, or the original. */
 export interface AudioTrack {
@@ -203,8 +220,18 @@ class TizenPlayer implements MediaPlayer {
   private listener: ((event: PlayerEvent) => void) | null = null;
   private ticker: number | null = null;
   private subtitleTimer: number | null = null;
-  /** Held until the stream is prepared, because AVPlay will not accept it before then. */
-  private pendingRect: DOMRect | null = null;
+  /**
+   * The box the player was asked for, before the current mode reshapes it.
+   *
+   * This replaced a `pendingRect` that meant "held until the stream is prepared, because AVPlay
+   * will not accept it before then". Both jobs are done by keeping the request instead of the
+   * delivery: applyDisplay recomputes from this every time it runs and simply fails quietly while
+   * the decoder is not ready, so 'ready' re-running it is all the deferral that was needed. And a
+   * named aspect ratio has to be worked out from the original box each time either the box or the
+   * mode changes - a rectangle already narrowed to 4:3 is no use as the start of 21:9.
+   */
+  private baseRect: DOMRect | null = null;
+  private scaling: VideoScaling = 'fit';
 
   constructor() {
     const webapis = (window as unknown as { webapis?: { avplay?: AvPlay } }).webapis;
@@ -244,7 +271,7 @@ class TizenPlayer implements MediaPlayer {
     // yet, and ignores it silently. Setting it here left every stream at the default, which is the
     // whole panel - so the Live TV preview played full screen behind the page instead of in its
     // box. Applied below, once prepareAsync has returned.
-    this.pendingRect = rect;
+    this.baseRect = rect;
     this.av.setListener({
       onbufferingprogress: (percent: number) => this.emit({ type: 'buffering', percent }),
       onbufferingcomplete: () => this.emit({ type: 'playing' }),
@@ -277,19 +304,11 @@ class TizenPlayer implements MediaPlayer {
         (error) => reject(new Error(String(error))),
       );
     });
-    // Now that it is prepared, the rectangle and the display method actually take.
-    if (this.pendingRect) {
-      this.av.setDisplayRect(...this.device(this.pendingRect));
-      this.pendingRect = null;
-    }
-    try {
-      // LETTER_BOX fits the picture inside the rectangle it was given, keeping its shape. It is
-      // the default the app starts from; the viewer's own choice is applied by setScaling, which
-      // the caller does on this same 'ready' event.
-      this.av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
-    } catch {
-      /* Older sets name this differently; the default is already letter-box. */
-    }
+    // Now that it is prepared, the rectangle and the display method actually take. Through
+    // applyDisplay rather than straight to setDisplayRect, so a mode chosen before the stream was
+    // ready is honoured now instead of being flattened back to letter-box; the caller applies the
+    // viewer's own choice on this same 'ready' event either way.
+    this.applyDisplay();
     this.emit({ type: 'ready', durationMs: this.av.getDuration() });
     this.av.play();
     this.emit({ type: 'playing' });
@@ -440,11 +459,94 @@ class TizenPlayer implements MediaPlayer {
   }
 
   setScaling(mode: VideoScaling): void {
+    this.scaling = mode;
+    this.applyDisplay();
+  }
+
+  setRect(rect: DOMRect): void {
+    // Kept either way, so a rectangle handed over before the stream is ready is applied when it
+    // is rather than lost - which is what "the rectangle is set again when it is" used to assume
+    // without anything actually doing it.
+    this.baseRect = rect;
+    this.applyDisplay();
+  }
+
+  /**
+   * The picture's own shape, or null while the stream has not said.
+   *
+   * Needed because the four named frames are not applied to the box - they are applied to the
+   * picture already fitted inside it, which is what the television does and which gives a
+   * different answer whenever the two shapes differ. See applyDisplay.
+   */
+  private videoRatio(): number | null {
+    const label = this.resolution();
+    if (!label) return null;
+    const parts = label.split(' x ').map(Number);
+    const width = parts[0] ?? 0;
+    const height = parts[1] ?? 0;
+    return width > 0 && height > 0 ? width / height : null;
+  }
+
+  /**
+   * Puts the picture where the current mode says it goes.
+   *
+   * AVPlay has three display methods and the television app offers seven shapes, so four of them
+   * have to be built rather than selected. They are built out of the display *rectangle*, which
+   * is the one thing here that can be any shape at all: aim the decoder at a box of the right
+   * proportions and tell it to fill that box exactly.
+   *
+   * Working out which box is the fiddly part, because the television's version is not "put the
+   * picture in a 4:3 frame". applyRequestedAspectRatio scales the whole surface - a surface that
+   * RESIZE_MODE_FIT has already sized to the fitted picture - so what gets squashed is whatever
+   * was on screen a moment ago, not the raw video. Two consequences, and both are reproduced
+   * here rather than tidied away:
+   *
+   *   - a 16:9 picture asked for 4:3 comes out genuinely squashed, not letterboxed into a 4:3 box
+   *   - a 4:3 picture asked for 16:9 does not change at all, because the fitted picture is
+   *     already pillarboxed and the scale factors both come out 1
+   *
+   * So: fit the picture into the box, then scale that result by how much the box would have to
+   * shrink to become the named shape. Without a reported video size there is nothing to fit, and
+   * the box's own ratio stands in - which degrades to plain reshaping rather than to nothing.
+   */
+  private applyDisplay(): void {
+    const base = this.baseRect;
+    if (!base) return;
+
+    const ratio = FIXED_RATIOS[this.scaling] ?? null;
+    let target = base;
+
+    if (ratio !== null && base.width > 0 && base.height > 0) {
+      const boxRatio = base.width / base.height;
+      const video = this.videoRatio() ?? boxRatio;
+      // The fitted picture, as the television's RESIZE_MODE_FIT would leave it.
+      let width = video > boxRatio ? base.width : base.height * video;
+      let height = video > boxRatio ? base.width / video : base.height;
+      // Then the squash that turns the box into the named shape.
+      if (ratio > boxRatio) height *= boxRatio / ratio;
+      else width *= ratio / boxRatio;
+      target = new DOMRect(
+        base.left + (base.width - width) / 2,
+        base.top + (base.height - height) / 2,
+        width,
+        height,
+      );
+    }
+
+    try {
+      this.av.setDisplayRect(...this.device(target));
+    } catch {
+      /* Not prepared yet. Applied on 'ready', which calls this again. */
+      return;
+    }
+
     // LETTER_BOX keeps the whole frame and adds bars; CROPPED_FULL keeps the shape and loses the
-    // edges; FULL_SCREEN keeps neither and fills the box. One each for fit, fill and stretch.
-    const method = mode === 'stretch'
+    // edges; FULL_SCREEN keeps neither and fills the box. The named frames use FULL_SCREEN
+    // because the box has already been cut to the right shape above - the stretch into it is the
+    // squash the television applies to its surface.
+    const method = this.scaling === 'stretch' || ratio !== null
       ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN'
-      : mode === 'fill'
+      : this.scaling === 'zoom'
         ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL'
         : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
     try {
@@ -452,19 +554,6 @@ class TizenPlayer implements MediaPlayer {
     } catch {
       // Some sets reject a method before the stream is prepared, and some reject CROPPED_FULL
       // outright. Either way the picture stays as it was, which is better than losing it.
-    }
-  }
-
-  setRect(rect: DOMRect): void {
-    // Kept either way, so a rectangle handed over before the stream is ready is applied when it
-    // is rather than lost - which is what "the rectangle is set again when it is" used to assume
-    // without anything actually doing it.
-    this.pendingRect = rect;
-    try {
-      this.av.setDisplayRect(...this.device(rect));
-      this.pendingRect = null;
-    } catch {
-      /* Not prepared yet. Applied on 'ready'. */
     }
   }
 
@@ -564,8 +653,25 @@ class BrowserPlayer implements MediaPlayer {
     this.video.playbackRate = rate;
   }
 
+  /*
+   * The development path, where the picture is a real <video> and CSS can do the whole job.
+   *
+   * object-fit covers the three display methods and aspect-ratio covers the four named frames -
+   * the element is reshaped and the picture fitted inside it, which is close enough for working
+   * without a television in front of you. It is not the surface-scaling arithmetic the Tizen
+   * player does, and it is not meant to be: that exists to reproduce the television app exactly,
+   * on the platform that ships.
+   */
   setScaling(mode: VideoScaling): void {
-    this.video.style.objectFit = mode === 'stretch' ? 'fill' : mode === 'fill' ? 'cover' : 'contain';
+    const ratio = FIXED_RATIOS[mode] ?? null;
+    this.video.style.objectFit = mode === 'stretch' ? 'fill' : mode === 'zoom' ? 'cover' : 'contain';
+    this.video.style.aspectRatio = ratio === null ? '' : String(ratio);
+    // Height rather than width, so a squarer frame shrinks inside the box instead of overflowing
+    // it: with a fixed width an aspect-ratio below the box's own would push the picture off the
+    // bottom of the screen.
+    this.video.style.height = ratio === null ? '100%' : 'auto';
+    this.video.style.maxHeight = '100%';
+    this.video.style.margin = ratio === null ? '' : 'auto';
   }
 
   /**

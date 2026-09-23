@@ -167,6 +167,33 @@ means Live TV on the television has no controller at all, so there is no scrim, 
 timeline and no bottom bar - only the options row and a banner in the bottom-left corner carrying
 the logo, the name, the resolution, and what is on now and next.
 
+The aspect-ratio menu carries all seven of the television's shapes. Three are AVPlay display
+methods; the four named frames are built from the display *rectangle*, which is the only thing on
+this platform that can be any shape at all - aim the decoder at a box of the right proportions and
+tell it to fill that box exactly.
+
+Working out which box is the awkward part, because the television's version is not "put the
+picture in a 4:3 frame". `applyRequestedAspectRatio` scales the whole surface, and
+`RESIZE_MODE_FIT` has already sized that surface to the *fitted* picture - so what gets squashed
+is what was on screen a moment ago, not the raw video. Two consequences, both reproduced rather
+than tidied away: a 16:9 picture asked for 4:3 comes out genuinely squashed, and a 4:3 picture
+asked for 16:9 does not change at all. Measured on the set against a 1920x1080 stream:
+
+| Mode | Rectangle handed to AVPlay |
+| --- | --- |
+| Fit video | `0,0,1920,1080` letter-box |
+| Stretch to screen | `0,0,1920,1080` full-screen |
+| Fill and crop | `0,0,1920,1080` cropped-full |
+| 16:9 Standard | `0,0,1920,1080` - unchanged, as on the television |
+| 4:3 Traditional | `240,0,1440,1080` |
+| 21:9 Ultrawide | `0,129,1920,823` |
+| 1:1 Square | `420,0,1080,1080` |
+
+Settings still offers three of these rather than seven, which is what the television's Settings
+screen does: that is the standing default somebody sets once, and the named frames are answers to
+what is on screen right now. Both write the same preference, so a frame chosen in the player
+leaves none of the three marked - true on the television too.
+
 One thing is deliberately *not* copied. `exo_media_button` is 71dp by 52dp and the focus drawable
 is an oval on that box, so a focused play button on the television is a stretched ellipse. It
 looks like a mistake there and it looked like one here, so the transport buttons are square and

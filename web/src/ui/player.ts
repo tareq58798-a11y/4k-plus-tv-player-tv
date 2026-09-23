@@ -481,6 +481,72 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const menuOpen = (): boolean => menuOwner !== null;
 
   /*
+   * Walking a list inside the player, which nothing else will do for us.
+   *
+   * Everywhere else in the app an unhandled arrow falls through to focus.ts's directional search.
+   * Not here: main.ts registers the player's key handler as `overlay.handleKey(key); return true`,
+   * deliberately, because the browse screen is still in the document behind the video and a
+   * directional search would happily move the highlight onto a poster nobody can see. The price is
+   * that every list the player puts on screen has to walk itself, and for a while none of them
+   * did - stepDown swallowed the press outright while a menu or the settings panel was open, so
+   * both could be opened, read, and only ever answered with their first entry.
+   */
+  function stopsIn(container: HTMLElement): HTMLElement[] {
+    // offsetParent is null for anything inside a hidden section, which is how the soundtrack and
+    // subtitle blocks say they have nothing to offer.
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-focus]'))
+      .filter((node) => node.offsetParent !== null);
+  }
+
+  /** Down and up the open menu. False when there is no further to go in that direction. */
+  function stepMenu(delta: number): boolean {
+    const items = stopsIn(menu);
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = items[at + delta];
+    if (!next) return false;
+    focus(next);
+    return true;
+  }
+
+  /** The settings panel as rows of options: the soundtracks, the subtitle tracks, the speeds. */
+  function panelRows(): HTMLElement[][] {
+    return Array.from(panel.querySelectorAll<HTMLElement>('.pc-speeds'))
+      .map((row) => stopsIn(row))
+      .filter((row) => row.length > 0);
+  }
+
+  /**
+   * Down and up between the panel's rows, keeping the column where it can.
+   *
+   * Clamped rather than wrapped, because the rows are different lengths - a stream with two
+   * soundtracks and six speeds would otherwise drop the highlight off the end of the short row
+   * and leave the press doing nothing with no way to tell why.
+   */
+  function stepPanel(delta: number): boolean {
+    const rows = panelRows();
+    const here = document.activeElement as HTMLElement | null;
+    const row = rows.findIndex((entries) => here !== null && entries.includes(here));
+    if (row < 0) { focus(rows[0]?.[0] ?? null); return rows.length > 0; }
+    const target = rows[row + delta];
+    if (!target) return false;
+    const column = rows[row]!.indexOf(here!);
+    focus(target[Math.min(column, target.length - 1)] ?? target[0]!);
+    return true;
+  }
+
+  /** Left and right within whichever panel row holds the highlight. */
+  function stepPanelAcross(rightward: boolean): boolean {
+    const here = document.activeElement as HTMLElement | null;
+    for (const row of panelRows()) {
+      if (here === null || !row.includes(here)) continue;
+      const next = row[row.indexOf(here) + (rightward ? 1 : -1)];
+      if (next) focus(next);
+      return true;
+    }
+    return false;
+  }
+
+  /*
    * Subtitles: on or off, and whether the line carries a dark backing.
    *
    * The television app's dropdown has two more entries - loading an SRT or VTT from storage, and
@@ -556,13 +622,23 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }]);
   });
 
-  // How the picture fills the screen. Applied the moment it is chosen and remembered afterwards.
-  // The television app offers seven shapes; AVPlay has three, so three is what this offers.
+  /*
+   * How the picture fills the screen. Applied the moment it is chosen and remembered afterwards.
+   *
+   * All seven of the television app's shapes, in its order. Three are AVPlay display methods; the
+   * four named frames are built out of the display rectangle instead - see applyDisplay in
+   * platform/video.ts, which reproduces the surface scaling the television does rather than the
+   * tidier thing it looks like it is doing.
+   */
   let scaling = videoScaling();
   const SCALINGS: { mode: VideoScalingPreference; label: () => string }[] = [
-    { mode: 'fit', label: () => t('video_fit') },
-    { mode: 'fill', label: () => t('video_fill') },
-    { mode: 'stretch', label: () => t('video_stretch') },
+    { mode: 'fit', label: () => t('scale_fit') },
+    { mode: 'stretch', label: () => t('scale_stretch') },
+    { mode: 'zoom', label: () => t('scale_zoom') },
+    { mode: '16:9', label: () => t('scale_16_9') },
+    { mode: '4:3', label: () => t('scale_4_3') },
+    { mode: '21:9', label: () => t('scale_21_9') },
+    { mode: '1:1', label: () => t('scale_1_1') },
   ];
 
   aspectButton.addEventListener('click', () => {
@@ -865,8 +941,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    * anything else moves the highlight, and the viewer has no way to get it back in step.
    */
   function stepDown(): boolean {
-    if (menuOpen()) return true;
-    if (panelOpen) return true;
+    // Down the open list, and nothing at the bottom of it - a remote user cannot see that they
+    // have reached the end except by the highlight refusing to move.
+    if (menuOpen()) { stepMenu(1); return true; }
+    if (panelOpen) { stepPanel(1); return true; }
     if (stripOpen) return true;
     const here = document.activeElement;
     const inOptions = here instanceof HTMLElement && optionsRow.contains(here);
@@ -889,8 +967,21 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   }
 
   function stepUp(): boolean {
-    if (menuOpen()) { const owner = menuOwner; closeMenu(); focus(owner); return true; }
-    if (panelOpen) { closePanel(); focus(settingsButton); return true; }
+    // Up walks the open list, and past the top of it closes it - which is the way it was opened
+    // in reverse, and saves the viewer hunting for Back.
+    if (menuOpen()) {
+      if (stepMenu(-1)) return true;
+      const owner = menuOwner;
+      closeMenu();
+      focus(owner);
+      return true;
+    }
+    if (panelOpen) {
+      if (stepPanel(-1)) return true;
+      closePanel();
+      focus(settingsButton);
+      return true;
+    }
     // Up is the strip's way out, mirroring the way it was opened - and it leaves the picture
     // bare rather than putting the controls back, because the press said 'not this' rather than
     // 'something else'. Any key brings them back.
@@ -916,6 +1007,11 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   // `rightward` rather than `forward`, which is the fast-forward button three lines down - the
   // two collided, and the row came out holding a boolean where a button should have been.
   function stepAcross(rightward: boolean): boolean {
+    // A menu is one column, so sideways means nothing in it; the panel is rows of options, where
+    // it means everything. Both are consumed either way rather than falling through to a
+    // directional search that would leave the player entirely - see stopsIn.
+    if (menuOpen()) return true;
+    if (panelOpen) { stepPanelAcross(rightward); return true; }
     const here = document.activeElement;
     if (!(here instanceof HTMLElement)) return false;
     const inOptions = optionsRow.contains(here);
