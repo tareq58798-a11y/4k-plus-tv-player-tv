@@ -137,6 +137,27 @@ this size. Those are now stale: everything in the table has been watched on the 
 are left as they were written rather than rewritten, since what somebody knew at the time is part
 of the record.
 
+### The listings work, and the commit that says otherwise is wrong
+
+`e004c0f` ends with a line saying the now-and-next panel "could not be verified and probably never
+will be on this playlist" because "this provider has no listings to put in it". That is not true,
+and it was reached by trying a handful of channels in one sports category — several of which were
+the separator rows that same commit was about, so they were never going to answer.
+
+Counted properly, against the live catalogue: **10,942 channels, 1,827 of them carrying an EPG id**,
+and of twelve sampled by `get_short_epg`, three returned listings. So roughly one channel in six has
+a schedule, which is the provider's data rather than a fault here. Verified on the set on BBC 3, by
+key presses, in both places the panel appears:
+
+| | |
+| --- | --- |
+| Browse guide | populated — `Next: 02:00 AM TimeShift 20` |
+| In-player panel | visible, `x: 80, y: 108` — below the title, which ends at 97, and left-aligned with it |
+| Empty "now" line | hidden, and the progress bar with it, because no programme spans the clock |
+
+That last row is the intended behaviour rather than a gap: `pick()` only fills the line it has a
+programme for. A channel with no EPG id at all still shows nothing, and should.
+
 ## Installing on a Samsung emulator or television
 
 Three things here are not what the general Tizen documentation says, and each cost an hour:
