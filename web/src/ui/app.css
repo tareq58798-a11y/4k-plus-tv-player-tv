@@ -136,20 +136,49 @@ body.previewing .backdrop-scrim {
 }
 
 /*
- * With moving video behind them, the two columns need to carry more than a tint.
+ * The two columns over moving video: Android's tint, and a shadow to pay for it.
  *
- * 0.42 was measured against a dark page gradient. A channel is whatever it happens to be showing
- * - a football pitch, a news studio, a white caption card - and white text over that is legible
- * for some frames and not others, which is worse than consistently hard to read. These are close
- * to opaque, and the picture is still the whole of the rest of the screen.
+ * These were at 0.88, nearly opaque, and reported as too dark. They were darkened because a
+ * channel is whatever it happens to be showing - a football pitch, a news studio, a white caption
+ * card - and white text over that is legible for some frames and not others, which is worse than
+ * consistently hard to read.
+ *
+ * The television app does not have that problem to solve: its preview is a pane in the corner, so
+ * its columns sit over the app's own artwork and 0.42 is enough. Here the picture is the whole
+ * screen and it is behind them.
+ *
+ * Darkening the panel is not the only way to hold text over a picture, though, and it is the one
+ * that costs the picture most. This app already solves it the other way everywhere else it puts
+ * words straight on video - the browser title below, the channel banner in the player, the
+ * now-and-next lines - by shadowing the letters instead. So: Android's 0.42, which is what these
+ * columns are worth as a tint, plus that same shadow on the text they hold. The panel gets
+ * lighter and the names stay readable over a bright frame.
  */
 body.previewing .sidebar,
 body.previewing .channel-list {
-  background: rgba(2, 6, 13, 0.88);
+  background: rgba(0, 0, 0, 0.42);
 }
 
 body.previewing .guide {
-  background: rgba(2, 6, 13, 0.82);
+  background: rgba(0, 0, 0, 0.42);
+}
+
+/*
+ * The shadow that makes the lighter tint safe.
+ *
+ * Not on the two states that paint their own solid fill underneath the words - a selected
+ * category is dark text on orange and a focused channel is dark text on cyan, and a black glow
+ * around dark letters on a bright fill reads as a smudge.
+ */
+body.previewing .category,
+body.previewing .channel-name,
+body.previewing .guide {
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.9);
+}
+
+body.previewing .category[aria-selected='true'],
+body.previewing .channel-row:focus .channel-name {
+  text-shadow: none;
 }
 
 /* The page title sits directly on the picture, so it gets a shadow rather than a panel - a box
