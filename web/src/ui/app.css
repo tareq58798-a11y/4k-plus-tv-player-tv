@@ -1064,7 +1064,13 @@ body.playing #app {
   text-align: center;
 }
 
-/* exo_center_controls: rewind, play/pause, forward, centred on the picture. */
+/*
+ * exo_center_controls: rewind, play/pause, forward, centred on the picture.
+ *
+ * The gap is not arbitrary. media3's centre buttons are 71dp wide and sit flush, so their centres
+ * are 142px apart here; the buttons below are square rather than 71-by-52, so this puts the space
+ * back and leaves all three glyphs exactly where the television has them.
+ */
 .pc-transport {
   position: absolute;
   left: 50%;
@@ -1072,6 +1078,7 @@ body.playing #app {
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
+  gap: 38px;
 }
 
 /*
@@ -1105,10 +1112,17 @@ body.playing #app {
   border-color: var(--tone-accent);
 }
 
-/* exo_media_button_width/height, 71dp by 52dp. The selector is an oval on that box, so these are
-   ellipses on the television too rather than circles. */
+/*
+ * Square, so the focus ring is a circle.
+ *
+ * This copied the television too literally for a while. exo_media_button is 71dp by 52dp and
+ * exo_control_focus_selector is an <shape android:shape="oval"> drawn on it, which means Android
+ * really does put a stretched ellipse round a focused play button - and it looks like a mistake
+ * there too. The height is media3's 52dp; only the width changes, and the gap above restores the
+ * spacing that loses, so nothing moves except the shape of the ring.
+ */
 .pc-transport .pc-button {
-  width: 142px;
+  width: 104px;
   height: 104px;
 }
 

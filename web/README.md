@@ -156,7 +156,7 @@ What that fixes in place:
 | Scrim | `exo_black_opacity_60`, flat across the whole picture - not the foot gradient this used to draw |
 | Title | 18dp in, 14dp down, 20sp semi-bold, two lines, 55% width |
 | Options row | top right, 68% black at a 13dp radius, 38dp buttons: subtitles, skip, resolution, aspect |
-| Transport | `exo_center_controls`, 71dp by 52dp, rewind / play-pause / forward |
+| Transport | `exo_center_controls`, rewind / play-pause / forward, centres 71dp apart |
 | Timeline | full width, 2dp line, 10dp scrubber, 52dp up from the foot |
 | Bottom bar | 60dp of `#b0000000`, `position / duration` at the start, the settings gear at the end |
 | Focus | transparent at rest; focused is `#D9041C2B` under a 3dp `#23D7EE` ring, from `exo_control_focus_selector.xml` |
@@ -166,6 +166,12 @@ A channel gets none of it, which is also copied: `useController = false` in `Liv
 means Live TV on the television has no controller at all, so there is no scrim, no transport, no
 timeline and no bottom bar - only the options row and a banner in the bottom-left corner carrying
 the logo, the name, the resolution, and what is on now and next.
+
+One thing is deliberately *not* copied. `exo_media_button` is 71dp by 52dp and the focus drawable
+is an oval on that box, so a focused play button on the television is a stretched ellipse. It
+looks like a mistake there and it looked like one here, so the transport buttons are square and
+the gap between them puts back the width that loses - the three glyphs sit exactly where Android
+has them, and the ring around them is a circle.
 
 There is no subtitle button in the bottom bar because there is none on the television either:
 media3 hides `exo_subtitle` unless `setShowSubtitleButton(true)` is called, and the television app
