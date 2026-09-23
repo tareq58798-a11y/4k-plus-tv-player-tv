@@ -167,6 +167,19 @@ means Live TV on the television has no controller at all, so there is no scrim, 
 timeline and no bottom bar - only the options row and a banner in the bottom-left corner carrying
 the logo, the name, the resolution, and what is on now and next.
 
+A channel also opens with its options row hidden and nothing highlighted, as the television does
+(`if (hostedFullscreen) controllerVisible = false`). The banner is not part of that row and does
+not hide with it: it appears the moment the channel opens and on every channel change, waits for
+the resolution to arrive rather than running a fixed timer - that line is the one thing a viewer
+is waiting for, and a slow channel would otherwise lose it - and then stays 3s longer, capped at
+3.5s of waiting. Both numbers are `RESOLUTION_WAIT_MS` and `RESOLUTION_READ_MS`.
+
+The keys differ from the television here, at request. Up brings the options row up and five
+seconds of inactivity takes it away again; the television uses Right and keeps its bar up until
+Left dismisses it. Down still changes channel, downward, as `Key.DirectionDown` does there - but
+Up no longer changes channel upward, because Up is now the key that fetches the controls, so
+zapping by arrow is one-directional. Back to the channel list and in again is the way up.
+
 The aspect-ratio menu carries all seven of the television's shapes. Three are AVPlay display
 methods; the four named frames are built from the display *rectangle*, which is the only thing on
 this platform that can be any shape at all - aim the decoder at a box of the right proportions and

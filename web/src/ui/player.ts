@@ -62,6 +62,17 @@ import type { RemoteKey } from '../platform/keys';
 /** How long the controls stay up after the last press. Matches CONTROLS_TIMEOUT_MS on Android. */
 const CONTROLS_TIMEOUT_MS = 5000;
 
+/**
+ * Longest the channel banner waits for a stream to report its size before giving up on it.
+ *
+ * RESOLUTION_WAIT_MS on Android, and there for the same reason: a stream that never reports a
+ * size must not pin the banner up for ever.
+ */
+const RESOLUTION_WAIT_MS = 3500;
+
+/** How long the banner stays once the resolution is actually on screen - long enough to read. */
+const RESOLUTION_READ_MS = 3000;
+
 /** Offered rates. 1 first so the resting state is the one most people want back. */
 const SPEEDS = [1, 0.5, 0.75, 1.25, 1.5, 2];
 
@@ -286,7 +297,20 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   guideNext.hidden = true;
   bannerLines.append(bannerName, bannerResolution, guideNow, guideBar, guideNext);
   banner.append(bannerLogo, bannerLines);
-  chrome.append(live ? banner : title);
+  /*
+   * The banner is not part of the controls, and on a channel that matters.
+   *
+   * A recording's title belongs to the chrome: it comes up with the controls and goes with them,
+   * because it is answering "what is this" for somebody who has just pressed something. A
+   * channel's banner answers "what did I just tune to", which is a question nobody has to press
+   * for - so on the television it appears the moment fullscreen opens and again on every channel
+   * change, with the top bar still hidden, and takes itself away once it has been read.
+   *
+   * Which is why it goes in the outer layer rather than in `chrome`: anything inside the chrome
+   * is on screen exactly when the controls are, and these two are on screen at different times.
+   */
+  if (live) root.append(banner);
+  else chrome.append(title);
 
   const message = document.createElement('div');
   message.className = 'pc-message';
@@ -871,18 +895,22 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     visible = next;
     chrome.classList.toggle('is-hidden', !next);
     if (next) {
-      // The banner's resolution line is the television app's, and like it this is read rather
-      // than subscribed to - there is no video-size event on this platform. Every time the chrome
-      // comes up is often enough for a number nobody looks at with the controls down.
-      paintBannerResolution();
       armHide();
     } else {
       closeStrip();
       closePanel();
       closeMenu();
-      // Focus goes nowhere when the chrome is down. Leaving it on a hidden control means the next
-      // press acts on something invisible.
-      focus(null);
+      /*
+       * Focus goes nowhere when the chrome is down.
+       *
+       * This used to say the same thing and call focus(null), which does nothing at all - the
+       * first line of focus() is `if (!element) return`. So the highlight stayed on a control
+       * that had just faded out. Harmless in practice, because the player consumes every key
+       * itself and never consults what is focused while it is hidden, but the comment was
+       * describing something that was not happening. blur() actually does it.
+       */
+      const held = document.activeElement;
+      if (held instanceof HTMLElement) held.blur();
     }
   }
 
@@ -904,8 +932,40 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     bannerResolution.hidden = !label;
   }
 
+  /*
+   * The banner's own life, which is not the controls'.
+   *
+   * It comes up when the channel does and takes itself away once it has been read, and "read" is
+   * measured from the resolution arriving rather than from a fixed count - that line is the one
+   * thing on the banner a viewer waits for, and a slow-opening channel would otherwise have the
+   * banner gone before the number it was waiting for turned up. Capped, because a stream that
+   * never reports a size must not pin it there. Both numbers are the television's.
+   */
+  let bannerShownAt = 0;
+  let bannerReadableAt = 0;
+
+  function showBanner(): void {
+    if (!live) return;
+    bannerShownAt = Date.now();
+    bannerReadableAt = 0;
+    banner.classList.remove('is-hidden');
+  }
+
+  function tickBanner(): void {
+    if (!live || banner.classList.contains('is-hidden')) return;
+    const now = Date.now();
+    if (bannerResolution.hidden) {
+      if (now - bannerShownAt >= RESOLUTION_WAIT_MS) banner.classList.add('is-hidden');
+      return;
+    }
+    if (bannerReadableAt === 0) bannerReadableAt = now;
+    if (now - bannerReadableAt >= RESOLUTION_READ_MS) banner.classList.add('is-hidden');
+  }
+
+  // Drives both, and not only while the controls are up: the banner is most often on screen
+  // when they are not.
   const resolutionTimer = live
-    ? window.setInterval(() => { if (visible) paintBannerResolution(); }, 1000)
+    ? window.setInterval(() => { paintBannerResolution(); tickBanner(); }, 500)
     : null;
 
   function openPanel(): void {
@@ -1083,12 +1143,16 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
      * Channel change, before anything else gets a look at the press.
      *
      * This has to come before the branch below, which treats any key as 'wake the controls'. On a
-     * channel with the controls already down, Up and Down are not navigation - there is nothing
-     * to navigate to - so they change channel instead, which is what they do on the television
-     * app and what the buttons mean on every set a viewer has used.
+     * channel with the controls down, Down is not navigation - there is nothing to navigate to -
+     * so it changes channel, downward, the way Key.DirectionDown does on the television.
+     *
+     * Up used to do the same thing upward and no longer does: it is the key that brings the
+     * controls up, which is what was asked for. So zapping by arrow is one-directional now. The
+     * way back up a list is Back to the channel list and in again, which is the journey Back was
+     * already making.
      */
-    if (live && options.onZap && !visible && !stripOpen && (key === 'up' || key === 'down')) {
-      if (options.onZap(key === 'up')) return true;
+    if (live && options.onZap && !visible && !stripOpen && key === 'down') {
+      if (options.onZap(false)) return true;
     }
 
     /*
@@ -1117,7 +1181,18 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       return true;
     }
 
+    /*
+     * Waking the controls on a channel: Up, and only Up.
+     *
+     * A channel opens with the picture clean - no highlight sitting on a row of icons nobody
+     * asked for - so something has to be the key that goes and gets them, and Up is it. Any other
+     * key is swallowed rather than acting, because on a bare picture there is nothing else for it
+     * to act on and a press that silently does nothing is better than one that does something
+     * unseen. A recording keeps the old behaviour, where any key wakes them: there the controls
+     * are the point, and Down in particular has a timeline to reach.
+     */
     if (!visible && !stripOpen) {
+      if (live && key !== 'up') return true;
       setVisible(true);
       focus(firstStop());
       return true;
@@ -1160,11 +1235,28 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }
   }
 
-  setVisible(true);
+  /*
+   * How a player opens.
+   *
+   * A recording opens with its controls up, because somebody who has just chosen a film is still
+   * holding the remote and the title, the timeline and the play button are all worth a glance. A
+   * channel opens with nothing but the picture and its banner - the television app does the same
+   * (`if (hostedFullscreen) controllerVisible = false`), and the highlight sitting on a row of
+   * icons the moment a channel opens was what got this looked at.
+   */
+  if (live) {
+    setVisible(false);
+    showBanner();
+  } else {
+    setVisible(true);
+  }
 
   return {
     element: root,
     focusFirst(): void {
+      // Nothing to focus on a channel: the controls are not on screen, and Up is what fetches
+      // them. Focusing a hidden row would put the highlight somewhere the viewer cannot see it.
+      if (live) return;
       focus(firstStop());
     },
     handleKey,

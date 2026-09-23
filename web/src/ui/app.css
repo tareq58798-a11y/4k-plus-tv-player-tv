@@ -957,6 +957,16 @@ body.playing #app {
   align-items: center;
   gap: 22px;
   padding: 20px 28px;
+  opacity: 1;
+  transition: opacity var(--motion-focus-ms) ease;
+}
+
+/* Fades rather than cuts, like the controls do, and for the same reason: a cut reads as a
+   glitch. Not the `hidden` attribute, because this element is display:flex and the two would
+   have to argue about it - see the [hidden] rule at the top of this file. */
+.pc-banner.is-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .pc-banner-logo {
