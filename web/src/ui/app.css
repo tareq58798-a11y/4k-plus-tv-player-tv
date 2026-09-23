@@ -891,9 +891,19 @@ body.playing #app {
  * subtitles, which must not. Somebody who wants it back presses any key, which is the same
  * gesture that brings the rest of the controls back.
  */
+/*
+ * Positioned, because the title above it is.
+ *
+ * .pc-title is absolute, so a sibling left in normal flow does not sit under it - it sits at the
+ * chrome's own origin, which is the corner of the screen. Measured before this: the guide drew at
+ * x=0, flush to the edge and overlapping the title it was meant to be explaining. The offset is
+ * the title's own top plus its line, so the two read as one block.
+ */
 .pc-guide {
-  margin-top: var(--dim-gap-s);
-  max-width: 60%;
+  position: absolute;
+  left: var(--dim-safe-horizontal);
+  top: calc(var(--dim-safe-vertical) + 64px);
+  max-width: 55%;
 }
 
 .pc-guide-now {
