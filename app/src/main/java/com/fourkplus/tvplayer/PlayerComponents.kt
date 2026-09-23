@@ -597,10 +597,29 @@ internal fun MoviePlayer(
                                 event.action == android.view.KeyEvent.ACTION_DOWN &&
                                 event.repeatCount == 0 && controllerVisible && !relatedStripExpanded
                             ) {
-                                if (advanceDownThroughControls(this, relatedItemCount > 1) { relatedStripExpanded = true }) {
-                                    // Each step counts as interaction, or the controls time out
-                                    // halfway down and the next press starts over from nothing.
-                                    showController()
+                                var openedStrip = false
+                                if (advanceDownThroughControls(this, relatedItemCount > 1) {
+                                        relatedStripExpanded = true
+                                        openedStrip = true
+                                    }
+                                ) {
+                                    if (openedStrip) {
+                                        // The strip replaces the controls rather than joining
+                                        // them. Leaving the controller up put two things on
+                                        // screen for one press, and the cost was not only
+                                        // visual: media3's own buttons are real focusable views,
+                                        // so they kept Android focus and the strip's Up-to-close
+                                        // never fired - its key handler sits on the strip and
+                                        // only runs while focus is inside it. Hiding the
+                                        // controller here is what lets the strip hold focus, and
+                                        // so what makes Up close it again.
+                                        hideController()
+                                    } else {
+                                        // Each step counts as interaction, or the controls time
+                                        // out halfway down and the next press starts over from
+                                        // nothing.
+                                        showController()
+                                    }
                                     return true
                                 }
                             }
