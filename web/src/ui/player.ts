@@ -65,6 +65,15 @@ export interface PlayerOverlayOptions {
   /** Which of [episodes] is playing, so the strip can mark it. */
   currentEpisodeId?: string | null;
   onEpisode?: (episode: StripEpisode) => void;
+  /**
+   * Changes channel without leaving full screen. Returns false when there is nowhere to go.
+   *
+   * Live only, and only while the controls are down. A broadcast has no controls worth walking,
+   * so the television app spends Up and Down on the thing a viewer of live television actually
+   * does with them - Up for the next channel, Down for the one before. With the controls up they
+   * go back to being navigation, because then there is something to navigate.
+   */
+  onZap?: (forward: boolean) => boolean;
   /** Called when the viewer leaves, with the position to remember. */
   onExit: (positionMs: number) => void;
 }
@@ -736,6 +745,31 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       options.onExit(positionMs);
       return true;
     }
+    /*
+     * Channel change, before anything else gets a look at the press.
+     *
+     * This has to come before the branch below, which treats any key as 'wake the controls'. On a
+     * channel with the controls already down, Up and Down are not navigation - there is nothing
+     * to navigate to - so they change channel instead, which is what they do on the television
+     * app and what the buttons mean on every set a viewer has used.
+     */
+    if (live && options.onZap && !visible && !stripOpen && (key === 'up' || key === 'down')) {
+      if (options.onZap(key === 'up')) return true;
+    }
+
+    /*
+     * OK leaves a channel, exactly as Back does.
+     *
+     * The television app's reasoning, and it is right: Back already returns to the list, and OK
+     * is the button a viewer's thumb is resting on. On a film OK belongs to whatever is
+     * highlighted, so this is only while the controls are down - which on a channel is most of
+     * the time, because there is so little to put up.
+     */
+    if (live && !visible && !stripOpen && key === 'enter') {
+      options.onExit(positionMs);
+      return true;
+    }
+
     if (!visible && !stripOpen) {
       setVisible(true);
       focus(firstStop());

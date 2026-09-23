@@ -961,7 +961,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
             }
             previewing = null;
             leaveScreen = null;
-            playScreen(item, [], true);
+            // The list as the viewer is seeing it - sorted and filtered - so Up and Down in full
+            // screen move to the channel that is actually next on their screen.
+            playScreen(item, [], true, shown);
             return;
           }
           stopPreview();
@@ -975,7 +977,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
             browseReturn = { section: current, category: selected, focusKey: itemKey(item) };
             void detailsScreen(item);
           } else {
-            playScreen(item);
+            playScreen(item, [], false, live ? shown : []);
           }
         }),
       );
@@ -1334,7 +1336,19 @@ async function detailsScreen(item: PlaylistItem): Promise<void> {
  * fetched by the screen that got us here and asking the provider for it twice would be a round
  * trip in front of the picture.
  */
-function playScreen(item: PlaylistItem, siblings: StripEpisode[] = [], handover = false): void {
+function playScreen(
+  item: PlaylistItem,
+  siblings: StripEpisode[] = [],
+  handover = false,
+  /**
+   * The channels either side of this one, so Up and Down can change channel in full screen.
+   *
+   * Passed in rather than looked up here for the same reason the season is: the screen that got
+   * us here already has the list, in the order the viewer is seeing it - which matters, because
+   * the next channel has to be the next one on their screen, not the next one in the catalogue.
+   */
+  channels: PlaylistItem[] = [],
+): void {
   if (item.kind === 'series') {
     void seriesScreen(item);
     return;
@@ -1354,6 +1368,20 @@ function playScreen(item: PlaylistItem, siblings: StripEpisode[] = [], handover 
     // A channel has no timeline to scrub and no end to run towards, so it gets a shorter set of
     // controls - see PlayerOverlayOptions.live.
     live: item.kind === 'live',
+    onZap: channels.length > 1
+      ? (forward) => {
+          const here = channels.findIndex((c) => itemKey(c) === itemKey(item));
+          const next = here < 0 ? null : channels[here + (forward ? 1 : -1)] ?? null;
+          // The ends of the list are the ends. Wrapping would take somebody holding Up at the top
+          // of their channels to the bottom of them, which is not what the press asked for.
+          if (!next) return false;
+          player.stop();
+          overlay.destroy();
+          release();
+          playScreen(next, [], false, channels);
+          return true;
+        }
+      : undefined,
     episodes: siblings,
     currentEpisodeId: item.channelId,
     onEpisode: (episode) => {
