@@ -661,6 +661,16 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   const hidden = new Set(hiddenCategories(kind));
   pool = pool.filter((item) => !hidden.has(item.group));
 
+  /*
+   * Categories in the provider's order: the order they first appear in its list, which is how the
+   * television builds it (`channels.map { it.group }.distinct()`, no sort). They were sorted A to
+   * Z here, which is not an order any provider chose - panels put their own country or their
+   * headline categories first on purpose. Taken before the channel sort below, which would
+   * otherwise reorder the categories along with the channels. A viewer's own arrangement, from the
+   * category menu, still goes on top of it.
+   */
+  const providerGroups = [...new Set(pool.map((item) => item.group))];
+
   // Channel order, for Live TV only - the other two are grids of artwork where the provider's
   // order means much less. Applied to the pool rather than per category, so every category and
   // the Favorites row all run the same way round. localeCompare rather than a plain comparison,
@@ -673,10 +683,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       pool = [...pool].sort((a, b) => direction * a.name.localeCompare(b.name, locale()));
     }
   }
-  const groups = applyCategoryOrder(
-    kind,
-    [...new Set(pool.map((item) => item.group))].sort((a, b) => a.localeCompare(b)),
-  );
+  const groups = applyCategoryOrder(kind, providerGroups);
 
   /*
    * The rows the television app puts above the provider's own categories.
