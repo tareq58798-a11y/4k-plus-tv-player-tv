@@ -100,10 +100,8 @@ export interface PlayerOverlayOptions {
   /**
    * The rest of the season, empty for a film.
    *
-   * More than one is what makes Down mean "show me the episodes" rather than "walk the controls" -
-   * see stepDown. A film has nothing under the controls worth reaching, so there the walk is
-   * right; a series has the rest of the season, and making somebody press three times to see it
-   * puts the commonest thing they want furthest away.
+   * More than one is what makes Down from a bare picture open the strip - see handleKey. With the
+   * controls up, Down walks them whatever this holds - see stepDown.
    */
   episodes?: StripEpisode[];
   /** Which of [episodes] is playing, so the strip can mark it. */
@@ -1005,12 +1003,12 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   const awayFromControls = (): RemoteKey => (isRtl() ? 'right' : 'left');
 
   /*
-   * The order Down walks, which is the television app's:
+   * The order Down walks with the controls up, which is the television app's walk for a film:
    *
-   *   options row -> play/pause -> timeline -> settings gear -> episode strip
+   *   options row -> play/pause -> timeline -> settings gear
    *
    * onExitDown on the options row hands straight to play/pause there;
-   * advanceDownThroughControls walks the three below it. Derived from what currently holds focus
+   * advanceDownThroughControls walks the two below it. Derived from what currently holds focus
    * rather than counted, for the reason given in that function: a counter drifts the moment
    * anything else moves the highlight, and the viewer has no way to get it back in step.
    */
@@ -1022,10 +1020,14 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     if (stripOpen) return true;
     const here = document.activeElement;
     const inOptions = here instanceof HTMLElement && optionsRow.contains(here);
-    // An episode goes straight to the season. See PlayerOverlayOptions.episodes for why this is
-    // not the same walk a film gets - but not from the options row, which has its own step down
-    // into the controls first.
-    if (hasStrip && !inOptions) { openStrip(); return true; }
+    /*
+     * With the controls up, Down walks the controls and never opens the strip - a series gets
+     * the same walk a film does. Deliberately unlike advanceDownThroughControls on the
+     * television, which opens the strip from the first press when there is one; changed at the
+     * owner's request, because a press meant for the timeline was swapping the controls for the
+     * season. The strip opens from a bare picture instead - see handleKey. Recorded in
+     * web/README.md.
+     */
     // A live stream has no transport, no timeline and no gear in the bottom bar, so there is
     // nothing under the options row to step to.
     if (live) return true;

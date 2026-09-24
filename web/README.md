@@ -96,6 +96,12 @@ stops it being reopened every few months.
   buffering strategy - with no AVPlay counterpart. See the note on `playbackPage` in `ui/settings.ts`.
 * **Start muted, and embedded-subtitle handling.** Decisions the decoder makes for us on this
   platform. A switch that does nothing is worse than an absent one.
+* **Down opening the episode strip while the controls are up.** On the television,
+  `advanceDownThroughControls` opens the strip from the first Down whenever there is one, from
+  wherever the highlight is. Here Down with the controls up walks play/pause, timeline and gear
+  as it does for a film, and the strip opens only from a bare picture. Changed at the owner's
+  request on 2026-09-24: a press meant for the timeline was swapping the controls for the season.
+  The Android app is unchanged.
 
 ## State
 
