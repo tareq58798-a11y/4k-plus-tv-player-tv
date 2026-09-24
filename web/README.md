@@ -69,6 +69,11 @@ which set it is running on.
   plane *behind* the page, and the page shows it through a transparent background, so the
   rectangle is handed to the decoder in real device pixels rather than CSS ones. A browser uses an
   ordinary `<video>`, with hls.js for streams it cannot open itself.
+* **Stream quality** — PlayerEngine.kt's intent carried into AVPlay's streaming properties, set
+  between `open()` and `prepareAsync()`: Android's `VLC/3.0.20` user agent, `STARTBITRATE=HIGHEST`
+  for adaptive streams (the counterpart of `setForceHighestSupportedBitrate` in the FAST mode that
+  is this app's only mode), and `SET_MODE_4K` on panels that productinfo reports as UHD. Each is
+  guarded; a set that refuses one still plays.
 * **Live stream container** — AVPlay decodes the MPEG-TS that Xtream serves directly; a browser
   has no demuxer for it outside HLS, so the browser build asks the same panel for `.m3u8`
   instead. This is the one place the two request different URLs, and it is a fact about browsers

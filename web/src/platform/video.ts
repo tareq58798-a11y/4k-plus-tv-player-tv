@@ -199,6 +199,8 @@ interface AvPlay {
   setSelectTrack?(type: 'AUDIO' | 'VIDEO' | 'TEXT', index: number): void;
   /** True stops the cue callbacks, which is how subtitles are turned off on AVPlay. */
   setSilentSubtitle?(silent: boolean): void;
+  /** Only between open() and prepareAsync(), while the player is IDLE; ignored or thrown after. */
+  setStreamingProperty?(type: string, value: string): void;
 }
 
 /**
@@ -213,6 +215,20 @@ interface AvTrack {
   index: number;
   type: string;
   extra_info?: string;
+}
+
+/** The user agent PlayerEngine.kt fetches every stream with. */
+const PLAYBACK_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
+
+/** Whether the panel is UHD, from productinfo. False when it cannot say, which only costs 4K. */
+function isUhdPanel(): boolean {
+  try {
+    const info = (window as unknown as { webapis?: { productinfo?: { isUdPanelSupported?(): boolean } } }).webapis
+      ?.productinfo;
+    return info?.isUdPanelSupported?.() === true;
+  } catch {
+    return false;
+  }
 }
 
 /** A box of [width] by [height] centred on [box]; larger than it where the caller wants cropping. */
@@ -284,9 +300,43 @@ class TizenPlayer implements MediaPlayer {
     ];
   }
 
+  /**
+   * The AVPlay counterpart of the quality settings in PlayerEngine.kt, set while the player is
+   * IDLE, between open() and prepareAsync(), which is the only window AVPlay accepts them in.
+   *
+   * - USER_AGENT is Android's "VLC/3.0.20 LibVLC/3.0.20". Some provider panels decide what to
+   *   serve, or whether to serve at all, from it; asking as the same client means the set is
+   *   handed the same stream the Android app is.
+   * - ADAPTIVE_INFO STARTBITRATE=HIGHEST is setForceHighestSupportedBitrate. The web app has no
+   *   connection-mode setting, so it is always in what Android calls FAST, its default. Without
+   *   it AVPlay opens an HLS or DASH stream at a low rendition and climbs, which is the soft first
+   *   few seconds. No BITRATES range is given, so nothing is capped - Android's
+   *   clearViewportSizeConstraints in the same spirit.
+   * - SET_MODE_4K lets AVPlay pick a rendition above 1080p at all. Samsung's documentation limits
+   *   it to UHD panels, so it is asked only where productinfo says the panel is one.
+   *
+   * Direct .ts and film files are single-bitrate, so only the user agent touches them; the other
+   * two matter for HLS and DASH, which is what M3U playlists often carry. Each is separate and
+   * guarded: a set that refuses one property must still play, just as Android attempts a stream
+   * rather than refuse it.
+   */
+  private tuneForQuality(): void {
+    const set = (type: string, value: string) => {
+      try {
+        this.av.setStreamingProperty?.(type, value);
+      } catch {
+        // Not supported on this set or this stream. Playing at the set's default is still playing.
+      }
+    };
+    set('USER_AGENT', PLAYBACK_USER_AGENT);
+    set('ADAPTIVE_INFO', 'STARTBITRATE=HIGHEST');
+    if (isUhdPanel()) set('SET_MODE_4K', 'TRUE');
+  }
+
   async play(url: string, rect: DOMRect): Promise<void> {
     this.stop();
     this.av.open(url);
+    this.tuneForQuality();
     // Remembered, not applied: AVPlay ignores a display rectangle on a stream it has not prepared
     // yet, and ignores it silently. Setting it here left every stream at the default, which is the
     // whole panel - so the Live TV preview played full screen behind the page instead of in its
