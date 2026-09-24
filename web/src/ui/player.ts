@@ -50,7 +50,6 @@ import {
   SKIP_CHOICES,
   setSkipSeconds,
   setSubtitleBackground,
-  setVideoScaling,
   skipSeconds,
   subtitleBackground,
   videoScaling,
@@ -477,7 +476,13 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     onPick?: () => void;
   }
 
-  function openMenu(owner: HTMLElement, entries: MenuEntry[]): void {
+  /**
+   * [fromTop] opens on the first entry rather than the ticked one. A list of choices opens on the
+   * current choice; the subtitles menu is two switches, where the ticks are states rather than a
+   * choice, and opening on whichever happened to be on put the highlight on Background right after
+   * subtitles were turned off - so OK toggled the backing instead of turning subtitles back on.
+   */
+  function openMenu(owner: HTMLElement, entries: MenuEntry[], fromTop = false): void {
     menuOwner = owner;
     menu.textContent = '';
     menu.hidden = false;
@@ -504,7 +509,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       }
       menu.append(option);
     }
-    const first = menu.querySelector<HTMLElement>('[aria-selected="true"]')
+    const first = (fromTop ? null : menu.querySelector<HTMLElement>('[aria-selected="true"]'))
       ?? menu.querySelector<HTMLElement>('[data-focus]');
     // A menu of nothing but facts keeps the highlight on the button that opened it, so Back and
     // Up still have somewhere to return from.
@@ -601,11 +606,23 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     subtitlesOn = next;
     subtitlesButton.classList.toggle('is-accent', next);
     if (!next) {
+      if (selectedSubtitle !== null) lastSubtitle = selectedSubtitle;
       player.selectSubtitleTrack(null);
       selectedSubtitle = null;
       // Cleared at once rather than waiting for the decoder to stop sending cues, so turning them
       // off takes the line on screen off with it.
       captionText.textContent = '';
+      return;
+    }
+    /*
+     * On again means telling the decoder so. Off silences AVPlay's cues, and this used to leave
+     * them silenced - the button lit up and nothing came back. The track picked before, or the
+     * stream's first if none was.
+     */
+    const track = lastSubtitle ?? player.subtitleTracks()[0]?.id ?? null;
+    if (track !== null) {
+      player.selectSubtitleTrack(track);
+      selectedSubtitle = track;
     }
   }
 
@@ -627,7 +644,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
           captions.classList.toggle('boxed', captionBackground);
         },
       },
-    ]);
+    ], true);
   });
 
   /*
@@ -663,7 +680,14 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   });
 
   /*
-   * How the picture fills the screen. Applied the moment it is chosen and remembered afterwards.
+   * How the picture fills the screen, for what is playing now.
+   *
+   * Applied the moment it is chosen and not remembered, as the television does it: its player
+   * menu sets `videoMode` and deliberately does not write it back ("aspect ratio is usually
+   * specific to whatever's currently playing ... it should reset to the real default (set in
+   * Settings) for the next thing watched"). This used to write it, so a 4:3 picked for one old
+   * programme opened every later film squashed until somebody found the menu again. The standing
+   * default is Settings > Playback, which main.ts applies as each stream arrives.
    *
    * All seven of the television app's shapes, in its order. Three are AVPlay display methods; the
    * four named frames are built out of the display rectangle instead - see applyDisplay in
@@ -686,7 +710,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       label: entry.label(),
       id: `pc-menu-scale-${entry.mode}`,
       selected: entry.mode === scaling,
-      onPick: () => { scaling = entry.mode; setVideoScaling(entry.mode); player.setScaling(entry.mode); },
+      onPick: () => { scaling = entry.mode; player.setScaling(entry.mode); },
     })));
   });
 
@@ -763,6 +787,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   panel.append(subtitleSection);
 
   let selectedSubtitle: number | null = null;
+  /** The track that was showing when subtitles were last turned off, to bring back. */
+  let lastSubtitle: number | null = null;
 
   function buildSubtitleOptions(): void {
     const tracks = player.subtitleTracks();
@@ -1204,6 +1230,45 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       return true;
     }
     /*
+     * The remote's media keys act at once, whether or not the controls are up.
+     *
+     * They used to fall into the branch below that spends a press on bringing the controls back,
+     * so the first Play/Pause, Rewind or Fast-forward on a bare picture did nothing but show the
+     * controls. media3's PlayerView does both at once - dispatchMediaKeyEvent acts on the key and
+     * maybeShowController shows the controls - and so does this now.
+     *
+     * Play and Pause are also each one thing now. All three keys used to toggle, so Play pressed on
+     * something already playing paused it.
+     */
+    if (key === 'play' || key === 'pause' || key === 'playpause' || key === 'rewind' || key === 'forward') {
+      // Swallowed on a channel. Holding a broadcast still leaves it falling further behind for as
+      // long as it is paused, and with no button on screen there is nothing to press to come back.
+      if (live) return true;
+      if (key === 'play') { if (paused) player.resume(); }
+      else if (key === 'pause') { if (!paused) player.pause(); }
+      else if (key === 'playpause') togglePlayback();
+      else player.seekBy((key === 'rewind' ? -skip : skip) * 1000);
+      if (!visible && !stripOpen) {
+        setVisible(true);
+        focus(firstStop());
+      } else {
+        armHide();
+      }
+      return true;
+    }
+
+    /*
+     * The CH+ and CH- buttons change channel on a channel, from any state - they are registered
+     * with the set for this app and were then answered with nothing. The television app has no
+     * handler for them; they are the buttons a viewer of a Samsung set reaches for first, and
+     * Up and Down already do the same job below. Recorded in web/README.md.
+     */
+    if (key === 'channelUp' || key === 'channelDown') {
+      if (live && options.onZap) options.onZap(key === 'channelUp');
+      return true;
+    }
+
+    /*
      * Channel change, before anything else gets a look at the press.
      *
      * This has to come before the branch below, which decides what wakes the controls. On a
@@ -1280,23 +1345,6 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
         return stepAcross(true);
       case 'enter':
         (document.activeElement as HTMLElement | null)?.click();
-        return true;
-      case 'playpause':
-      case 'play':
-      case 'pause':
-        // Swallowed rather than obeyed on a channel. Holding a broadcast still leaves it falling
-        // further behind for as long as it is paused, and with no button on screen there is
-        // nothing to press to come back - so the key that got you there is the only way out, and
-        // a viewer who pressed it by accident has no way of knowing that.
-        if (!live) togglePlayback();
-        return true;
-      case 'rewind':
-        if (live) return true;
-        player.seekBy(-skip * 1000);
-        return true;
-      case 'forward':
-        if (live) return true;
-        player.seekBy(skip * 1000);
         return true;
       default:
         return false;

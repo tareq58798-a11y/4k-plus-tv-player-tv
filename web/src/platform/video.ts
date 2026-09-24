@@ -215,6 +215,11 @@ interface AvTrack {
   extra_info?: string;
 }
 
+/** A box of [width] by [height] centred on [box]; larger than it where the caller wants cropping. */
+function centred(box: DOMRect, width: number, height: number): DOMRect {
+  return new DOMRect(box.left + (box.width - width) / 2, box.top + (box.height - height) / 2, width, height);
+}
+
 class TizenPlayer implements MediaPlayer {
   /** AVPlay decodes MPEG-TS directly, which is what Xtream serves for live and is a shorter path
    *  to the first frame than asking the panel to wrap the same stream in HLS. */
@@ -240,6 +245,11 @@ class TizenPlayer implements MediaPlayer {
   private seeking = false;
   /** The latest position asked for while a seek was running, to go to when it finishes. */
   private queuedSeek: number | null = null;
+  /**
+   * Where the running seek is going. A second press while it runs counts from here: the decoder's
+   * clock has not moved yet, and counting from it made three quick presses land two steps on.
+   */
+  private seekingTo: number | null = null;
   /** Bumped by stop(), so a late answer to a seek on the previous stream changes nothing. */
   private seekGeneration = 0;
 
@@ -340,7 +350,7 @@ class TizenPlayer implements MediaPlayer {
   seekBy(deltaMs: number): void {
     // From the position already asked for when one is pending, so three quick presses of
     // fast-forward go three steps rather than re-reading a clock that has not moved yet.
-    const from = this.queuedSeek ?? this.av.getCurrentTime();
+    const from = this.queuedSeek ?? this.seekingTo ?? this.av.getCurrentTime();
     this.seekTo(from + deltaMs);
   }
 
@@ -361,6 +371,7 @@ class TizenPlayer implements MediaPlayer {
       return;
     }
     this.seeking = true;
+    this.seekingTo = target;
     this.queuedSeek = null;
     let settled = false;
     const generation = this.seekGeneration;
@@ -370,6 +381,7 @@ class TizenPlayer implements MediaPlayer {
       window.clearTimeout(watchdog);
       if (generation !== this.seekGeneration) return;
       this.seeking = false;
+      this.seekingTo = null;
       const next = this.queuedSeek;
       if (next !== null) this.seekTo(next);
     };
@@ -542,65 +554,68 @@ class TizenPlayer implements MediaPlayer {
    * is the one thing here that can be any shape at all: aim the decoder at a box of the right
    * proportions and tell it to fill that box exactly.
    *
-   * Working out which box is the fiddly part, because the television's version is not "put the
-   * picture in a 4:3 frame". applyRequestedAspectRatio scales the whole surface - a surface that
-   * RESIZE_MODE_FIT has already sized to the fitted picture - so what gets squashed is whatever
-   * was on screen a moment ago, not the raw video. Two consequences, and both are reproduced
-   * here rather than tidied away:
-   *
-   *   - a 16:9 picture asked for 4:3 comes out genuinely squashed, not letterboxed into a 4:3 box
-   *   - a 4:3 picture asked for 16:9 does not change at all, because the fitted picture is
-   *     already pillarboxed and the scale factors both come out 1
-   *
-   * So: fit the picture into the box, then scale that result by how much the box would have to
-   * shrink to become the named shape. Without a reported video size there is nothing to fit, and
-   * the box's own ratio stands in - which degrades to plain reshaping rather than to nothing.
+   * A named frame is the largest box of that shape that fits the screen, and the picture fills
+   * it. This used to reproduce the television's arithmetic exactly - applyRequestedAspectRatio
+   * scales a surface RESIZE_MODE_FIT has already fitted, so what it squashes is the fitted picture
+   * rather than the frame - and that had two results a viewer reads as broken: 16:9 on a 16:9
+   * stream, and 16:9 on a 4:3 one, both changed nothing at all. Reported as the dimension controls
+   * not working, and changed so each shape always gives that shape. Where the stream is already
+   * the screen's shape the named frames come out exactly as before; they differ only for a stream
+   * of another shape. Recorded in web/README.md.
    */
   private applyDisplay(): void {
     const base = this.baseRect;
-    if (!base) return;
+    if (!base || base.width <= 0 || base.height <= 0) return;
 
     const ratio = FIXED_RATIOS[this.scaling] ?? null;
-    let target = base;
-
-    if (ratio !== null && base.width > 0 && base.height > 0) {
+    if (ratio !== null) {
       const boxRatio = base.width / base.height;
-      const video = this.videoRatio() ?? boxRatio;
-      // The fitted picture, as the television's RESIZE_MODE_FIT would leave it.
-      let width = video > boxRatio ? base.width : base.height * video;
-      let height = video > boxRatio ? base.width / video : base.height;
-      // Then the squash that turns the box into the named shape.
-      if (ratio > boxRatio) height *= boxRatio / ratio;
-      else width *= ratio / boxRatio;
-      target = new DOMRect(
-        base.left + (base.width - width) / 2,
-        base.top + (base.height - height) / 2,
-        width,
-        height,
-      );
-    }
-
-    try {
-      this.av.setDisplayRect(...this.device(target));
-    } catch {
-      /* Not prepared yet. Applied on 'ready', which calls this again. */
+      const width = ratio > boxRatio ? base.width : base.height * ratio;
+      const height = ratio > boxRatio ? base.width / ratio : base.height;
+      this.show(centred(base, width, height), 'PLAYER_DISPLAY_MODE_FULL_SCREEN');
       return;
     }
+    if (this.scaling === 'stretch') {
+      this.show(base, 'PLAYER_DISPLAY_MODE_FULL_SCREEN');
+      return;
+    }
+    if (this.scaling !== 'zoom') {
+      this.show(base, 'PLAYER_DISPLAY_MODE_LETTER_BOX');
+      return;
+    }
+    /*
+     * Fill and crop. CROPPED_FULL does it in one call where the set has it; where it is refused,
+     * which used to leave the picture silently as it was, the same result is built from the
+     * rectangle: the picture at its own shape, scaled until it covers the box, centred so the
+     * screen's edges do the cropping. That needs the picture's shape, and before the stream has
+     * reported one there is nothing to cover with, so it stays letter-boxed until 'ready' asks
+     * again.
+     */
+    if (this.show(base, 'PLAYER_DISPLAY_MODE_CROPPED_FULL')) return;
+    const video = this.videoRatio();
+    const boxRatio = base.width / base.height;
+    if (video !== null) {
+      const width = video > boxRatio ? base.height * video : base.width;
+      const height = video > boxRatio ? base.height : base.width / video;
+      if (this.show(centred(base, width, height), 'PLAYER_DISPLAY_MODE_FULL_SCREEN')) return;
+    }
+    this.show(base, 'PLAYER_DISPLAY_MODE_LETTER_BOX');
+  }
 
-    // LETTER_BOX keeps the whole frame and adds bars; CROPPED_FULL keeps the shape and loses the
-    // edges; FULL_SCREEN keeps neither and fills the box. The named frames use FULL_SCREEN
-    // because the box has already been cut to the right shape above - the stretch into it is the
-    // squash the television applies to its surface.
-    const method = this.scaling === 'stretch' || ratio !== null
-      ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN'
-      : this.scaling === 'zoom'
-        ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL'
-        : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+  /**
+   * One rectangle and one display method, and whether the set took both.
+   *
+   * False before the stream is prepared - applied again on 'ready' - and false where the set
+   * refuses the method, so the caller can try something else rather than leave the picture as it
+   * was without saying so.
+   */
+  private show(rect: DOMRect, method: string): boolean {
     try {
+      this.av.setDisplayRect(...this.device(rect));
       this.av.setDisplayMethod(method);
+      return true;
     } catch {
-      // Some sets reject a method before the stream is prepared, and some reject CROPPED_FULL
-      // outright. Either way the picture stays as it was, which is better than losing it.
+      return false;
     }
   }
 
@@ -610,6 +625,7 @@ class TizenPlayer implements MediaPlayer {
       this.ticker = null;
     }
     this.seeking = false;
+    this.seekingTo = null;
     this.queuedSeek = null;
     this.seekGeneration += 1;
     try {
@@ -714,7 +730,8 @@ class BrowserPlayer implements MediaPlayer {
    */
   setScaling(mode: VideoScaling): void {
     const ratio = FIXED_RATIOS[mode] ?? null;
-    this.video.style.objectFit = mode === 'stretch' ? 'fill' : mode === 'zoom' ? 'cover' : 'contain';
+    // A named frame is filled, as on the set - see TizenPlayer.applyDisplay.
+    this.video.style.objectFit = mode === 'stretch' || ratio !== null ? 'fill' : mode === 'zoom' ? 'cover' : 'contain';
     this.video.style.aspectRatio = ratio === null ? '' : String(ratio);
     // Height rather than width, so a squarer frame shrinks inside the box instead of overflowing
     // it: with a fixed width an aspect-ratio below the box's own would push the picture off the

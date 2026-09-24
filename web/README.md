@@ -120,6 +120,12 @@ stops it being reopened every few months.
   favourite on a held OK, and this does the same there. Its film and series posters carry a star
   that only touch can reach, so here the held OK works on posters too - the one gesture wherever a
   title is listed. Added at the owner's request on 2026-09-24; the Android app is unchanged.
+* **(The other way round) CH+ and CH- change channel.** The set sends them to this app because it
+  registers them, and the television app has no handler for them. In a channel they zap, as Up and
+  Down do with the controls down. Added on 2026-09-24; the Android app is unchanged.
+* **Named aspect frames that always change the picture.** See the table above. The television's
+  16:9 and 4:3 do nothing to a stream already of a similar shape; here each gives its shape.
+  Changed at the owner's request on 2026-09-24; the Android app is unchanged.
 
 ## State
 
@@ -215,27 +221,34 @@ methods; the four named frames are built from the display *rectangle*, which is 
 this platform that can be any shape at all - aim the decoder at a box of the right proportions and
 tell it to fill that box exactly.
 
-Working out which box is the awkward part, because the television's version is not "put the
-picture in a 4:3 frame". `applyRequestedAspectRatio` scales the whole surface, and
-`RESIZE_MODE_FIT` has already sized that surface to the *fitted* picture - so what gets squashed
-is what was on screen a moment ago, not the raw video. Two consequences, both reproduced rather
-than tidied away: a 16:9 picture asked for 4:3 comes out genuinely squashed, and a 4:3 picture
-asked for 16:9 does not change at all. Measured on the set against a 1920x1080 stream:
+A named frame is the largest box of that shape that fits the screen, and the picture fills it.
+That is deliberately not the television's arithmetic. `applyRequestedAspectRatio` scales a surface
+`RESIZE_MODE_FIT` has already fitted, so what it squashes is the fitted picture rather than the
+frame - and on the television 16:9 does nothing to a 16:9 stream, and 16:9 does nothing to a 4:3
+one either. That was reproduced here faithfully, and reported as the dimension controls not
+working. For a stream already the screen's shape the rectangles are unchanged:
 
 | Mode | Rectangle handed to AVPlay |
 | --- | --- |
 | Fit video | `0,0,1920,1080` letter-box |
 | Stretch to screen | `0,0,1920,1080` full-screen |
 | Fill and crop | `0,0,1920,1080` cropped-full |
-| 16:9 Standard | `0,0,1920,1080` - unchanged, as on the television |
+| 16:9 Standard | `0,0,1920,1080` full-screen |
 | 4:3 Traditional | `240,0,1440,1080` |
 | 21:9 Ultrawide | `0,129,1920,823` |
 | 1:1 Square | `420,0,1080,1080` |
 
+For a stream of another shape they now give that shape - a 4:3 stream asked for 16:9 is stretched
+to the whole screen, where the television leaves it pillarboxed. Where a set refuses
+`CROPPED_FULL`, Fill and crop builds the crop from the rectangle instead: the picture at its own
+shape, scaled to cover the screen and centred, so a 4:3 stream is handed `0,-180,1920,1440`.
+
+A shape picked in the player lasts for that title only, as on the television, whose menu sets
+`videoMode` and deliberately does not store it. The next title starts from the Settings default.
+
 Settings still offers three of these rather than seven, which is what the television's Settings
 screen does: that is the standing default somebody sets once, and the named frames are answers to
-what is on screen right now. Both write the same preference, so a frame chosen in the player
-leaves none of the three marked - true on the television too.
+what is on screen right now.
 
 One thing is deliberately *not* copied. `exo_media_button` is 71dp by 52dp and the focus drawable
 is an oval on that box, so a focused play button on the television is a stretched ellipse. It

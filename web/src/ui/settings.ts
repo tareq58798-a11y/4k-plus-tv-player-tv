@@ -464,9 +464,7 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     const SCALINGS: { mode: VideoScalingPreference; label: () => string; desc: () => string }[] = [
       // Three, not seven, exactly as the television app's Settings screen does it: this is the
       // standing default a viewer sets once, and the four named frames in the player's own menu
-      // are answers to what is on screen right now. Both write the same preference, so a frame
-      // chosen in the player leaves none of these three marked until one is picked again - which
-      // is true on the television too.
+      // are answers to what is on screen right now, which the player does not store.
       { mode: 'fit', label: () => t('video_fit'), desc: () => t('video_fit_desc') },
       { mode: 'zoom', label: () => t('video_fill'), desc: () => t('video_fill_desc') },
       { mode: 'stretch', label: () => t('video_stretch'), desc: () => t('video_stretch_desc') },
