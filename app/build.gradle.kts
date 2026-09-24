@@ -50,8 +50,8 @@ android {
         // already installed, with a bare "App not installed" and no reason given, so this skips
         // past it rather than reusing 129 for different bytes. 7.8 is deliberately never reused
         // as a name either: one number, one build, always.
-        versionCode = 156
-        versionName = "10.5"
+        versionCode = 157
+        versionName = "10.6"
     }
 
     // Two builds from one source tree, and never one build pretending to be both. They carry

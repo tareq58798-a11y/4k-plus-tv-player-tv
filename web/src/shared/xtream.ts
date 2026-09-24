@@ -353,7 +353,44 @@ function trailerOf(info: Json): string | null {
   return /^http/i.test(value) ? value : `https://www.youtube.com/watch?v=${value}`;
 }
 
-export async function movieDetails(login: ProviderLogin, movieId: string): Promise<MovieDetails> {
+/*
+ * Film and series details, kept for the session once fetched, as PlaylistRepository keeps them on
+ * Android (movieDetailsCache and seriesDetailsCache, keyed on the provider's id).
+ *
+ * Without it the same title was asked for over and over: once by the landing page to describe the
+ * highlighted card, again when its page opened, and again every time the viewer came back to it -
+ * a round trip to the provider in front of every film page and every season list, which is time
+ * spent before Play can even be pressed. The promise is what is kept, so two screens asking at once
+ * share one request; a failed one is forgotten, so the next attempt really asks again.
+ *
+ * Keyed on the account as well as the id, because two accounts on one panel number their titles
+ * the same way and a sign-in to another one must not inherit these.
+ */
+const movieDetailsCache = new Map<string, Promise<MovieDetails>>();
+const seriesDetailsCache = new Map<string, Promise<SeriesDetails>>();
+
+function remembered<T>(cache: Map<string, Promise<T>>, key: string, fetch: () => Promise<T>): Promise<T> {
+  const known = cache.get(key);
+  if (known) return known;
+  const request = fetch();
+  cache.set(key, request);
+  request.catch(() => cache.delete(key));
+  return request;
+}
+
+function detailsKey(login: ProviderLogin, id: string): string {
+  return `${login.address.trim().toLowerCase()}|${login.username.trim()}|${id}`;
+}
+
+export function movieDetails(login: ProviderLogin, movieId: string): Promise<MovieDetails> {
+  return remembered(movieDetailsCache, detailsKey(login, movieId), () => fetchMovieDetails(login, movieId));
+}
+
+export function seriesDetails(login: ProviderLogin, seriesId: string, fallbackPoster: string | null): Promise<SeriesDetails> {
+  return remembered(seriesDetailsCache, detailsKey(login, seriesId), () => fetchSeriesDetails(login, seriesId, fallbackPoster));
+}
+
+async function fetchMovieDetails(login: ProviderLogin, movieId: string): Promise<MovieDetails> {
   let lastError: unknown = null;
   for (const candidate of addressCandidates(login.address)) {
     const server = normalizeServerBase(candidate);
@@ -389,7 +426,7 @@ export async function movieDetails(login: ProviderLogin, movieId: string): Promi
   throw lastError instanceof Error ? lastError : new Error('Movie information could not be loaded.');
 }
 
-export async function seriesDetails(
+async function fetchSeriesDetails(
   login: ProviderLogin,
   seriesId: string,
   fallbackPoster: string | null,

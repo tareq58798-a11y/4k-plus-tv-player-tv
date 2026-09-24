@@ -21,6 +21,9 @@
  */
 import { Motion } from '../shared/tokens.generated';
 
+/** How long the highlight has to rest on a title before its background is fetched. */
+const WARM_AFTER_MS = 300;
+
 export class Backdrop {
   private readonly base: HTMLElement;
   private readonly settled: HTMLImageElement;
@@ -28,6 +31,12 @@ export class Backdrop {
   private settledUrl: string | null = null;
   private incomingUrl: string | null = null;
   private timer: number | null = null;
+  private warmTimer: number | null = null;
+  /**
+   * Pictures fetched and decoded ahead of being shown, newest last. Held so the engine keeps them:
+   * an Image nobody references is free to be dropped, decoded pixels and all.
+   */
+  private readonly warm = new Map<string, HTMLImageElement>();
 
   constructor(host: HTMLElement) {
     this.base = document.createElement('div');
@@ -74,9 +83,52 @@ export class Backdrop {
     this.schedule(null);
   }
 
+  /**
+   * Fetches and decodes [urls] now, so that when one of them becomes the background it is already
+   * there. PreloadBackdrops on Android, with its limit of twelve.
+   *
+   * On Android the three-second wait before the background changes is spent with the picture
+   * already warm - the neighbours of the focused card are fetched and decoded ahead of time - so
+   * when the wait ends the picture is simply shown. Here the wait ended and *then* the download
+   * began, followed by a decode of a full-size still on a television's processor, which is the
+   * slowness the owner compared against the Android build.
+   */
+  preload(urls: (string | null | undefined)[]): void {
+    if (!this.followsFocus) return;
+    for (const url of urls.filter((value): value is string => Boolean(value)).slice(0, 12)) {
+      const known = this.warm.get(url);
+      if (known) {
+        // Most recently wanted goes to the back, so trimming drops what is furthest behind.
+        this.warm.delete(url);
+        this.warm.set(url, known);
+        continue;
+      }
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = () => {
+        if (typeof image.decode === 'function') image.decode().catch(() => undefined);
+      };
+      image.src = url;
+      this.warm.set(url, image);
+    }
+    // Twice the batch, so the pictures just passed are still warm when the viewer steps back.
+    while (this.warm.size > 24) this.warm.delete(this.warm.keys().next().value!);
+  }
+
   private schedule(url: string | null): void {
     if (this.timer !== null) window.clearTimeout(this.timer);
+    if (this.warmTimer !== null) window.clearTimeout(this.warmTimer);
+    this.warmTimer = null;
     this.timer = window.setTimeout(() => this.apply(url), Motion.BackdropDebounceMs);
+    /*
+     * The picture itself is asked for much sooner than it is shown.
+     *
+     * The three seconds are Android's, and they are about when the background *changes* - for
+     * somebody who has stopped to look, not somebody passing through. They were never meant to
+     * be three seconds and then a download. A short dwell first still keeps a held key from
+     * fetching every title it passes; after that the fetch runs during the wait instead of after.
+     */
+    if (url) this.warmTimer = window.setTimeout(() => this.preload([url]), WARM_AFTER_MS);
   }
 
   private apply(url: string | null): void {

@@ -35,7 +35,7 @@ import {
   applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
 } from './shared/categories';
 import { openCategoryMenu } from './ui/categoryMenu';
-import { lazyImage, prefetchAfter } from './ui/images';
+import { lazyImage, posterArtwork, prefetchAfter } from './ui/images';
 import { appVersion, identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import { loadM3u } from './shared/m3u';
@@ -1002,7 +1002,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     let drawn = 0;
     const drawUpTo = (end: number): void => {
       const batch = document.createDocumentFragment();
-      for (; drawn < Math.min(end, entries.length); drawn++) batch.append(entryCard(entries[drawn]!));
+      for (; drawn < Math.min(end, entries.length); drawn++) batch.append(entryCard(entries[drawn]!, drawn < FIRST_BATCH));
       grid.append(batch);
     };
     const drawRest = (): void => {
@@ -1013,7 +1013,8 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     drawUpTo(Math.max(FIRST_BATCH, wanted + FIRST_BATCH));
     if (drawn < entries.length) filling = window.requestAnimationFrame(drawRest);
 
-    function entryCard(item: PlaylistItem): HTMLElement {
+    /** [onScreen]: part of the first screenful, whose artwork is asked for without waiting. */
+    function entryCard(item: PlaylistItem, onScreen: boolean): HTMLElement {
       const card = el('div', {
         class: live ? 'channel-row' : 'poster',
         tabindex: '-1',
@@ -1021,7 +1022,8 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         'data-focus-id': itemKey(item),
       });
       const art = el('img', { class: live ? 'channel-logo' : 'poster-art', alt: '' }) as HTMLImageElement;
-      lazyImage(art, item.logoUrl);
+      // Channel logos are left as they are; posterArtwork only ever changes a TMDB link.
+      lazyImage(art, live ? item.logoUrl : posterArtwork(item.logoUrl), onScreen);
       // Portrait artwork with the name beneath it, which is what the television app's browse grids
       // show - not the landscape cards the landing rows use. The two are different shapes on
       // purpose: a row is a shelf of stills, a grid is a wall of posters.

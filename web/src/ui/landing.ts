@@ -23,7 +23,7 @@ import { itemKey } from '../shared/models';
 import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus } from './focus';
-import { lazyImage } from './images';
+import { lazyImage, posterArtwork } from './images';
 
 export interface LandingRow {
   id: string;
@@ -122,7 +122,49 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     );
   }
 
-  function onCardFocus(item: PlaylistItem, card: HTMLElement): void {
+  /** Details already on their way, so a title asked for twice is fetched once. */
+  const inFlight = new Map<string, Promise<void>>();
+
+  function fetchDetails(item: PlaylistItem): Promise<void> {
+    const key = itemKey(item);
+    if (!options.loadDetails || item.kind === 'live' || details.has(key)) return Promise.resolve();
+    let request = inFlight.get(key);
+    if (!request) {
+      request = options.loadDetails(item)
+        .then((loaded) => {
+          if (loaded) details.set(key, loaded);
+        })
+        .catch(() => undefined)
+        .finally(() => inFlight.delete(key));
+      inFlight.set(key, request);
+    }
+    return request;
+  }
+
+  /**
+   * The titles the viewer is likely to reach next, as Landing.kt's `neighbours` picks them: the
+   * next, the previous, and two further along in this row, and the one in the same place in each
+   * other row (the first two, if nothing in this row is focused).
+   */
+  function neighboursOf(rowIndex: number, column: number): PlaylistItem[] {
+    const current = rows[rowIndex]?.items ?? [];
+    const out: PlaylistItem[] = [];
+    if (column >= 0) {
+      for (const at of [column + 1, column - 1, column + 2, column + 3]) {
+        const entry = current[at];
+        if (entry) out.push(entry);
+      }
+    }
+    rows.forEach((other, index) => {
+      if (index === rowIndex) return;
+      const entry = other.items[Math.max(column, 0)];
+      if (entry) out.push(entry);
+      if (column < 0) out.push(...other.items.slice(0, 2));
+    });
+    return out.filter((entry) => entry.kind !== 'live');
+  }
+
+  function onCardFocus(item: PlaylistItem, card: HTMLElement, rowIndex: number, column: number): void {
     viewerHasMoved = true;
     describe(item, card);
     // The poster now, the title's proper landscape artwork when the details arrive. Asking for
@@ -131,15 +173,29 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     if (item.kind !== 'live') backdrop.show(details.get(itemKey(item))?.backdropUrl ?? item.logoUrl);
 
     if (pending !== null) window.clearTimeout(pending);
-    if (!options.loadDetails || details.has(itemKey(item))) return;
-    pending = window.setTimeout(async () => {
-      const loaded = await options.loadDetails!(item).catch(() => null);
-      if (!loaded) return;
-      details.set(itemKey(item), loaded);
-      // Only if the viewer is still here - they may have moved on while this was in flight.
-      if (document.activeElement?.getAttribute('data-focus-id') !== itemKey(item)) return;
-      describe(item, card);
-      if (viewerHasMoved && loaded.backdropUrl) backdrop.show(loaded.backdropUrl);
+    pending = window.setTimeout(() => {
+      pending = null;
+      if (!details.has(itemKey(item))) {
+        void fetchDetails(item).then(() => {
+          const loaded = details.get(itemKey(item));
+          if (!loaded) return;
+          // Only if the viewer is still here - they may have moved on while this was in flight.
+          if (document.activeElement?.getAttribute('data-focus-id') !== itemKey(item)) return;
+          describe(item, card);
+          if (viewerHasMoved && loaded.backdropUrl) backdrop.show(loaded.backdropUrl);
+        });
+      }
+      /*
+       * And the titles around it, together, with their backgrounds warmed once their details are
+       * in - Landing.kt fetches the neighbours' details in parallel and hands PreloadBackdrops each
+       * one's real backdrop, or its poster until that arrives. So stepping to the next card finds
+       * its details known and its picture decoded, instead of starting both round trips then.
+       * Behind the same 400ms wait as the focused title, so a held key fetches nothing it passes.
+       */
+      const around = neighboursOf(rowIndex, column);
+      const warm = () => backdrop.preload(around.map((entry) => details.get(itemKey(entry))?.backdropUrl ?? entry.logoUrl));
+      warm();
+      void Promise.all(around.map(fetchDetails)).then(warm);
     }, 400);
   }
 
@@ -173,7 +229,8 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
         ...(rowIndex === 0 ? { 'data-focus-up': '.nav-tab[aria-selected="true"]' } : {}),
       });
       const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
-      lazyImage(art, item.logoUrl);
+      // The first screenful straight away; the row shows five.
+      lazyImage(art, posterArtwork(item.logoUrl), row.items.indexOf(item) < 6);
       card.append(art);
       // Title and progress are set over the foot of the artwork rather than in a box under it,
       // which is where the television app puts them. A separate box costs every card a strip of
@@ -185,7 +242,8 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
         foot.append(el('div', { class: 'progress' }, el('div', { class: 'progress-fill', style: `width:${progress * 100}%` })));
       }
       card.append(foot);
-      card.addEventListener('focus', () => onCardFocus(item, card));
+      const column = row.items.indexOf(item);
+      card.addEventListener('focus', () => onCardFocus(item, card, rowIndex, column));
       card.addEventListener('click', () => options.onPlay(item));
       track.append(card);
     }

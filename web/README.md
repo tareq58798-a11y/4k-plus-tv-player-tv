@@ -99,6 +99,12 @@ stops it being reopened every few months.
   match; the buttons that remain keep their original positions rather than closing the gap.
 * **Player engine and connection mode.** Both are ExoPlayer settings - external players and
   buffering strategy - with no AVPlay counterpart. See the note on `playbackPage` in `ui/settings.ts`.
+* **Posters decoded at the size they are drawn.** Coil decodes each poster at the size of its card,
+  so Android throws away pixels it downloaded. A browser cannot decode at a smaller size, and on a
+  television's processor decoding full-size posters is most of the wait for a grid's pictures. So
+  where a poster link is TMDB's (`image.tmdb.org/t/p/<size>/...`), the web asks TMDB for `w342`
+  instead, the smallest width at least as wide as the widest card. Backgrounds and every other
+  host's links are left as the provider gave them. See `posterArtwork` in `ui/images.ts`.
 * **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
   refreshed from the provider (every launch, daily, every two days). This app uses Android's
   default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole

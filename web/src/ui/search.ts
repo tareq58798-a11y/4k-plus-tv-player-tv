@@ -14,7 +14,7 @@ import type { PlaylistItem } from '../shared/models';
 import { itemKey } from '../shared/models';
 import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
-import { lazyImage } from './images';
+import { lazyImage, posterArtwork } from './images';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -82,17 +82,18 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
     count.textContent = matched.length
       ? `${matched.length} ${t('items_label')}`
       : t('search_no_results', field.value.trim());
-    for (const { item } of matched) {
+    matched.forEach(({ item }, index) => {
       const card = el('div', { class: 'card', tabindex: '-1', 'data-focus': '', 'data-focus-id': itemKey(item) });
       const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
-      lazyImage(art, item.logoUrl);
+      // The first two rows at once; the rest as they near the screen.
+      lazyImage(art, posterArtwork(item.logoUrl), index < 12);
       card.append(art, el('div', { class: 'card-foot' }, el('div', { class: 'label' }, item.name)));
       card.addEventListener('focus', () => {
         if (item.kind !== 'live') options.backdrop.show(item.logoUrl);
       });
       card.addEventListener('click', () => options.onOpen(item));
       results.append(card);
-    }
+    });
   }
 
   /*

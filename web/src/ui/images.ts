@@ -63,11 +63,19 @@ function watcher(): IntersectionObserver | null {
  * instead of stalling the key press that scrolled it into view. A failed image loses its `src`
  * rather than showing the broken-image mark, which is what every caller was already doing.
  */
-export function lazyImage(image: HTMLImageElement, url: string | null | undefined): void {
+export function lazyImage(image: HTMLImageElement, url: string | null | undefined, eager = false): void {
   image.decoding = 'async';
   image.addEventListener('error', () => image.removeAttribute('src'));
   if (!url) return;
-  const io = watcher();
+  /*
+   * The first screenful is asked for straight away, not through the observer.
+   *
+   * An observer reports at low priority - Chromium delivers its notifications when the page is
+   * otherwise idle, with up to a tenth of a second's grace - and a television drawing a new page
+   * is not idle. So the posters the viewer was already looking at waited behind the page that
+   * contained them. Callers pass eager for the entries that are on screen when the page opens.
+   */
+  const io = eager ? null : watcher();
   if (!io) {
     load(image, url);
     return;
@@ -95,4 +103,26 @@ export function prefetchAfter(from: Element, count: number): void {
       load(image, url);
     }
   }
+}
+
+/**
+ * The size of a poster as drawn, for artwork TMDB serves.
+ *
+ * The Android app decodes every poster at the size of the card it lands in: Coil sizes a request
+ * to its view, so a 2000-pixel poster costs a 316-pixel decode. A browser has no such thing - it
+ * downloads the whole file and decodes all of it - and on a television's processor that is most
+ * of the time between a grid appearing and its pictures appearing.
+ *
+ * Most Xtream panels hand out TMDB links for films and series, and TMDB serves any image at a set
+ * of fixed widths chosen by one path segment. So where the link is TMDB's, the web asks for the
+ * width the card actually needs - w342, the smallest at least as wide as the widest poster card,
+ * 316px - which is the same pixels Android ends up with, fetched instead of thrown away. Any
+ * other host is left exactly as the provider gave it. Recorded in web/README.md.
+ */
+const TMDB = /^(https?:\/\/image\.tmdb\.org\/t\/p\/)[^/]+(\/[^/]+)$/i;
+
+export function posterArtwork(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = TMDB.exec(url);
+  return match ? `${match[1]}w342${match[2]}` : url;
 }
