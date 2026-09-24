@@ -15,8 +15,9 @@ import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from '
 import { itemKey } from './shared/models';
 import {
   clearActivity, continueWatching, favoriteItems, isFavorite, recentlyAdded, rememberPosition,
-  toggleFavorite,
+  resumePosition, toggleFavorite,
 } from './shared/library';
+import { askResume } from './ui/resumeChoice';
 import { iconElement } from './ui/icons';
 import { focus, handleKey, pushKeyHandler } from './ui/focus';
 import { Backdrop } from './ui/backdrop';
@@ -1451,10 +1452,34 @@ function playScreen(
    * the next channel has to be the next one on their screen, not the next one in the catalogue.
    */
   channels: PlaylistItem[] = [],
+  /**
+   * Where to start, in milliseconds. Left out, a film or episode with a saved position asks
+   * first - resume there, or play from the beginning - and comes back here with the answer.
+   */
+  startAtMs?: number,
 ): void {
   if (item.kind === 'series') {
     void seriesScreen(item);
     return;
+  }
+  /*
+   * Asked before anything is torn down, so the page it was opened from - the film's page, the
+   * season, a landing row - is still there behind the question, and Cancel leaves the viewer on
+   * it. It never started from the saved position at all: positions were recorded on the way out
+   * and nothing read them back on the way in.
+   */
+  if (startAtMs === undefined && !handover && item.kind !== 'live') {
+    const saved = resumePosition(item);
+    if (saved !== null) {
+      askResume({
+        title: item.name,
+        positionMs: saved,
+        onResume: () => playScreen(item, siblings, handover, channels, saved),
+        onStartOver: () => playScreen(item, siblings, handover, channels, 0),
+        onCancel: () => undefined,
+      });
+      return;
+    }
   }
   clear();
   document.body.classList.add('playing');
@@ -1491,18 +1516,32 @@ function playScreen(
     episodes: siblings,
     currentEpisodeId: item.channelId,
     onEpisode: (episode) => {
-      // The position belongs to the episode being left, not to the one arriving.
-      rememberPosition(item, positionMs, durationMs);
-      player.stop();
-      overlay.destroy();
-      release();
-      // Re-entered rather than swapped in place: a new stream means a new duration, a new resume
-      // point and a new title, and rebuilding is how all three stay in step. The season is handed
-      // on so the strip is still there on the next episode.
-      playScreen(
-        { ...item, name: episode.label, streamUrl: episode.streamUrl, channelId: episode.id },
-        siblings,
-      );
+      const next: PlaylistItem = { ...item, name: episode.label, streamUrl: episode.streamUrl, channelId: episode.id };
+      const go = (startAt: number): void => {
+        // The position belongs to the episode being left, not to the one arriving.
+        rememberPosition(item, positionMs, durationMs);
+        player.stop();
+        overlay.destroy();
+        release();
+        // Re-entered rather than swapped in place: a new stream means a new duration, a new
+        // resume point and a new title, and rebuilding is how all three stay in step. The season
+        // is handed on so the strip is still there on the next episode.
+        playScreen(next, siblings, false, [], startAt);
+      };
+      // Asked here rather than in playScreen, while this episode is still playing behind the
+      // question - so Cancel leaves the viewer watching it rather than on an empty screen.
+      const saved = resumePosition(next);
+      if (saved === null) {
+        go(0);
+        return;
+      }
+      askResume({
+        title: next.name,
+        positionMs: saved,
+        onResume: () => go(saved),
+        onStartOver: () => go(0),
+        onCancel: () => undefined,
+      });
     },
     onExit: (at) => {
       rememberPosition(item, at, durationMs);
@@ -1548,10 +1587,21 @@ function playScreen(
     };
   }
 
+  /** The saved position to go to once the stream can be seeked, if resuming was chosen. */
+  let pendingStart = startAtMs ?? 0;
+  /** When the position was last written during playback - see the progress handler. */
+  let savedAt = Date.now();
+
   player.on((event) => {
     if (event.type === 'error') overlay.setMessage(event.message);
     if (event.type === 'ready') {
       durationMs = event.durationMs;
+      // A stream can be seeked once it is prepared, and 'ready' is that moment on both players.
+      if (pendingStart > 0 && (durationMs <= 0 || pendingStart < durationMs)) {
+        player.seekTo(pendingStart);
+        positionMs = pendingStart;
+      }
+      pendingStart = 0;
       overlay.setPosition(positionMs, durationMs);
       // Applied on ready rather than before play: AVPlay rejects a display method on a stream it
       // has not prepared, so setting it earlier is silently thrown away and the viewer's choice
@@ -1561,6 +1611,17 @@ function playScreen(
     if (event.type === 'progress') {
       positionMs = event.positionMs;
       overlay.setPosition(positionMs, durationMs);
+      /*
+       * Written as it plays, not only on the way out. Leaving by Back records it, but a set
+       * switched off, the Home button, or the app closed from the task list never reach onExit,
+       * and the position went with them. Every fifteen seconds, and only once past the first
+       * minute: rememberPosition forgets anything earlier than that, and a clock that reads 0 for
+       * a moment while a resume seek lands must not wipe the point it is seeking to.
+       */
+      if (item.kind !== 'live' && positionMs >= 60_000 && Date.now() - savedAt >= 15_000) {
+        savedAt = Date.now();
+        rememberPosition(item, positionMs, durationMs);
+      }
     }
     if (event.type === 'playing') overlay.setPaused(false);
     if (event.type === 'paused') overlay.setPaused(true);

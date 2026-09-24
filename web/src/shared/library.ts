@@ -92,6 +92,12 @@ export function rememberPosition(item: PlaylistItem, positionMs: number, duratio
   writeJson(RESUME, map);
 }
 
+/** Where [item] was left, or null when there is nothing to go back to. */
+export function resumePosition(item: PlaylistItem): number | null {
+  const entry = resumePoints()[itemKey(item)];
+  return entry && entry.positionMs > 0 ? entry.positionMs : null;
+}
+
 export function progressOf(item: PlaylistItem): number | null {
   const entry = resumePoints()[itemKey(item)];
   if (!entry || entry.durationMs <= 0) return null;

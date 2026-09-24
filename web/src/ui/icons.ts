@@ -20,6 +20,10 @@ export const ICON = {
   verticalAlignTop: 'M8 11h3v10h2V11h3l-4-4-4 4zM4 3v2h16V3H4z',
   /** Icons.Default.VerticalAlignBottom */
   verticalAlignBottom: 'M16 13h-3V3h-2v10H8l4 4 4-4zM4 19v2h16v-2H4z',
+  /** Icons.Default.PlayArrow */
+  playArrow: 'M8 5v14l11-7z',
+  /** Icons.Default.Replay */
+  replay: 'M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z',
   /** Icons.Default.PlaylistPlay */
   playlistPlay: 'M3 10h11v2H3zm0-4h11v2H3zm0 8h7v2H3zm13-1v8l6-4z',
   /** Icons.Default.Info */

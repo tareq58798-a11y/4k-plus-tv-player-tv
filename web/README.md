@@ -123,6 +123,12 @@ stops it being reopened every few months.
 * **(The other way round) CH+ and CH- change channel.** The set sends them to this app because it
   registers them, and the television app has no handler for them. In a channel they zap, as Up and
   Down do with the controls down. Added on 2026-09-24; the Android app is unchanged.
+* **(The other way round) resume or start again.** The television resumes a film or episode from
+  its saved position without asking, and has no way to start one over. Here a title with a saved
+  position asks first - "Resume 12:34" or "Play from beginning" - and positions are also saved
+  every fifteen seconds while playing, not only on leaving. "Play from beginning" has no Android
+  string yet, so it is in strings.local.ts in English only. Added at the owner's request on
+  2026-09-24; the Android app is unchanged.
 * **Named aspect frames that always change the picture.** See the table above. The television's
   16:9 and 4:3 do nothing to a stream already of a similar shape; here each gives its shape.
   Changed at the owner's request on 2026-09-24; the Android app is unchanged.

@@ -53,6 +53,10 @@ export const LOCAL_EN = {
   // Not "unknown". The stream has not said yet, which is a different thing from there being no
   // answer, and it stops being true a second later.
   resolution_unavailable: 'Not reported yet',
+  // The second choice when a film or episode has a saved position. The television resumes without
+  // asking, so it has no string for starting again; "Resume {1}" is its own and is used beside
+  // this one.
+  play_from_beginning: 'Play from beginning',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;
