@@ -1394,13 +1394,19 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }
 
     /*
-     * OK on a channel brings up the controls - it no longer leaves.
+     * OK on a channel opens the channel menu - the channel list - exactly as Back does, which is
+     * what the television app does.
      *
-     * The television app has OK leave a channel exactly as Back does, and this copied it. The
-     * owner pressed OK expecting the menu, and instead the channel closed, the list came back and
-     * the stream started over behind it - reported as the picture cutting out and loading for a
-     * long time. Back still leaves. Recorded in web/README.md.
+     * From 10.7 to 10.15 OK brought up the controls instead. That came from reading "pressing OK
+     * to show the menu cuts and loads for a long time" as asking for the controls; what it was
+     * reporting was the list stopping the stream and opening it again. The handover back to the
+     * list (carriedPreview in main.ts) fixed that part, and the owner has since asked for OK to
+     * bring the channel menu up. The controls are on Right, towardsControls.
      */
+    if (live && !visible && !stripOpen && key === 'enter') {
+      options.onExit(positionMs);
+      return true;
+    }
 
     /*
      * A series with the controls down: Down opens the strip, not the controls.

@@ -92,6 +92,12 @@ These are decided, not outstanding. Each one was looked at against the Android a
 because the platform makes it a worse idea here, and writing that down is the only thing that
 stops it being reopened every few months.
 
+* **Frames from the channel on its card.** The television captures a still from each recently
+  watched channel's stream (LiveSnapshotCapture.kt) by opening the stream in the background and
+  decoding a frame. A Samsung web app cannot: AVPlay draws on a hardware plane the page cannot
+  read, drawing a video into a canvas stopped working after Tizen 2, and Samsung's WebAssembly
+  decoder is only on sets newer than this app's Tizen 5.5 floor. Channel cards show the channel's
+  logo. Looked at and left out on 2026-09-24.
 * **Mute.** The television app mutes its own ExoPlayer instance, which affects that stream and
   nothing else. Tizen offers no per-stream volume for AVPlay; the available API,
   `tizen.tvaudiocontrol`, mutes the *television*. An app that silences the whole set from its own
@@ -108,10 +114,6 @@ stops it being reopened every few months.
   where a poster link is TMDB's (`image.tmdb.org/t/p/<size>/...`), the web asks TMDB for `w342`
   instead, the smallest width at least as wide as the widest card. Backgrounds and every other
   host's links are left as the provider gave them. See `posterArtwork` in `ui/images.ts`.
-* **OK on a channel.** The television app's OK leaves a full-screen channel, as Back does. Here
-  OK brings up the controls, at the owner's request: they expected the menu, and the channel
-  closing and restarting behind the list read as the picture cutting out. Back still leaves.
-  Decided on 2026-09-24.
 * **Player choices are per title.** The television app writes the subtitle background and skip
   length chosen in the player back to its settings. Here nothing chosen in the player outlasts
   the title (shape, tracks, subtitle background and size, skip length, speed), at the owner's
@@ -148,10 +150,12 @@ stops it being reopened every few months.
 * **Back goes to Home.** The television steps back a level at a time (category browser to its
   section, section to Home, Home to "Exit app?"). Here Back from any page - a section, a category
   browser, a film's page, a series, search, Settings - goes straight to Home, and Home asks the
-  television's "Exit app?", at the owner's request. Inside Settings a sub-page still goes up to the
-  Settings menu first; the player, a film's page and a series' page return to wherever the title
-  was chosen - its category (Recently watched included) or its row on a landing page - with the
-  highlight on it.
+  television's "Exit app?", at the owner's request. Exceptions: a Settings sub-page goes up to the
+  Settings menu first; a category browser goes to its own section's page (Live TV, Movies,
+  Series); and the player, a film's page and a series' page return to where the title was chosen -
+  its category in the library, with the highlight on it, or its row on a landing page. A title
+  chosen from a Recently watched or Continue watching row returns to that category in its own
+  library.
   Decided on 2026-09-24.
 * **Start muted, and embedded-subtitle handling.** Decisions the decoder makes for us on this
   platform. A switch that does nothing is worse than an absent one.

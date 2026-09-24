@@ -79,6 +79,20 @@ let detachNav: (() => void) | null = null;
  */
 let browseReturn: { section: Section; category: string; focusKey: string } | null = null;
 
+/**
+ * Where Back goes from a film's page, a series' page or the player: the library category the
+ * title was chosen from, with the highlight on it, or else the landing page it was chosen on.
+ */
+function backToChosen(): void {
+  if (browseReturn) {
+    // Going to the library, so the landing card this may also have come from is not the way back.
+    landingReturn = null;
+    browseScreen(browseReturn.section);
+  } else {
+    showSection(section);
+  }
+}
+
 /** The card a landing page's title was opened from, so coming back puts the highlight on it. */
 let landingReturn: { section: Section; rowId: string | null; focusKey: string } | null = null;
 
@@ -659,7 +673,21 @@ function showSection(next: Section): void {
       // Where to come back to. The page this was chosen from is rebuilt on the way back, and
       // without this the viewer landed on the tab bar rather than on the card they had pressed.
       landingReturn = { section: next, rowId: row?.id ?? null, focusKey: itemKey(item) };
-      browseReturn = null;
+      /*
+       * From a Recently watched or Continue watching row, the way back is that list inside the
+       * title's own library - Live TV's Recently watched for a channel, Continue watching in
+       * Movies or Series for a film or a series - where the rest of what the viewer has been
+       * watching is, and where a channel carries on as the preview. From any other row, back to
+       * the row.
+       */
+      const recentRow = row !== null && (row.id === 'home-continue' || row.id.endsWith('-recent'));
+      browseReturn = recentRow
+        ? {
+            section: item.kind === 'live' ? 'live' : item.kind === 'movie' ? 'movies' : 'series',
+            category: item.kind === 'live' ? t('section_recently_watched') : t('section_continue_watching'),
+            focusKey: itemKey(item),
+          }
+        : null;
       /*
        * A channel from a row - Recently watched on Home or on Live TV - brings the row's other
        * channels with it, so Up and Down in full screen move through that list, as they move
@@ -888,6 +916,9 @@ function behindPin(locked: boolean, action: () => void): void {
 
 function browseScreen(current: Section, favoritesOnly = false): void {
   if (!catalogue) return;
+  // The section this library belongs to, which is where Back from it goes and what anything
+  // opened from it comes back to - it can be reached from Home, not only from its own page.
+  section = current;
   clear();
   const kind = current === 'live' ? 'live' : current === 'movies' ? 'movie' : 'series';
   let pool = catalogue.items.filter((item) => item.kind === kind);
@@ -1672,7 +1703,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     }
     if (key !== 'back') return false;
     release();
-    goHome();
+    // Back to the section's own page - Live TV, Movies or Series - as the owner asked. It went to
+    // Home from 10.11 to 10.15.
+    showSection(current);
     return true;
   });
 }
@@ -1728,7 +1761,7 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
       // browser they never asked for. browseReturn is only set by the grid, and it is not
       // consumed until the browser next draws, so its presence is the question being asked.
       // As a film's page: back to the category or the row it was chosen from.
-      onBack: () => (browseReturn ? browseScreen(section) : showSection(section)),
+      onBack: backToChosen,
     });
   } catch (error) {
     /*
@@ -1778,7 +1811,7 @@ async function detailsScreen(item: PlaylistItem): Promise<void> {
 
   // Back to where the film was chosen: its category, Recently watched included, with the highlight
   // on it - or the page whose row it was in.
-  const back = (): void => (browseReturn ? browseScreen(section) : showSection(section));
+  const back = backToChosen;
   const open = (): void => playScreen(item);
 
   const draw = (details: MovieDetails | null, loading: boolean): HTMLElement =>
@@ -1959,8 +1992,7 @@ function playScreen(
       // Back to the list this was opened from, and to the landing when it was opened from there.
       // Leaving a channel dropped the viewer on the landing however deep into a category they
       // had been, which for a list of hundreds is the whole way back to the start.
-      if (browseReturn) browseScreen(section);
-      else showSection(section);
+      backToChosen();
     },
   });
   app.append(overlay.element);
