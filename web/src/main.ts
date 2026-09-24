@@ -558,45 +558,69 @@ const HOLD_MS = 500;
 /**
  * Holding OK on [target] runs [onHold]; a press and release is still an ordinary press.
  *
- * The television does this for channel rows, where "press-and-hold OK toggles favorite", and this
- * does it for posters too, so the one gesture works everywhere a title is listed - on Android a
- * poster's star is a touch target the remote cannot reach, which on a Samsung set would leave
- * films and series in the grid with no way to star them at all.
+ * The television's long press, which it uses in two places this shares: on a channel row "press-
+ * and-hold OK toggles favorite", and on a category it opens CategoryActionsDialog. Posters take the
+ * favourite hold too, so the one gesture works wherever a title is listed - on Android a poster's
+ * star is a touch target the remote cannot reach.
  *
  * Telling the two apart means the ordinary press cannot act on the way down any more, because
  * nobody knows yet whether it will be held. So OK is taken here, before the window's handler sees
  * it: the press waits for the key to come up and clicks then, and a key still down after HOLD_MS
- * is a hold instead, and the release that follows does nothing.
+ * is a hold instead.
+ *
+ * For as long as the key stays down after that, its repeats are swallowed at the window, wherever
+ * the highlight has gone. Otherwise a hold that opens a menu goes on pressing OK on the menu's
+ * first entry, which is what the category menu used to rely on the viewer letting go quickly
+ * enough to avoid. It also used to wait for the browser to flag a keydown as a repeat, which is
+ * not something every set's remote is promised to send; the timer does not depend on it.
  */
-function holdForFavourite(target: HTMLElement, onHold: () => void): void {
+function holdOk(target: HTMLElement, onHold: () => void): void {
   let timer: number | null = null;
-  let held = false;
-  target.addEventListener('keydown', (event) => {
-    if (keyOf(event, platform) !== 'enter') return;
+  let pressing = false;
+
+  const isOk = (event: KeyboardEvent): boolean => keyOf(event, platform) === 'enter';
+
+  const swallow = (event: KeyboardEvent): void => {
+    if (!isOk(event)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.repeat || timer !== null || held) return;
+  };
+
+  const release = (event: KeyboardEvent): void => {
+    if (!isOk(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const wasPress = timer !== null;
+    finish();
+    if (wasPress) target.click();
+  };
+
+  function finish(): void {
+    if (timer !== null) window.clearTimeout(timer);
+    timer = null;
+    pressing = false;
+    window.removeEventListener('keydown', swallow, true);
+    window.removeEventListener('keyup', release, true);
+  }
+
+  target.addEventListener('keydown', (event) => {
+    if (!isOk(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (pressing) return;
+    pressing = true;
+    // Capturing at the window, so the rest of this press is ours even after the highlight moves.
+    window.addEventListener('keydown', swallow, true);
+    window.addEventListener('keyup', release, true);
     timer = window.setTimeout(() => {
       timer = null;
-      held = true;
       onHold();
     }, HOLD_MS);
   });
-  target.addEventListener('keyup', (event) => {
-    if (keyOf(event, platform) !== 'enter') return;
-    event.preventDefault();
-    event.stopPropagation();
-    const pressed = timer !== null;
-    if (timer !== null) window.clearTimeout(timer);
-    timer = null;
-    held = false;
-    if (pressed) target.click();
-  });
-  // Leaving the element mid-press, or the page going away, must not leave a hold armed.
+  // The highlight leaving before the hold has counted - nothing else can move it mid-press, but
+  // the page can go - is a press that never finished, and must not click later.
   target.addEventListener('blur', () => {
-    if (timer !== null) window.clearTimeout(timer);
-    timer = null;
-    held = false;
+    if (timer !== null) finish();
   });
 }
 
@@ -933,7 +957,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       // title is a favourite, an outline otherwise. Holding OK is what changes it.
       let star = favouriteStar(item);
       card.append(star);
-      holdForFavourite(card, () => {
+      holdOk(card, () => {
         toggleFavorite(item);
         const next = favouriteStar(item);
         star.replaceWith(next);
@@ -1071,17 +1095,24 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       }
       renderGrid();
     });
-    // A held OK opens the menu, which is the television app's long press arriving the only way a
-    // remote can express it on the web - see openCategoryMenu.
-    row.addEventListener('keydown', (event) => {
-      if (!event.repeat) return;
-      // Continue watching, Recently watched and Favorites are not the provider's categories:
-      // there is nothing behind them to hide, reorder or move, so they carry no menu.
-      if (special) return;
-      const key = keyOf(event, platform);
-      if (key !== 'enter') return;
-      event.preventDefault();
-      event.stopPropagation();
+    // A held OK opens the menu - CategoryActionsDialog, on the television's long press. Continue
+    // watching, Recently watched and Favorites are not the provider's categories: there is
+    // nothing behind them to hide, reorder or move, so they carry no menu, as on Android.
+    // OK puts a carried row down. It used to reach the key handler below, but holdOk now takes OK
+    // on these rows itself and turns it into this click, or into a hold.
+    const putDown = (): void => {
+      reordering = null;
+      renderSidebar();
+      focusCategory(group);
+    };
+    row.addEventListener('click', () => {
+      if (reordering) putDown();
+    });
+    if (!special) holdOk(row, () => {
+      if (reordering) {
+        putDown();
+        return;
+      }
       openCategoryMenu(app, {
         category: group,
         onHide: () => {

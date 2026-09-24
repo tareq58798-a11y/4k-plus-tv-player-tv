@@ -14,6 +14,12 @@ export const ICON = {
   star: 'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
   /** Icons.Default.StarBorder */
   starBorder: 'm22 9.24-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',
+  /** Icons.Default.SwapVert */
+  swapVert: 'M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3 5 6.99h3V14h2V6.99h3L9 3z',
+  /** Icons.Default.VerticalAlignTop */
+  verticalAlignTop: 'M8 11h3v10h2V11h3l-4-4-4 4zM4 3v2h16V3H4z',
+  /** Icons.Default.VerticalAlignBottom */
+  verticalAlignBottom: 'M16 13h-3V3h-2v10H8l4 4 4-4zM4 19v2h16v-2H4z',
   /** Icons.Default.PlaylistPlay */
   playlistPlay: 'M3 10h11v2H3zm0-4h11v2H3zm0 8h7v2H3zm13-1v8l6-4z',
   /** Icons.Default.Info */

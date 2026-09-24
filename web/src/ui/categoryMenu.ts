@@ -5,13 +5,13 @@
  * two jumps exist because hand-moving is one place per press, and a playlist with four hundred
  * categories makes moving a favourite from the bottom to the top four hundred presses.
  *
- * The gesture differs from Android by necessity rather than by choice. There is no long press on
- * the web: a remote held down produces repeated keydown events, so a hold is detected from the
- * repeat rather than from a timer, and the first press has already landed by then. On this screen
- * that costs nothing, because focusing a category is what selects it and OK does nothing else.
+ * Drawn as that AlertDialog draws it: the category as the title, each action a row with its icon
+ * in Cyan - SwapVert, VerticalAlignTop, VerticalAlignBottom, VisibilityOff - and Cancel as a text
+ * button at the foot. The hold that opens it is holdOk in main.ts.
  */
 import { t } from '../shared/i18n';
 import { focus, pushKeyHandler } from './focus';
+import { iconElement, type IconName } from './icons';
 
 export interface CategoryMenuOptions {
   category: string;
@@ -47,11 +47,13 @@ export function openCategoryMenu(host: HTMLElement, options: CategoryMenuOptions
     options.onDismiss();
   }
 
-  function action(id: string, label: string, run: () => void): void {
+  function action(id: string, icon: IconName, label: string, run: () => void): void {
     const row = document.createElement('div');
     row.className = 'dialog-action';
     row.tabIndex = -1;
-    row.textContent = label;
+    const text = document.createElement('span');
+    text.textContent = label;
+    row.append(iconElement(icon, 'dialog-action-icon'), text);
     row.setAttribute('data-focus', '');
     row.setAttribute('data-focus-id', `category-${id}`);
     row.addEventListener('click', () => {
@@ -63,19 +65,23 @@ export function openCategoryMenu(host: HTMLElement, options: CategoryMenuOptions
     dialog.append(row);
   }
 
-  action('manual', t('move_manually'), options.onMoveManually);
-  action('top', t('move_to_top'), options.onMoveToTop);
-  action('bottom', t('move_to_bottom'), options.onMoveToBottom);
-  if (options.onHide) action('hide', t('hide_category_action'), options.onHide);
+  action('manual', 'swapVert', t('move_manually'), options.onMoveManually);
+  action('top', 'verticalAlignTop', t('move_to_top'), options.onMoveToTop);
+  action('bottom', 'verticalAlignBottom', t('move_to_bottom'), options.onMoveToBottom);
+  if (options.onHide) action('hide', 'visibilityOff', t('hide_category_action'), options.onHide);
 
+  // The AlertDialog's confirmButton: a TextButton, at the end of the foot.
+  const buttons = document.createElement('div');
+  buttons.className = 'dialog-buttons';
   const cancel = document.createElement('div');
-  cancel.className = 'dialog-action muted';
+  cancel.className = 'dialog-text-button';
   cancel.tabIndex = -1;
   cancel.textContent = t('action_cancel');
   cancel.setAttribute('data-focus', '');
   cancel.setAttribute('data-focus-id', 'category-cancel');
   cancel.addEventListener('click', close);
-  dialog.append(cancel);
+  buttons.append(cancel);
+  dialog.append(buttons);
 
   backdrop.append(dialog);
   host.append(backdrop);
@@ -86,9 +92,20 @@ export function openCategoryMenu(host: HTMLElement, options: CategoryMenuOptions
       if (returnTo?.isConnected) focus(returnTo);
       return true;
     }
-    // Everything else is swallowed while this is open. A dialog that lets arrow keys through moves
-    // a highlight the viewer cannot see, on a page they are not looking at.
-    return false;
+    /*
+     * The arrows stay inside the dialog: Up and Down walk its entries and stop at either end,
+     * Left and Right do nothing. This said the same and returned false, which handed every arrow
+     * to the page's own directional search - so Up from the first entry left the dialog open and
+     * put the highlight on a channel behind it. OK still falls through, to press what is
+     * highlighted.
+     */
+    if (key === 'up' || key === 'down') {
+      const stops = Array.from(dialog.querySelectorAll<HTMLElement>('[data-focus]'));
+      const next = stops[stops.indexOf(document.activeElement as HTMLElement) + (key === 'down' ? 1 : -1)];
+      if (next) focus(next);
+      return true;
+    }
+    return key === 'left' || key === 'right';
   });
 
   focus(dialog.querySelector<HTMLElement>('[data-focus]'));
