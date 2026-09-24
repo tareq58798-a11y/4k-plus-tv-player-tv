@@ -102,6 +102,10 @@ stops it being reopened every few months.
   as it does for a film, and the strip opens only from a bare picture. Changed at the owner's
   request on 2026-09-24: a press meant for the timeline was swapping the controls for the season.
   The Android app is unchanged.
+* **The television's two backdrop scrims on Home, Movies and Series.** The television darkens the
+  artwork with a left-hand gradient (85% at the edge) and a top-to-bottom one (88% at the foot).
+  Here every section gets the flat 30% black that Live TV already had, so the other three are as
+  light as Live TV. Changed at the owner's request on 2026-09-24. The Android app is unchanged.
 
 ## State
 

@@ -63,24 +63,10 @@ body {
  *
  * A channel logo is nearly always a bright mark on a transparent background, so the lighter page
  * lets pale logos wash into it. Dropping the whole section closer to black gives every one of them
- * an edge, which is the same reason the television app darkens this screen. The scrim goes over
- * the backdrop rather than replacing it, so Classic and Modern backgrounds both end up equally
- * readable here.
+ * an edge, which is the same reason the television app darkens this screen.
  */
 body.section-live {
   background-image: linear-gradient(180deg, #050b16, #01030a);
-}
-
-/*
- * Eased back from 0.55, which was too much.
- *
- * Three things darken this screen and they multiply: this flat layer, the scrim gradients it sits
- * on, and the tint on the two columns. At 0.55 on top of the rest the artwork had stopped being
- * artwork and become a texture, which is not what "a little bit darker" asked for. The gradient
- * above is back to the app's own page colours too - it had been taken almost to black.
- */
-body.section-live .backdrop-scrim {
-  background: rgba(0, 0, 0, 0.3);
 }
 
 /* Deliberately not .card. The television app darkens Live TV's own columns, not the artwork
@@ -1551,13 +1537,12 @@ body.playing #app {
   transition: opacity var(--motion-backdrop-ms) var(--motion-ease-in-out);
 }
 
-/* Two scrims, as on the television: one darkens top and bottom, the other the left, where the
-   title, metadata and buttons sit. The right stays comparatively clear so the artwork is still
-   plainly visible rather than dimmed into a texture. */
+/* One flat 30% layer on every section, the one Live TV already had. The television draws two
+   gradient scrims here, 85% at the left and 88% at the foot, and Home, Movies and Series used to
+   copy them; they were made as light as Live TV at the owner's request, so this differs from the
+   television on those three pages. Recorded in web/README.md. */
 .backdrop-scrim {
-  background-image:
-    linear-gradient(90deg, rgba(3, 7, 17, 0.85) 0%, rgba(4, 10, 22, 0.55) 38%, rgba(2, 6, 16, 0.2) 72%, transparent 100%),
-    linear-gradient(180deg, rgba(10, 20, 36, 0.6) 0%, rgba(6, 13, 26, 0.24) 32%, rgba(3, 7, 17, 0.55) 74%, rgba(1, 3, 10, 0.88) 100%);
+  background: rgba(0, 0, 0, 0.3);
 }
 
 body.playing .backdrop-base,
@@ -1789,11 +1774,9 @@ body.playing .backdrop-scrim {
 /*
  * The text side of a title page carries its own backing.
  *
- * The page scrim is a horizontal gradient, 85% opaque on the left and clear by the right-hand
- * edge. That is correct for a landing page, where the title and buttons sit on the left and the
- * artwork is worth leaving visible on the right. These two pages are the other way round - poster
- * left, words right - so their text was landing on the one part of the screen deliberately left
- * bright, and on a vivid backdrop it could not be read at all.
+ * The page scrim is a light flat 30% (see .backdrop-scrim), which holds a landing page's title
+ * but not a block of synopsis and credits. On a vivid backdrop this text could not be read at
+ * all without a backing of its own.
  *
  * A gradient rather than a flat panel, and not fully opaque, so the artwork still shows through
  * the way it is meant to.
