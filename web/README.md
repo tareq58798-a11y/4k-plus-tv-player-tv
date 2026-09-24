@@ -116,6 +116,10 @@ stops it being reopened every few months.
   many channels, films or series each category holds, at the end of the row. The television's
   CategoryPill is the name alone. Added at the owner's request on 2026-09-24; the Android app is
   unchanged.
+* **(The other way round) holding OK on a poster stars it.** The television's channel rows toggle a
+  favourite on a held OK, and this does the same there. Its film and series posters carry a star
+  that only touch can reach, so here the held OK works on posters too - the one gesture wherever a
+  title is listed. Added at the owner's request on 2026-09-24; the Android app is unchanged.
 
 ## State
 

@@ -12,7 +12,7 @@
  */
 import { t } from '../shared/i18n';
 import type { PlaylistItem, SeriesDetails, SeriesEpisode } from '../shared/models';
-import { progressOf } from '../shared/library';
+import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
 
@@ -75,6 +75,30 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
     head.append(el('div', { class: 'series-alt' }, series.name));
   }
   head.append(pills);
+
+  /*
+   * Favourite, as on a film's page and as the television's series page has it - its star button
+   * beside the title. A series had no way to be starred here at all, so its Favorites row could
+   * only ever be empty. Under the pills, above the seasons, where Up from the season chips lands.
+   */
+  let starred = isFavorite(series);
+  const favourite = el(
+    'div',
+    {
+      class: 'button ghost details-favourite series-favourite',
+      tabindex: '-1',
+      'data-focus': '',
+      'data-focus-id': 'series-favourite',
+      'aria-selected': String(starred),
+    },
+    `${starred ? '★' : '☆'}  ${t('action_favorite')}`,
+  );
+  favourite.addEventListener('click', () => {
+    starred = toggleFavorite(series);
+    favourite.setAttribute('aria-selected', String(starred));
+    favourite.textContent = `${starred ? '★' : '☆'}  ${t('action_favorite')}`;
+  });
+  head.append(favourite);
   if (details.description) head.append(el('p', { class: 'series-plot' }, details.description));
   if (details.cast) head.append(el('div', { class: 'credit' }, el('span', {}, t('cast_label')), details.cast));
   if (details.director) head.append(el('div', { class: 'credit' }, el('span', {}, t('director_label')), details.director));

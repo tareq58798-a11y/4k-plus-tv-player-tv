@@ -539,9 +539,38 @@ body.playing #app {
  * cent, so that is what this does now.
  */
 .poster {
+  position: relative;
   cursor: pointer;
   min-width: 0;
   border-radius: var(--dim-radius-poster);
+}
+
+/*
+ * The favourite star. On a poster it is the television's badge in the top corner - a 34dp box of
+ * 55% black with 10dp corners and a 19dp star; in a channel row it sits at the end at 18dp. White
+ * outline when not a favourite, Orange (0xFFFFB547) and filled when it is.
+ */
+.fav-star {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  color: #ffffff;
+}
+
+.fav-star.is-on {
+  color: #ffb547;
+}
+
+.poster .fav-star {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 12px;
+  box-sizing: border-box;
+  width: 68px;
+  height: 68px;
+  padding: 15px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .poster:focus {
@@ -1910,6 +1939,16 @@ body.playing .backdrop-scrim {
 
 /* Lit when the film is a favourite, so the button reports the state as well as offering to
    change it - the star alone is easy to miss across a room. */
+/* On a series page it sits in the text column, so it takes its own width rather than the column's. */
+.series-favourite {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: 72px;
+  margin-top: var(--dim-gap-s);
+  font-size: 28px;
+}
+
 .details-favourite[aria-selected='true'] {
   color: #04131f;
   background: var(--tone-star);

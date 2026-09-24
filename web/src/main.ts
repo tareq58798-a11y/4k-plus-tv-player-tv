@@ -14,8 +14,10 @@ import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
 import {
-  clearActivity, continueWatching, favoriteItems, recentlyAdded, rememberPosition,
+  clearActivity, continueWatching, favoriteItems, isFavorite, recentlyAdded, rememberPosition,
+  toggleFavorite,
 } from './shared/library';
+import { iconElement } from './ui/icons';
 import { focus, handleKey, pushKeyHandler } from './ui/focus';
 import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
@@ -537,6 +539,67 @@ function settingsScreen(openAt?: 'language'): void {
   });
 }
 
+/** The star on a poster or channel row, in the state [item] is in now. */
+function favouriteStar(item: PlaylistItem): SVGSVGElement {
+  const on = isFavorite(item);
+  return iconElement(on ? 'star' : 'starBorder', on ? 'fav-star is-on' : 'fav-star');
+}
+
+/**
+ * How long OK has to be held to count as a hold rather than a press.
+ *
+ * Android's long-press timeout, which is what the television's combinedClickable waits for:
+ * ViewConfiguration.DEFAULT_LONG_PRESS_TIMEOUT, 400ms on current releases and 500 before. The
+ * longer of the two, because a remote's OK is pressed firmly and a favourite toggled by a slow
+ * ordinary press is the worse mistake.
+ */
+const HOLD_MS = 500;
+
+/**
+ * Holding OK on [target] runs [onHold]; a press and release is still an ordinary press.
+ *
+ * The television does this for channel rows, where "press-and-hold OK toggles favorite", and this
+ * does it for posters too, so the one gesture works everywhere a title is listed - on Android a
+ * poster's star is a touch target the remote cannot reach, which on a Samsung set would leave
+ * films and series in the grid with no way to star them at all.
+ *
+ * Telling the two apart means the ordinary press cannot act on the way down any more, because
+ * nobody knows yet whether it will be held. So OK is taken here, before the window's handler sees
+ * it: the press waits for the key to come up and clicks then, and a key still down after HOLD_MS
+ * is a hold instead, and the release that follows does nothing.
+ */
+function holdForFavourite(target: HTMLElement, onHold: () => void): void {
+  let timer: number | null = null;
+  let held = false;
+  target.addEventListener('keydown', (event) => {
+    if (keyOf(event, platform) !== 'enter') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat || timer !== null || held) return;
+    timer = window.setTimeout(() => {
+      timer = null;
+      held = true;
+      onHold();
+    }, HOLD_MS);
+  });
+  target.addEventListener('keyup', (event) => {
+    if (keyOf(event, platform) !== 'enter') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const pressed = timer !== null;
+    if (timer !== null) window.clearTimeout(timer);
+    timer = null;
+    held = false;
+    if (pressed) target.click();
+  });
+  // Leaving the element mid-press, or the page going away, must not leave a hold armed.
+  target.addEventListener('blur', () => {
+    if (timer !== null) window.clearTimeout(timer);
+    timer = null;
+    held = false;
+  });
+}
+
 /**
  * Runs [action] once the viewer has proved they may, and does nothing if they cannot.
  *
@@ -866,6 +929,22 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       // purpose: a row is a shelf of stills, a grid is a wall of posters.
       card.append(art, el('div', { class: live ? 'channel-name' : 'poster-label' }, item.name));
       if (!live && item.year) card.append(el('div', { class: 'poster-year' }, item.year));
+      // The star the television draws on every poster and channel row: filled Orange when the
+      // title is a favourite, an outline otherwise. Holding OK is what changes it.
+      let star = favouriteStar(item);
+      card.append(star);
+      holdForFavourite(card, () => {
+        toggleFavorite(item);
+        const next = favouriteStar(item);
+        star.replaceWith(next);
+        star = next;
+        // The Favorites row is a snapshot taken when the page opened; bring it and its count up
+        // to date, so the row says what the star just did.
+        const favourites = specials[1]!;
+        favourites[1] = favoriteItems(pool, 60);
+        const count = sidebar.querySelector(`.category[data-focus-id="${cssEscape(favourites[0])}"] .category-count`);
+        if (count) count.textContent = String(favourites[1].length);
+      });
       card.addEventListener('focus', () => {
         if (item.kind !== 'live') backdrop.show(item.logoUrl);
         focusedChannelId = item.channelId;
