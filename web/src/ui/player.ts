@@ -100,7 +100,7 @@ export interface PlayerOverlayOptions {
   /**
    * The rest of the season, empty for a film.
    *
-   * Its presence is what makes Down mean "show me the episodes" rather than "walk the controls" -
+   * More than one is what makes Down mean "show me the episodes" rather than "walk the controls" -
    * see stepDown. A film has nothing under the controls worth reaching, so there the walk is
    * right; a series has the rest of the season, and making somebody press three times to see it
    * puts the commonest thing they want furthest away.
@@ -806,6 +806,9 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
 
   // ------------------------------------------------------------- episode strip
   const episodes = options.episodes ?? [];
+  // More than one, as RelatedItemsStrip's `if (items.size <= 1) return` and the `> 1` at both of
+  // its call sites. A strip holding only the episode already playing offers nothing to pick.
+  const hasStrip = episodes.length > 1;
   const strip = document.createElement('div');
   strip.className = 'pc-strip';
   strip.hidden = true;
@@ -848,7 +851,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   let stripOpen = false;
 
   function openStrip(): void {
-    if (!episodes.length) return;
+    if (!hasStrip) return;
     stripOpen = true;
     strip.hidden = false;
     /*
@@ -1022,7 +1025,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // An episode goes straight to the season. See PlayerOverlayOptions.episodes for why this is
     // not the same walk a film gets - but not from the options row, which has its own step down
     // into the controls first.
-    if (episodes.length && !inOptions) { openStrip(); return true; }
+    if (hasStrip && !inOptions) { openStrip(); return true; }
     // A live stream has no transport, no timeline and no gear in the bottom bar, so there is
     // nothing under the options row to step to.
     if (live) return true;
@@ -1084,6 +1087,19 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     if (menuOpen()) return true;
     if (panelOpen) { stepPanelAcross(rightward); return true; }
     const here = document.activeElement;
+    /*
+     * Along the strip, which is the reason it exists: RelatedItemsStrip is a LazyRow and Left and
+     * Right move along it there. This walk was missing, so the strip opened on the episode playing
+     * and no press could reach any other. Mirrored with the language because the strip is a flex
+     * row in a page that is dir=rtl in Arabic, as the LazyRow mirrors; stops at either end.
+     */
+    if (stripOpen) {
+      const cards = stopsIn(strip);
+      const at = here instanceof HTMLElement ? cards.indexOf(here) : -1;
+      const next = at < 0 ? cards[0] : cards[at + (rightward !== isRtl() ? 1 : -1)];
+      if (next) focus(next);
+      return true;
+    }
     if (!(here instanceof HTMLElement)) return false;
     const inOptions = optionsRow.contains(here);
     let row: HTMLElement[] | null = null;
@@ -1190,7 +1206,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
      * press was spent waking them and the strip needed a second one - which is the same two-press
      * walk the whole change was meant to remove, just moved somewhere less obvious.
      */
-    if (episodes.length && !visible && !stripOpen && key === 'down') {
+    if (hasStrip && !visible && !stripOpen && key === 'down') {
       openStrip();
       return true;
     }
