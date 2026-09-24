@@ -43,6 +43,8 @@ export interface LandingOptions {
   /** False on Home: the app keeps its own artwork until the viewer moves. */
   followBackdropImmediately: boolean;
   onPlay: (item: PlaylistItem) => void;
+  /** Drawn under the rows - Home's device strip. */
+  footer?: HTMLElement;
   /** Extra details for the focused item, when the catalogue listing does not carry them. */
   loadDetails?: (item: PlaylistItem) => Promise<{ description?: string | null; backdropUrl?: string | null } | null>;
 }
@@ -232,6 +234,9 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
       // The first screenful straight away; the row shows five.
       lazyImage(art, posterArtwork(item.logoUrl), row.items.indexOf(item) < 6);
       card.append(art);
+      // The red LIVE flag the television puts on channel artwork (LiveFlag in Components.kt), so a
+      // channel in a row of films reads as a channel.
+      if (item.kind === 'live') card.append(el('div', { class: 'live-flag' }, t('home_live_badge')));
       // Title and progress are set over the foot of the artwork rather than in a box under it,
       // which is where the television app puts them. A separate box costs every card a strip of
       // height whether its title needs one line or two, and it is what made the rows here look so
@@ -292,6 +297,7 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
   // info is not appended here: it is inserted after whichever row holds the highlight, by
   // describe(). Appending it to the host as well would leave a second, empty copy at the foot of
   // the page.
+  if (options.footer) body.append(options.footer);
   host.append(body);
   describe(null);
 

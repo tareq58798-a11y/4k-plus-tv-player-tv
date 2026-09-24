@@ -561,15 +561,17 @@ body.playing #app {
   color: #ffb547;
 }
 
+/* Smaller at the owner's request: it was a 68px tile over a poster about 170px wide, which made the
+   star the first thing on every poster rather than a mark in its corner. */
 .poster .fav-star {
   position: absolute;
-  top: 12px;
-  inset-inline-end: 12px;
+  top: 8px;
+  inset-inline-end: 8px;
   box-sizing: border-box;
-  width: 68px;
-  height: 68px;
-  padding: 15px;
-  border-radius: 20px;
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  border-radius: 12px;
   background: rgba(0, 0, 0, 0.55);
 }
 
@@ -2066,6 +2068,39 @@ body.playing .backdrop-scrim {
   font-size: 28px;
 }
 
+/* OutlinedButton with its SmartDisplay icon, under Favourite on a film's page and beside it on a
+   series' page. */
+.details-trailer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  height: 92px;
+  padding: 0 var(--dim-gap-m);
+  font-size: 30px;
+  flex: 0 0 auto;
+}
+
+.details-trailer-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.series-actions {
+  display: flex;
+  gap: var(--dim-gap-s);
+  align-items: center;
+}
+
+.series-actions .details-trailer {
+  width: auto;
+  height: 72px;
+  margin-top: var(--dim-gap-s);
+  font-size: 28px;
+}
+
 .details-favourite[aria-selected='true'] {
   color: #04131f;
   background: var(--tone-star);
@@ -3245,4 +3280,74 @@ body.playing .backdrop-scrim {
 /* The status line takes no room until it has something to say, so the button stays on screen. */
 .add-playlist .message:empty {
   display: none;
+}
+
+/* LiveFlag: 8dp in from the corner, 4dp corners, LiveRed, 6dp by 2dp of padding, 9sp bold. */
+.live-flag {
+  position: absolute;
+  top: 16px;
+  inset-inline-start: 16px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: var(--tone-live-red);
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------- home device strip
+ *
+ * LandingDeviceStrip: a 1dp rule at 10% white, then the three facts spread evenly, each an icon
+ * (22dp, muted) beside a label (11sp, muted) over its value (14sp, semibold), with a 1dp by 34dp
+ * divider at 14% between them. The page already has its side margins, so the strip does not add
+ * the television's SafeHorizontal again.
+ */
+.device-strip {
+  padding: var(--dim-gap-s) 0;
+}
+
+.device-strip-rule {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.device-strip-row {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  padding: var(--dim-gap-m) 0 var(--dim-gap-xs);
+}
+
+.device-fact {
+  display: flex;
+  align-items: center;
+  gap: var(--dim-gap-s);
+}
+
+.device-fact-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: var(--tone-text-muted);
+}
+
+.device-fact-label {
+  font-size: 22px;
+  color: var(--tone-text-muted);
+}
+
+.device-fact-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--tone-text-primary);
+  /* A MAC is read out character by character; it stays left to right in every language. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.device-fact-divider {
+  width: 2px;
+  height: 68px;
+  background: rgba(255, 255, 255, 0.14);
 }

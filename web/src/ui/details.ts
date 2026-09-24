@@ -17,6 +17,7 @@ import type { MovieDetails, PlaylistItem } from '../shared/models';
 import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { pushKeyHandler } from './focus';
+import { trailerButton } from './trailer';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -109,6 +110,10 @@ export function renderDetails(host: HTMLElement, options: DetailsOptions): HTMLE
 
   const left = el('div', { class: 'details-side', 'data-focus-group': 'details-actions' });
   left.append(poster, play, favourite);
+  // Trailer, when the provider sent one - see platform/youtube.ts. Absent otherwise, as on the
+  // television, so it never leads anywhere but to the title's own trailer.
+  const trailer = trailerButton('details-trailer', details?.trailerUrl);
+  if (trailer) left.append(trailer);
 
   const pills = el('div', { class: 'pills' });
   if (rating) pills.append(el('span', { class: 'pill star' }, `★ ${rating}/10`));

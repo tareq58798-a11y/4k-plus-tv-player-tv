@@ -11,6 +11,17 @@
  * the television app is unfrozen, so both sides keep one set.
  */
 export const LOCAL_EN = {
+  // Home's footer. The television writes these three labels and the expiry wording as literals
+  // in LandingDeviceStrip (Landing.kt), not as resources, so they have no extracted counterpart.
+  home_playlist_expires: 'Playlist expires',
+  home_app_mac: 'App MAC',
+  home_device_key: 'Device key',
+  expiry_days_left: '{1} ({2} days)',
+  expiry_today: '{1} (today)',
+  expiry_expired: '{1} (expired)',
+  // When the YouTube app will not open a trailer. The television falls back to a browser, which a
+  // set does not have from inside an app, so it needs a sentence the television never shows.
+  trailer_could_not_open: 'The YouTube app could not be opened on this TV.',
   connect: 'Connect',
   enter_all_fields: 'Fill in the address, username and password.',
   server_address_label: 'Server address',

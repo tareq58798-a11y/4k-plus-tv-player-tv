@@ -14,11 +14,11 @@ import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
 import {
-  clearActivity, continueWatching, favoriteItems, recordWatched, watchedLately, isFavorite, recentlyAdded, rememberPosition,
+  clearActivity, favoriteItems, recentlyWatchedAll, recordWatched, watchedLately, isFavorite, recentlyAdded, rememberPosition,
   resumePosition, toggleFavorite,
 } from './shared/library';
 import { askResume } from './ui/resumeChoice';
-import { iconElement } from './ui/icons';
+import { iconElement, type IconName } from './ui/icons';
 import { dropKeyHandlers, focus, handleKey, pushKeyHandler } from './ui/focus';
 import { askExit } from './ui/exitDialog';
 import { renderAddPlaylist, passwordField, serverPicker } from './ui/addPlaylist';
@@ -519,7 +519,8 @@ function rowsFor(current: Section, items: PlaylistItem[]): LandingRow[] {
       {
         id: 'home-continue',
         title: t('continue_watching_title'),
-        items: continueWatching(items),
+        // Films, channels and series together, most recent first - see recentlyWatchedAll.
+        items: recentlyWatchedAll(items),
         minSlots: 5,
         hint: t('continue_watching_placeholder_subtitle'),
       },
@@ -567,6 +568,55 @@ function rowsFor(current: Section, items: PlaylistItem[]): LandingRow[] {
   ];
 }
 
+/**
+ * Home's footer, LandingDeviceStrip in Landing.kt: when the playlist expires, and the app MAC and
+ * device key a reseller needs to assign a playlist - the same three facts, in the same words, so a
+ * viewer on the phone to their provider can read them off the first screen.
+ *
+ * The expiry is the provider's exp_date as a plain date, with the days left, "today" or "expired"
+ * after it, and "Not provided" when the provider sends none. The MAC and key are the ones the
+ * welcome page shows (platform/identity.ts), filled in when they have been worked out.
+ */
+function deviceStrip(playlist: LoadedPlaylist): HTMLElement {
+  const fact = (icon: IconName, label: string, value: string): { element: HTMLElement; value: HTMLElement } => {
+    const valueEl = el('div', { class: 'device-fact-value' }, value);
+    const element = el(
+      'div',
+      { class: 'device-fact' },
+      iconElement(icon, 'device-fact-icon'),
+      el('div', {}, el('div', { class: 'device-fact-label' }, label), valueEl),
+    );
+    return { element, value: valueEl };
+  };
+
+  let expiry = t('not_provided');
+  if (playlist.expiryEpochSeconds) {
+    const date = new Date(playlist.expiryEpochSeconds * 1000);
+    const pad = (value: number): string => String(value).padStart(2, '0');
+    // A calendar date, as LocalDate prints it: 2027-06-25.
+    const shown = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const today = new Date();
+    const startOf = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((startOf(date) - startOf(today)) / 86_400_000);
+    expiry = days > 0 ? t('expiry_days_left', shown, days) : days === 0 ? t('expiry_today', shown) : t('expiry_expired', shown);
+  }
+
+  const expires = fact('schedule', t('home_playlist_expires'), expiry);
+  const mac = fact('deviceHub', t('home_app_mac'), '…');
+  const key = fact('vpnKey', t('home_device_key'), '…');
+  void identity().then((device) => {
+    mac.value.textContent = device.mac;
+    key.value.textContent = device.key;
+  });
+  const divider = (): HTMLElement => el('div', { class: 'device-fact-divider' });
+  return el(
+    'div',
+    { class: 'device-strip' },
+    el('div', { class: 'device-strip-rule' }),
+    el('div', { class: 'device-strip-row' }, expires.element, divider(), mac.element, divider(), key.element),
+  );
+}
+
 function showSection(next: Section): void {
   if (!catalogue) return;
   section = next;
@@ -599,6 +649,7 @@ function showSection(next: Section): void {
 
   renderLanding(app, {
     rows: rowsFor(next, catalogue.items),
+    footer: next === 'home' ? deviceStrip(catalogue) : undefined,
     backdrop,
     followBackdropImmediately: next !== 'home',
     onPlay: (item) => playScreen(item),

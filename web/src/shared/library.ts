@@ -14,6 +14,8 @@ const RESUME = 'resume';
 /** Channels and series the viewer has watched, newest first - see recordWatched. */
 const RECENT_CHANNELS = 'recent_channels';
 const RECENT_SERIES = 'recent_series';
+/** When each channel or series was last watched, so Home can put them in order with films. */
+const WATCHED_AT = 'watched_at';
 
 export type ResumeMap = Record<string, { positionMs: number; durationMs: number; at: number }>;
 
@@ -133,6 +135,52 @@ export function recordWatched(item: PlaylistItem): void {
   const key = itemKey(item);
   const recent = readJson<string[]>(store, []);
   writeJson(store, [key, ...recent.filter((entry) => entry !== key)].slice(0, limit));
+  const times = readJson<Record<string, number>>(WATCHED_AT, {});
+  times[key] = Date.now();
+  // Only what the two lists still hold, so the record cannot grow without end.
+  const kept = new Set([...readJson<string[]>(RECENT_CHANNELS, []), ...readJson<string[]>(RECENT_SERIES, [])]);
+  for (const stale of Object.keys(times)) if (!kept.has(stale)) delete times[stale];
+  writeJson(WATCHED_AT, times);
+}
+
+/**
+ * Home's Continue Watching: films part way through, channels and series recently watched, all in
+ * one row, the most recent first - up to twenty-four, as the television's Home row takes.
+ *
+ * It was films only, because it was built from resume points, and a channel or a series never has
+ * one of its own (see recordWatched). The television's row mixes all three (LandingScreens.kt,
+ * orderedIds: the last title touched, then films, series and channels). This orders them by when
+ * each was actually watched, which the television cannot do because it keeps no times; a channel
+ * or series recorded before times were kept goes after everything that has one, in its list's own
+ * order.
+ */
+export function recentlyWatchedAll(items: PlaylistItem[], limit = 24): PlaylistItem[] {
+  const resume = resumeStore();
+  const times = readJson<Record<string, number>>(WATCHED_AT, {});
+  const order = new Map<string, number>();
+  for (const store of [RECENT_CHANNELS, RECENT_SERIES]) {
+    readJson<string[]>(store, []).forEach((key, index) => {
+      if (!order.has(key)) order.set(key, index);
+    });
+  }
+  const when = (item: PlaylistItem): number => {
+    const key = itemKey(item);
+    if (item.kind === 'movie') return resume[key]?.at ?? -1;
+    if (!order.has(key)) return -1;
+    // Untimed entries sort after timed ones, and by their place in their own list.
+    return times[key] ?? -1 - order.get(key)!;
+  };
+  const seen = new Set<string>();
+  return items
+    .filter((item) => {
+      const key = itemKey(item);
+      if (seen.has(key)) return false;
+      const present = item.kind === 'movie' ? resume[key] !== undefined : order.has(key);
+      if (present) seen.add(key);
+      return present;
+    })
+    .sort((a, b) => when(b) - when(a))
+    .slice(0, limit);
 }
 
 /**

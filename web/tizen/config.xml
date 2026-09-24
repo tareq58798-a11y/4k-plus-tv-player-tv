@@ -14,7 +14,7 @@
 
   version tracks the Android app's versionName rather than counting on its own, because the two
   are one product and a viewer asking which build they have should not get a different answer
-  depending on which set they are standing in front of. Tizen wants three parts, so 10.12 is 10.12.0.
+  depending on which set they are standing in front of. Tizen wants three parts, so 10.13 is 10.13.0.
 
   It had drifted: this said 8.2.0 while the Android app was already on 8.4, which is exactly the
   split the paragraph above says must not happen. Both moved to 8.5 together when the player was
@@ -23,7 +23,7 @@
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://fourkplus.com/tvplayer"
-        version="10.12.0"
+        version="10.13.0"
         viewmodes="maximized">
 
   <tizen:application id="4KPlusTVXX.FourKPlusTVPlayer"
@@ -39,10 +39,13 @@
   <content src="index.html"/>
   <icon src="icon.png"/>
 
-  <!-- The network, and nothing else. An IPTV player has no business asking for more, and every
+  <!-- The network, the set's identity, and opening YouTube for a trailer - nothing else. Every
        extra privilege is another thing Samsung's reviewers will want justified. -->
   <tizen:privilege name="http://tizen.org/privilege/internet"/>
   <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
+  <!-- To hand a film's or series' trailer to the YouTube app. Only the provider's own trailer is
+       ever opened, and only when the viewer presses Trailer. -->
+  <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
 
   <!-- Provider panels are on arbitrary hosts the viewer supplies, so the app cannot enumerate
        them ahead of time. -->

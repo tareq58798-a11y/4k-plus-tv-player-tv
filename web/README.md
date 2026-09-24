@@ -137,6 +137,14 @@ stops it being reopened every few months.
   (`-u-nu-latn`, see `latinDigits` in `shared/i18n.ts`), so Arabic shows 11:08 rather than ١١:٠٨,
   at the owner's request. Month and day names stay in the viewer's language. Decided on
   2026-09-24.
+* **A Trailer button on a series' page.** The television reads a series' `youtube_trailer` but
+  only shows the button on a film's page. Here both have it, at the owner's request - still only
+  when the provider supplied a trailer, and it opens that video in the YouTube app, never a
+  search. Decided on 2026-09-24.
+* **Home's Continue Watching is ordered by time.** The television's row mixes films, series and
+  channels but, keeping no times, orders them as the last title touched, then films, series,
+  channels. Here each is timestamped when watched and the row is simply most recent first.
+  Decided on 2026-09-24.
 * **Back goes to Home.** The television steps back a level at a time (category browser to its
   section, section to Home, Home to "Exit app?"). Here Back from any page - a section, a category
   browser, a film's page, a series, search, Settings - goes straight to Home, and Home asks the

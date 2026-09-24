@@ -16,6 +16,7 @@ import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
 import { lazyImage } from './images';
+import { trailerButton } from './trailer';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -99,7 +100,11 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
     favourite.setAttribute('aria-selected', String(starred));
     favourite.textContent = `${starred ? '★' : '☆'}  ${t('action_favorite')}`;
   });
-  head.append(favourite);
+  // Trailer beside it, when the provider sent one. The television reads a series' trailer too
+  // (SeriesDetailsInfo.trailerUrl) but only shows the button for films; here both have it, at
+  // the owner's request. Recorded in web/README.md.
+  const trailer = trailerButton('series-trailer', details.trailerUrl);
+  head.append(trailer ? el('div', { class: 'series-actions' }, favourite, trailer) : favourite);
   if (details.description) head.append(el('p', { class: 'series-plot' }, details.description));
   if (details.cast) head.append(el('div', { class: 'credit' }, el('span', {}, t('cast_label')), details.cast));
   if (details.director) head.append(el('div', { class: 'credit' }, el('span', {}, t('director_label')), details.director));
