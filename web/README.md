@@ -112,6 +112,10 @@ stops it being reopened every few months.
   pinned left to right, top right, in every language, because a player's controls read the same
   way everywhere. The words stay Arabic, and the episode strip still reads right to left. Changed
   at the owner's request on 2026-09-24. The Android app is unchanged.
+* **(The other way round) a count on every category.** The browse screens' category lists show how
+  many channels, films or series each category holds, at the end of the row. The television's
+  CategoryPill is the name alone. Added at the owner's request on 2026-09-24; the Android app is
+  unchanged.
 
 ## State
 

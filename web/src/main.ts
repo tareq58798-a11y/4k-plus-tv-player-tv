@@ -612,6 +612,18 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   const specialNames = specials.map(([name]) => name);
 
   /*
+   * How many channels, films or series each category holds, shown at the end of its row.
+   *
+   * Something the television app does not draw - its CategoryPill is the name alone - and added
+   * here at the owner's request; recorded in web/README.md. Counted from the pool, so it is the
+   * number the grid will actually show: hidden categories are already gone from it, and in the
+   * favourites-only view only favourites count. The two rows above the categories count what they
+   * list, which is capped at the sixty the grid is given.
+   */
+  const counts = new Map<string, number>(specials.map(([name, items]) => [name, items.length]));
+  for (const item of pool) counts.set(item.group, (counts.get(item.group) ?? 0) + 1);
+
+  /*
    * Listed whether or not they have anything in them, which is what the television app does -
    * `val special = listOf("Continue watching", "Recently watched", "Favorites")`, with no check.
    *
@@ -966,7 +978,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         'data-focus-id': group,
         'aria-selected': String(group === selected),
       },
-      group,
+      // dir=auto, so a Latin name in the Arabic list is cut at its own end rather than its start.
+      el('span', { class: 'category-name', dir: 'auto' }, group),
+      el('span', { class: 'category-count' }, String(counts.get(group) ?? 0)),
     );
     if (group === reordering) row.classList.add('reordering');
     // Focus selects, as on the television: moving down the list changes what the grid shows
