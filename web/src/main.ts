@@ -79,6 +79,9 @@ let detachNav: (() => void) | null = null;
  */
 let browseReturn: { section: Section; category: string; focusKey: string } | null = null;
 
+/** The card a landing page's title was opened from, so coming back puts the highlight on it. */
+let landingReturn: { section: Section; rowId: string | null; focusKey: string } | null = null;
+
 /** A channel still playing as it comes back to the list, for the list to keep as its preview. */
 let carriedPreview: string | null = null;
 
@@ -652,13 +655,34 @@ function showSection(next: Section): void {
     footer: next === 'home' ? deviceStrip(catalogue) : undefined,
     backdrop,
     followBackdropImmediately: next !== 'home',
-    onPlay: (item) => playScreen(item),
+    onPlay: (item, row) => {
+      // Where to come back to. The page this was chosen from is rebuilt on the way back, and
+      // without this the viewer landed on the tab bar rather than on the card they had pressed.
+      landingReturn = { section: next, rowId: row?.id ?? null, focusKey: itemKey(item) };
+      browseReturn = null;
+      /*
+       * A channel from a row - Recently watched on Home or on Live TV - brings the row's other
+       * channels with it, so Up and Down in full screen move through that list, as they move
+       * through a category's channels when one is opened from the channel list.
+       */
+      const channels = item.kind === 'live' ? (row?.items ?? []).filter((entry) => entry.kind === 'live') : [];
+      playScreen(item, [], false, channels);
+    },
     loadDetails: detailsLoader,
   });
 
   // Focus starts on the bar, so the section tab is lit and Down enters the page - the same place
-  // the television app starts.
-  focus(bar.querySelector<HTMLElement>(`[data-focus-id="tab-${next}"]`));
+  // the television app starts. Unless the viewer is coming back from something they chose on this
+  // page, in which case it goes back on the card they chose - the landing's version of what the
+  // category browser does with browseReturn.
+  const returning = landingReturn && landingReturn.section === next ? landingReturn : null;
+  landingReturn = null;
+  const card = returning?.rowId
+    ? app.querySelector<HTMLElement>(
+        `[data-focus-group="${cssEscape(returning.rowId)}"] [data-focus-id="${cssEscape(returning.focusKey)}"]`,
+      )
+    : null;
+  focus(card ?? bar.querySelector<HTMLElement>(`[data-focus-id="tab-${next}"]`));
 
   // Home asks before leaving the app; the other sections go to Home. See goHome.
   pushKeyHandler((key: RemoteKey) => {
@@ -1703,7 +1727,8 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
       // was not - a series reached from a Home row should not drop the viewer into a category
       // browser they never asked for. browseReturn is only set by the grid, and it is not
       // consumed until the browser next draws, so its presence is the question being asked.
-      onBack: goHome,
+      // As a film's page: back to the category or the row it was chosen from.
+      onBack: () => (browseReturn ? browseScreen(section) : showSection(section)),
     });
   } catch (error) {
     /*
@@ -1751,7 +1776,9 @@ async function detailsScreen(item: PlaylistItem): Promise<void> {
   clear();
   document.body.classList.remove('playing');
 
-  const back = goHome;
+  // Back to where the film was chosen: its category, Recently watched included, with the highlight
+  // on it - or the page whose row it was in.
+  const back = (): void => (browseReturn ? browseScreen(section) : showSection(section));
   const open = (): void => playScreen(item);
 
   const draw = (details: MovieDetails | null, loading: boolean): HTMLElement =>
@@ -1828,9 +1855,6 @@ function playScreen(
       return;
     }
   }
-  // Live TV's Recently watched: every channel watched full screen, whichever way it was reached -
-  // chosen from the list, handed over from the preview, or zapped to.
-  if (item.kind === 'live') recordWatched(item);
   clear();
   document.body.classList.add('playing');
   // The preview's hole in the backdrop goes with the preview. Full screen takes the whole backdrop
@@ -1895,6 +1919,18 @@ function playScreen(
     },
     onExit: (at) => {
       rememberPosition(item, at, durationMs);
+      /*
+       * Recently watched is written as full screen is left, with the channel that is on then.
+       *
+       * It used to be written as each channel opened, zaps included. Up and Down from a
+       * Recently watched row move through that row, and a list that reordered itself under every
+       * press would have had the viewer chasing channels round it; so it holds still while they
+       * watch and takes the channel they end on when they come out.
+       */
+      if (item.kind === 'live') {
+        recordWatched(item);
+        if (landingReturn) landingReturn = { ...landingReturn, focusKey: itemKey(item) };
+      }
       // A shape picked in the player was for this title. The player object outlives it, and
       // without this the next title, or the preview this channel goes back to, opened in it.
       player.setScaling(videoScaling());

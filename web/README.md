@@ -149,7 +149,9 @@ stops it being reopened every few months.
   section, section to Home, Home to "Exit app?"). Here Back from any page - a section, a category
   browser, a film's page, a series, search, Settings - goes straight to Home, and Home asks the
   television's "Exit app?", at the owner's request. Inside Settings a sub-page still goes up to the
-  Settings menu first, and the player still returns to wherever the title was opened from.
+  Settings menu first; the player, a film's page and a series' page return to wherever the title
+  was chosen - its category (Recently watched included) or its row on a landing page - with the
+  highlight on it.
   Decided on 2026-09-24.
 * **Start muted, and embedded-subtitle handling.** Decisions the decoder makes for us on this
   platform. A switch that does nothing is worse than an absent one.

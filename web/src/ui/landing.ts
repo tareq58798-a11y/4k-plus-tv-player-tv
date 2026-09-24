@@ -42,7 +42,8 @@ export interface LandingOptions {
   backdrop: Backdrop;
   /** False on Home: the app keeps its own artwork until the viewer moves. */
   followBackdropImmediately: boolean;
-  onPlay: (item: PlaylistItem) => void;
+  /** [row] is the row it was chosen from, so the player can move through the rest of it. */
+  onPlay: (item: PlaylistItem, row: LandingRow | null) => void;
   /** Drawn under the rows - Home's device strip. */
   footer?: HTMLElement;
   /** Extra details for the focused item, when the catalogue listing does not carry them. */
@@ -78,6 +79,11 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
   let pending: number | null = null;
   const details = new Map<string, { description?: string | null; backdropUrl?: string | null }>();
 
+  function rowOf(track: Element | null): LandingRow | null {
+    const id = track?.getAttribute('data-focus-group');
+    return rows.find((row) => row.id === id) ?? null;
+  }
+
   function describe(item: PlaylistItem | null, anchor?: HTMLElement): void {
     info.textContent = '';
     if (!item) {
@@ -105,7 +111,8 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     if (item.group) meta.push(item.group);
 
     const play = el('button', { class: 'button', 'data-focus': '', 'data-focus-id': 'play' }, t('cd_play'));
-    play.addEventListener('click', () => options.onPlay(item));
+    // The block sits straight after the row whose card it describes.
+    play.addEventListener('click', () => options.onPlay(item, rowOf(info.previousElementSibling)));
     const fav = el(
       'button',
       { class: 'button ghost', 'data-focus': '', 'data-focus-id': 'favorite' },
@@ -249,7 +256,7 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
       card.append(foot);
       const column = row.items.indexOf(item);
       card.addEventListener('focus', () => onCardFocus(item, card, rowIndex, column));
-      card.addEventListener('click', () => options.onPlay(item));
+      card.addEventListener('click', () => options.onPlay(item, row));
       track.append(card);
     }
 
