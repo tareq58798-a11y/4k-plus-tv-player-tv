@@ -70,10 +70,13 @@ which set it is running on.
   rectangle is handed to the decoder in real device pixels rather than CSS ones. A browser uses an
   ordinary `<video>`, with hls.js for streams it cannot open itself.
 * **Stream quality** — PlayerEngine.kt's intent carried into AVPlay's streaming properties, set
-  between `open()` and `prepareAsync()`: Android's `VLC/3.0.20` user agent, `STARTBITRATE=HIGHEST`
-  for adaptive streams (the counterpart of `setForceHighestSupportedBitrate` in the FAST mode that
-  is this app's only mode), and `SET_MODE_4K` on panels that productinfo reports as UHD. Each is
-  guarded; a set that refuses one still plays.
+  between `open()` and `prepareAsync()`: Android's `VLC/3.0.20` user agent on every stream, and,
+  for adaptive (HLS/DASH) streams only, one `ADAPTIVE_INFO` of `STARTBITRATE=HIGHEST` (the
+  counterpart of `setForceHighestSupportedBitrate` in the FAST mode that is this app's only mode)
+  plus `FIXED_MAX_RESOLUTION=3840x2160` on panels productinfo reports as UHD. `SET_MODE_4K` is not
+  used: Samsung deprecated it from Tizen 5.0. Direct `.ts` channels and film files get no adaptive
+  settings, which can do nothing for a single rendition and have been reported to break playback
+  on 2020 sets. Each call is guarded; a set that refuses one still plays.
 * **Live stream container** — AVPlay decodes the MPEG-TS that Xtream serves directly; a browser
   has no demuxer for it outside HLS, so the browser build asks the same panel for `.m3u8`
   instead. This is the one place the two request different URLs, and it is a fact about browsers
@@ -126,6 +129,10 @@ stops it being reopened every few months.
   on Live TV, beside "Search channels". Here all three sections have both boxes - categories at
   the top of the category column, titles at the top of the posters or channels - at the owner's
   request. Decided on 2026-09-24.
+* **Background artwork is shown whole.** The television crops a title's artwork to fill the
+  screen. Here it is fitted inside the screen with dark space either side, at the owner's request,
+  so a poster used as a background shows all of itself rather than a slice of its middle. A
+  landscape backdrop of the screen's shape looks the same either way. Decided on 2026-09-24.
 * **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
   refreshed from the provider (every launch, daily, every two days). This app uses Android's
   default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole

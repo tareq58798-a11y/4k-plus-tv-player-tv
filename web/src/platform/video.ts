@@ -221,6 +221,11 @@ interface AvTrack {
 const PLAYBACK_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
 
 /** Whether the panel is UHD, from productinfo. False when it cannot say, which only costs 4K. */
+/** HLS or DASH: a stream offering several renditions, which is all ADAPTIVE_INFO applies to. */
+function isAdaptive(url: string): boolean {
+  return /\.(m3u8|mpd)(\?|#|$)/i.test(url) || /[?&](type|output|format)=(m3u8|hls|mpd|dash)\b/i.test(url);
+}
+
 function isUhdPanel(): boolean {
   try {
     const info = (window as unknown as { webapis?: { productinfo?: { isUdPanelSupported?(): boolean } } }).webapis
@@ -307,20 +312,27 @@ class TizenPlayer implements MediaPlayer {
    * - USER_AGENT is Android's "VLC/3.0.20 LibVLC/3.0.20". Some provider panels decide what to
    *   serve, or whether to serve at all, from it; asking as the same client means the set is
    *   handed the same stream the Android app is.
-   * - ADAPTIVE_INFO STARTBITRATE=HIGHEST is setForceHighestSupportedBitrate. The web app has no
-   *   connection-mode setting, so it is always in what Android calls FAST, its default. Without
-   *   it AVPlay opens an HLS or DASH stream at a low rendition and climbs, which is the soft first
-   *   few seconds. No BITRATES range is given, so nothing is capped - Android's
-   *   clearViewportSizeConstraints in the same spirit.
-   * - SET_MODE_4K lets AVPlay pick a rendition above 1080p at all. Samsung's documentation limits
-   *   it to UHD panels, so it is asked only where productinfo says the panel is one.
+   * - ADAPTIVE_INFO, for adaptive streams only, in one call with its parts joined by "|" as
+   *   Samsung's adaptive-streaming guide writes it:
+   *   - STARTBITRATE=HIGHEST is setForceHighestSupportedBitrate. The web app has no
+   *     connection-mode setting, so it is always in what Android calls FAST, its default. Without
+   *     it AVPlay opens an HLS or DASH stream at a low rendition and climbs, which is the soft
+   *     first few seconds. No BITRATES range is given, so nothing is capped from below.
+   *   - FIXED_MAX_RESOLUTION=3840x2160 on a UHD panel, so a 4K rendition can be chosen at all -
+   *     the counterpart of Android's clearViewportSizeConstraints. This replaced SET_MODE_4K,
+   *     which Samsung deprecated from Tizen 5.0 (this app's floor is 5.5) and names this as its
+   *     replacement. Left unset on a 1080p panel, where it could only add a limit.
    *
-   * Direct .ts and film files are single-bitrate, so only the user agent touches them; the other
-   * two matter for HLS and DASH, which is what M3U playlists often carry. Each is separate and
-   * guarded: a set that refuses one property must still play, just as Android attempts a stream
-   * rather than refuse it.
+   * Why adaptive streams only. The two were being set on every stream, and a direct .ts channel
+   * or an .mp4/.mkv film has one rendition, so they could do nothing for it - and one other
+   * Tizen player found that ADAPTIVE_INFO on streams it did not suit made 2020 sets (Tizen 5.5)
+   * fail at once with "format not supported" (Moonfin-Client/Smart-TV issue 232). A property that
+   * can only cost something on a stream is not sent to it.
+   *
+   * Each call is guarded: a set that refuses a property must still play, just as Android attempts
+   * a stream rather than refuse it.
    */
-  private tuneForQuality(): void {
+  private tuneForQuality(url: string): void {
     const set = (type: string, value: string) => {
       try {
         this.av.setStreamingProperty?.(type, value);
@@ -329,14 +341,16 @@ class TizenPlayer implements MediaPlayer {
       }
     };
     set('USER_AGENT', PLAYBACK_USER_AGENT);
-    set('ADAPTIVE_INFO', 'STARTBITRATE=HIGHEST');
-    if (isUhdPanel()) set('SET_MODE_4K', 'TRUE');
+    if (!isAdaptive(url)) return;
+    const adaptive = ['STARTBITRATE=HIGHEST'];
+    if (isUhdPanel()) adaptive.push('FIXED_MAX_RESOLUTION=3840x2160');
+    set('ADAPTIVE_INFO', adaptive.join('|'));
   }
 
   async play(url: string, rect: DOMRect): Promise<void> {
     this.stop();
     this.av.open(url);
-    this.tuneForQuality();
+    this.tuneForQuality(url);
     // Remembered, not applied: AVPlay ignores a display rectangle on a stream it has not prepared
     // yet, and ignores it silently. Setting it here left every stream at the default, which is the
     // whole panel - so the Live TV preview played full screen behind the page instead of in its

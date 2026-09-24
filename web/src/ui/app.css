@@ -1667,8 +1667,22 @@ body.playing #app {
   background-position: top center;
 }
 
+/*
+ * A title's artwork is shown whole, not cropped to fill the screen.
+ *
+ * The television crops it (ContentScale.Crop), and so did this, with cover. That costs little on
+ * a 16:9 still, but a poster is often what there is - the browse grid and any title without a
+ * landscape backdrop use it - and cover on a 2:3 poster across a 16:9 screen keeps barely a third
+ * of its height: a face with no title, or a title with no face. The owner found the pictures cut
+ * off and asked to see all of each one. Contain shows the whole image, centred, with the space
+ * either side dark rather than the app's own artwork, which would otherwise show at the edges as
+ * a second, unrelated picture. A landscape backdrop of the screen's shape fills it exactly as
+ * before. Recorded in web/README.md.
+ */
 .backdrop-layer {
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: #000;
   opacity: 0;
   transition: opacity var(--motion-backdrop-ms) var(--motion-ease-in-out);
 }
