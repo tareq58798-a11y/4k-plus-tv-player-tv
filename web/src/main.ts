@@ -1054,7 +1054,14 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       card.addEventListener('focus', () => {
         // The next two rows' artwork, so it is there by the time the highlight is.
         prefetchAfter(card, live ? 8 : 14);
-        if (item.kind !== 'live') backdrop.show(item.logoUrl);
+        if (item.kind !== 'live') {
+          backdrop.show(item.logoUrl);
+          // And the backgrounds of the posters either side and above and below, so the next step
+          // in any direction finds its picture already fetched and decoded - the grid's version of
+          // what the landing rows warm (PreloadBackdrops). Seven to a row.
+          const at = entries.indexOf(item);
+          backdrop.preloadWhenSettled([at + 1, at - 1, at + 7, at - 7].map((i) => entries[i]?.logoUrl));
+        }
         focusedChannelId = item.channelId;
         if (item.kind === 'live') {
           // The name first, so the panel is never empty while the listings are on their way.

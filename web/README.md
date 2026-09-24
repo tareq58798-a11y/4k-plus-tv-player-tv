@@ -113,6 +113,15 @@ stops it being reopened every few months.
   length chosen in the player back to its settings. Here nothing chosen in the player outlasts
   the title (shape, tracks, subtitle background and size, skip length, speed), at the owner's
   request; Settings is where lasting defaults are set. Decided on 2026-09-24.
+* **How soon the background changes.** The television waits three seconds on a title before its
+  artwork becomes the background (`Motion.BackdropDebounceMs`). Here it is 200ms, at the owner's
+  request that it be instant; that is still longer than a held key's repeat, so running along a
+  row does not fetch every title passed. See `SETTLE_MS` in `ui/backdrop.ts`. Decided on
+  2026-09-24.
+* **Skip buttons speed up.** The television's rewind and fast-forward move by the skip length
+  however often they are pressed. Here presses in quick succession grow: after two, each is worth
+  three skips, then six, then twelve. The timeline itself follows the television (a twentieth of
+  the running time per press, sent to the decoder once the presses stop). Decided on 2026-09-24.
 * **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
   refreshed from the provider (every launch, daily, every two days). This app uses Android's
   default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole

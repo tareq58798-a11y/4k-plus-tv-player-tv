@@ -1235,15 +1235,75 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    * drawing keeps each press worth exactly one step, and clamping stops a run of presses at the
    * end of a film from asking for a position past it.
    */
-  function scrub(deltaMs: number): void {
-    const limit = durationMs > 0 ? durationMs : Number.MAX_SAFE_INTEGER;
-    const target = Math.min(limit, Math.max(0, positionMs + deltaMs));
+  /*
+   * Moving through a film: the timeline and the skip buttons.
+   *
+   * Both used to seek on every press, ten seconds at a time. A seek on AVPlay is a rebuffer, so
+   * each press cost the decoder a restart for a position the viewer was only passing through, and
+   * getting twenty minutes in was a hundred and twenty presses.
+   *
+   * Now presses move a target, which is drawn at once, and the decoder is sent there once when
+   * the presses stop - which is how media3's DefaultTimeBar scrubs on the television (it commits a
+   * second after the last key). The timeline also takes that bar's step: with no increment set,
+   * as the television app sets none, it is a twentieth of the running time per press.
+   *
+   * The skip buttons and the remote's rewind and fast-forward keys keep the skip length for a
+   * single press, and speed up while presses keep coming: after two in quick succession each
+   * press is worth three, then six, then twelve. The television's buttons stay at the skip length
+   * however often they are pressed; the owner asked for these to be faster. Recorded in
+   * web/README.md.
+   */
+  /** Where the presses have got to and not yet been sent, or null when nothing is waiting. */
+  let seekTarget: number | null = null;
+  let seekTimer: number | null = null;
+  let nudgeStreak = 0;
+  let lastNudgeAt = 0;
+  /** DefaultTimeBar's STOP_SCRUBBING_TIMEOUT_MS. */
+  const TIMELINE_COMMIT_MS = 1000;
+  /** Shorter for the buttons: a single press there should feel like it acted. */
+  const SKIP_COMMIT_MS = 500;
+  /**
+   * The seek just sent, until the decoder's clock reaches it. AVPlay goes on reporting the old
+   * position for a moment after a seek is asked for, and drawing that made the bar jump back.
+   */
+  let landing: { at: number; until: number } | null = null;
+  const LANDING_MS = 4000;
+  /** Presses closer together than this count as one run. */
+  const STREAK_GAP_MS = 900;
+
+  function drawPosition(at: number): void {
+    elapsed.textContent = clockOf(at);
+    if (durationMs > 0) played.style.width = `${Math.min(1, Math.max(0, at / durationMs)) * 100}%`;
+  }
+
+  function moveTarget(deltaMs: number, commitAfterMs: number): void {
+    const limit = durationMs > 0 ? durationMs - 1000 : Number.MAX_SAFE_INTEGER;
+    const from = seekTarget ?? positionMs;
+    const target = Math.max(0, Math.min(limit, from + deltaMs));
+    seekTarget = target;
     positionMs = target;
-    player.seekTo(target);
-    // Redrawn now rather than waiting for the next progress tick, which can be a second away -
-    // long enough for a press to feel like it did nothing.
-    elapsed.textContent = clockOf(target);
-    if (durationMs > 0) played.style.width = `${(target / durationMs) * 100}%`;
+    drawPosition(target);
+    if (seekTimer !== null) window.clearTimeout(seekTimer);
+    seekTimer = window.setTimeout(() => {
+      seekTimer = null;
+      if (seekTarget === null) return;
+      player.seekTo(seekTarget);
+      landing = { at: seekTarget, until: Date.now() + LANDING_MS };
+      seekTarget = null;
+    }, commitAfterMs);
+  }
+
+  function scrub(direction: 1 | -1): void {
+    const step = durationMs > 0 ? durationMs / 20 : skip * 1000;
+    moveTarget(direction * step, TIMELINE_COMMIT_MS);
+  }
+
+  function nudge(direction: 1 | -1): void {
+    const now = Date.now();
+    nudgeStreak = now - lastNudgeAt < STREAK_GAP_MS ? nudgeStreak + 1 : 0;
+    lastNudgeAt = now;
+    const times = nudgeStreak < 2 ? 1 : nudgeStreak < 4 ? 3 : nudgeStreak < 8 ? 6 : 12;
+    moveTarget(direction * skip * 1000 * times, SKIP_COMMIT_MS);
   }
 
   function togglePlayback(): void {
@@ -1254,8 +1314,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }
   }
 
-  rewind.addEventListener('click', () => player.seekBy(-skip * 1000));
-  forward.addEventListener('click', () => player.seekBy(skip * 1000));
+  rewind.addEventListener('click', () => nudge(-1));
+  forward.addEventListener('click', () => nudge(1));
   playPause.addEventListener('click', togglePlayback);
   settingsButton.addEventListener('click', openPanel);
 
@@ -1292,7 +1352,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       if (key === 'play') { if (paused) player.resume(); }
       else if (key === 'pause') { if (!paused) player.pause(); }
       else if (key === 'playpause') togglePlayback();
-      else player.seekBy((key === 'rewind' ? -skip : skip) * 1000);
+      else nudge(key === 'rewind' ? -1 : 1);
       if (!visible && !stripOpen) {
         setVisible(true);
         focus(firstStop());
@@ -1382,10 +1442,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       case 'up':
         return stepUp();
       case 'left':
-        if (!live && document.activeElement === track) { scrub(-skip * 1000); return true; }
+        if (!live && document.activeElement === track) { scrub(-1); return true; }
         return stepAcross(false);
       case 'right':
-        if (!live && document.activeElement === track) { scrub(skip * 1000); return true; }
+        if (!live && document.activeElement === track) { scrub(1); return true; }
         return stepAcross(true);
       case 'enter':
         (document.activeElement as HTMLElement | null)?.click();
@@ -1421,12 +1481,17 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     },
     handleKey,
     setPosition(next: number, length: number): void {
-      positionMs = next;
       durationMs = length;
-      elapsed.textContent = clockOf(next);
       total.textContent = clockOf(length);
-      const fraction = length > 0 ? Math.min(1, Math.max(0, next / length)) : 0;
-      played.style.width = `${fraction * 100}%`;
+      // While presses are still moving the target, the target is what is shown. The decoder's
+      // clock has not gone there yet, and drawing it would pull the bar back under the viewer.
+      if (seekTarget !== null) return;
+      if (landing) {
+        if (Date.now() < landing.until && Math.abs(next - landing.at) > 3000) return;
+        landing = null;
+      }
+      positionMs = next;
+      drawPosition(next);
     },
     setPaused(next: boolean): void {
       paused = next;
@@ -1452,6 +1517,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       if (text) setVisible(true);
     },
     destroy(): void {
+      // A seek still waiting belongs to this title, not to whatever opens next.
+      if (seekTimer !== null) window.clearTimeout(seekTimer);
       if (hideTimer !== null) window.clearTimeout(hideTimer);
       if (resolutionTimer !== null) window.clearInterval(resolutionTimer);
       root.remove();

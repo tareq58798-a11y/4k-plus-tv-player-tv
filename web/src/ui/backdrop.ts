@@ -21,8 +21,16 @@
  */
 import { Motion } from '../shared/tokens.generated';
 
-/** How long the highlight has to rest on a title before its background is fetched. */
-const WARM_AFTER_MS = 300;
+/**
+ * How long the highlight has to rest on a title before the background becomes it.
+ *
+ * The television waits three seconds (Motion.BackdropDebounceMs), so that the picture changes for
+ * somebody who has stopped to look rather than for everybody passing through. The owner found that
+ * too slow here and asked for the change to be instant. Two tenths of a second is instant to a
+ * person who has stopped, and still longer than the gap between repeats of a held key, so running
+ * along a row does not fetch every title it passes. Recorded in web/README.md.
+ */
+const SETTLE_MS = 200;
 
 export class Backdrop {
   private readonly base: HTMLElement;
@@ -31,7 +39,6 @@ export class Backdrop {
   private settledUrl: string | null = null;
   private incomingUrl: string | null = null;
   private timer: number | null = null;
-  private warmTimer: number | null = null;
   /**
    * Pictures fetched and decoded ahead of being shown, newest last. Held so the engine keeps them:
    * an Image nobody references is free to be dropped, decoded pixels and all.
@@ -115,20 +122,20 @@ export class Backdrop {
     while (this.warm.size > 24) this.warm.delete(this.warm.keys().next().value!);
   }
 
+  private warmSoon: number | null = null;
+
+  /** preload(), once the highlight has settled - for callers that ask on every move. */
+  preloadWhenSettled(urls: (string | null | undefined)[]): void {
+    if (this.warmSoon !== null) window.clearTimeout(this.warmSoon);
+    this.warmSoon = window.setTimeout(() => {
+      this.warmSoon = null;
+      this.preload(urls);
+    }, SETTLE_MS);
+  }
+
   private schedule(url: string | null): void {
     if (this.timer !== null) window.clearTimeout(this.timer);
-    if (this.warmTimer !== null) window.clearTimeout(this.warmTimer);
-    this.warmTimer = null;
-    this.timer = window.setTimeout(() => this.apply(url), Motion.BackdropDebounceMs);
-    /*
-     * The picture itself is asked for much sooner than it is shown.
-     *
-     * The three seconds are Android's, and they are about when the background *changes* - for
-     * somebody who has stopped to look, not somebody passing through. They were never meant to
-     * be three seconds and then a download. A short dwell first still keeps a held key from
-     * fetching every title it passes; after that the fetch runs during the wait instead of after.
-     */
-    if (url) this.warmTimer = window.setTimeout(() => this.preload([url]), WARM_AFTER_MS);
+    this.timer = window.setTimeout(() => this.apply(url), SETTLE_MS);
   }
 
   private apply(url: string | null): void {

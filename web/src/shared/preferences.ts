@@ -52,13 +52,24 @@ export type VideoScalingPreference = (typeof SCALING_VALUES)[number];
 /** Anything written under the old name, read back under the new one. */
 const MIGRATED: Record<string, VideoScalingPreference> = { fill: 'zoom' };
 
+/**
+ * The shapes a title can start in: the three Settings offers.
+ *
+ * The four named frames are answers to what is on screen now and are never a standing default.
+ * An earlier build wrote whatever was picked in the player's menu into this preference, so a set
+ * that ran it can hold 1:1 or 4:3 here - and then every channel, film and series opened in that
+ * shape, while Settings, which only lists these three, showed nothing chosen at all. That stored
+ * value is read as Fit and cleared.
+ */
+const STANDING: readonly VideoScalingPreference[] = ['fit', 'zoom', 'stretch'];
+
 export function videoScaling(): VideoScalingPreference {
   const stored = readJson<unknown>(SCALING_KEY, 'fit');
   const renamed = typeof stored === 'string' ? MIGRATED[stored] : undefined;
   if (renamed) return renamed;
-  return SCALING_VALUES.includes(stored as VideoScalingPreference)
-    ? (stored as VideoScalingPreference)
-    : 'fit';
+  if (STANDING.includes(stored as VideoScalingPreference)) return stored as VideoScalingPreference;
+  if (stored !== 'fit') writeJson(SCALING_KEY, 'fit');
+  return 'fit';
 }
 
 export function setVideoScaling(mode: VideoScalingPreference): void {
