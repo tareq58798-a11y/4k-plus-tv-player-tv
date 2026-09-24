@@ -99,6 +99,11 @@ stops it being reopened every few months.
   match; the buttons that remain keep their original positions rather than closing the gap.
 * **Player engine and connection mode.** Both are ExoPlayer settings - external players and
   buffering strategy - with no AVPlay counterpart. See the note on `playbackPage` in `ui/settings.ts`.
+* **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
+  refreshed from the provider (every launch, daily, every two days). This app uses Android's
+  default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole
+  account on every launch did it on the same thread that answers the remote. Refresh playlist in
+  Settings still fetches on demand. Decided on 2026-09-24.
 * **Start muted, and embedded-subtitle handling.** Decisions the decoder makes for us on this
   platform. A switch that does nothing is worse than an absent one.
 * **Down opening the episode strip while the controls are up.** On the television,

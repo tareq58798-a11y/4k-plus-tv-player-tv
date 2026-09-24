@@ -89,7 +89,20 @@ export class Backdrop {
     }
     this.incomingUrl = url;
     const image = new Image();
-    image.onload = () => {
+    image.decoding = 'async';
+    image.onload = async () => {
+      /*
+       * Decoded before it is shown, not while it fades.
+       *
+       * A backdrop is a full-screen photograph, and an image that has loaded has not been decoded:
+       * that happens on first paint, on the main thread, in the middle of the fade - a visible
+       * hitch in the animation and a key press that waits behind it. decode() does it beforehand,
+       * off the main thread where the engine can. It is decoded here, on a loose Image, and shown
+       * on the layer: Chromium keeps one decoded copy per loaded image, which the layer showing the
+       * same URL reuses. Not on every engine this app runs on, and a failure only means the old
+       * behaviour.
+       */
+      if (typeof image.decode === 'function') await image.decode().catch(() => undefined);
       // Overtaken while this was decoding - a faster neighbour won. Drop it rather than fading in
       // a picture the viewer has already moved past.
       if (this.incomingUrl !== url) return;

@@ -23,6 +23,7 @@ import { itemKey } from '../shared/models';
 import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus } from './focus';
+import { lazyImage } from './images';
 
 export interface LandingRow {
   id: string;
@@ -172,8 +173,7 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
         ...(rowIndex === 0 ? { 'data-focus-up': '.nav-tab[aria-selected="true"]' } : {}),
       });
       const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
-      if (item.logoUrl) art.src = item.logoUrl;
-      art.addEventListener('error', () => art.removeAttribute('src'));
+      lazyImage(art, item.logoUrl);
       card.append(art);
       // Title and progress are set over the foot of the artwork rather than in a box under it,
       // which is where the television app puts them. A separate box costs every card a strip of

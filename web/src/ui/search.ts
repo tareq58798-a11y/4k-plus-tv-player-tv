@@ -14,6 +14,7 @@ import type { PlaylistItem } from '../shared/models';
 import { itemKey } from '../shared/models';
 import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
+import { lazyImage } from './images';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -84,8 +85,7 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
     for (const { item } of matched) {
       const card = el('div', { class: 'card', tabindex: '-1', 'data-focus': '', 'data-focus-id': itemKey(item) });
       const art = el('img', { class: 'art', alt: '' }) as HTMLImageElement;
-      if (item.logoUrl) art.src = item.logoUrl;
-      art.addEventListener('error', () => art.removeAttribute('src'));
+      lazyImage(art, item.logoUrl);
       card.append(art, el('div', { class: 'card-foot' }, el('div', { class: 'label' }, item.name)));
       card.addEventListener('focus', () => {
         if (item.kind !== 'live') options.backdrop.show(item.logoUrl);

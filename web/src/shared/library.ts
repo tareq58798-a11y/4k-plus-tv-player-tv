@@ -14,12 +14,44 @@ const RESUME = 'resume';
 
 export type ResumeMap = Record<string, { positionMs: number; durationMs: number; at: number }>;
 
+/*
+ * Read from storage once, then kept in memory and written through.
+ *
+ * Every poster and channel row asks whether it is a favourite and how far through it is, and each
+ * of those used to be a localStorage read and a JSON.parse of the whole list - four hundred of each
+ * for one category of posters, all over again every time the highlight moved to the next category.
+ * Only this module writes these two keys, so the copy here cannot go stale behind its back.
+ */
+let favoriteKeys: Set<string> | null = null;
+let resumeMap: ResumeMap | null = null;
+
+function starred(): Set<string> {
+  if (!favoriteKeys) favoriteKeys = new Set(readJson<string[]>(FAVORITES, []));
+  return favoriteKeys;
+}
+
+function saveFavorites(set: Set<string>): void {
+  favoriteKeys = set;
+  writeJson(FAVORITES, [...set]);
+}
+
+function resumeStore(): ResumeMap {
+  if (!resumeMap) resumeMap = readJson<ResumeMap>(RESUME, {});
+  return resumeMap;
+}
+
+function saveResume(map: ResumeMap): void {
+  resumeMap = map;
+  writeJson(RESUME, map);
+}
+
+/** A copy, so a caller changing it cannot change what is stored. */
 export function favorites(): Set<string> {
-  return new Set(readJson<string[]>(FAVORITES, []));
+  return new Set(starred());
 }
 
 export function isFavorite(item: PlaylistItem): boolean {
-  return favorites().has(itemKey(item));
+  return starred().has(itemKey(item));
 }
 
 /** Returns the new state, so a caller can redraw without asking again. */
@@ -29,12 +61,13 @@ export function toggleFavorite(item: PlaylistItem): boolean {
   const nowFavorite = !set.has(key);
   if (nowFavorite) set.add(key);
   else set.delete(key);
-  writeJson(FAVORITES, [...set]);
+  saveFavorites(set);
   return nowFavorite;
 }
 
+/** A copy, for the same reason as favorites(). */
 export function resumePoints(): ResumeMap {
-  return readJson<ResumeMap>(RESUME, {});
+  return { ...resumeStore() };
 }
 
 /**
@@ -53,12 +86,12 @@ export function clearActivity(items: PlaylistItem[]): void {
   const keys = new Set(items.map(itemKey));
   if (!keys.size) return;
 
-  const starred = favorites();
+  const stars = favorites();
   let touchedFavorites = false;
   for (const key of keys) {
-    if (starred.delete(key)) touchedFavorites = true;
+    if (stars.delete(key)) touchedFavorites = true;
   }
-  if (touchedFavorites) writeJson(FAVORITES, [...starred]);
+  if (touchedFavorites) saveFavorites(stars);
 
   const resume = resumePoints();
   let touchedResume = false;
@@ -68,7 +101,7 @@ export function clearActivity(items: PlaylistItem[]): void {
       touchedResume = true;
     }
   }
-  if (touchedResume) writeJson(RESUME, resume);
+  if (touchedResume) saveResume(resume);
 }
 
 /**
@@ -89,24 +122,24 @@ export function rememberPosition(item: PlaylistItem, positionMs: number, duratio
   } else {
     map[key] = { positionMs, durationMs, at: Date.now() };
   }
-  writeJson(RESUME, map);
+  saveResume(map);
 }
 
 /** Where [item] was left, or null when there is nothing to go back to. */
 export function resumePosition(item: PlaylistItem): number | null {
-  const entry = resumePoints()[itemKey(item)];
+  const entry = resumeStore()[itemKey(item)];
   return entry && entry.positionMs > 0 ? entry.positionMs : null;
 }
 
 export function progressOf(item: PlaylistItem): number | null {
-  const entry = resumePoints()[itemKey(item)];
+  const entry = resumeStore()[itemKey(item)];
   if (!entry || entry.durationMs <= 0) return null;
   return Math.min(1, entry.positionMs / entry.durationMs);
 }
 
 /** Most recently left, first. */
 export function continueWatching(items: PlaylistItem[], limit = 20): PlaylistItem[] {
-  const map = resumePoints();
+  const map = resumeStore();
   return items
     .filter((item) => map[itemKey(item)] !== undefined)
     .sort((a, b) => (map[itemKey(b)]?.at ?? 0) - (map[itemKey(a)]?.at ?? 0))
@@ -114,7 +147,7 @@ export function continueWatching(items: PlaylistItem[], limit = 20): PlaylistIte
 }
 
 export function favoriteItems(items: PlaylistItem[], limit = 20): PlaylistItem[] {
-  const set = favorites();
+  const set = starred();
   return items.filter((item) => set.has(itemKey(item))).slice(0, limit);
 }
 

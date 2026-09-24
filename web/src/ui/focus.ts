@@ -35,14 +35,14 @@ export function focused(): HTMLElement | null {
   return active instanceof HTMLElement && active.matches(FOCUSABLE) ? active : null;
 }
 
-function centre(element: Element): { x: number; y: number } {
-  const rect = element.getBoundingClientRect();
-  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-}
-
 function visible(element: Element): boolean {
   const rect = element.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return false;
+  return shown(element);
+}
+
+/** The part of visible() that is not a measurement. */
+function shown(element: Element): boolean {
   const style = getComputedStyle(element);
   return style.visibility !== 'hidden' && style.display !== 'none';
 }
@@ -55,18 +55,30 @@ function visible(element: Element): boolean {
  * happens to be marginally closer in a straight line, and an unweighted nearest-neighbour search
  * gets that wrong constantly in a grid.
  */
+/*
+ * Every element is measured once per key press, and its computed style is only read when it
+ * would actually win.
+ *
+ * This runs over everything focusable on the page - on a browse screen that is a few hundred
+ * category rows and up to four hundred posters - and it measured each candidate three times and
+ * asked for its computed style first, before knowing whether it was even in the right direction.
+ * A computed style is one of the more expensive things a page can ask for, and on a television's
+ * processor that was a noticeable part of the pause between a press and the highlight moving.
+ * A zero-sized box is already ruled out by the measurement; the style only matters for the
+ * rarer hidden-but-laid-out case, and only for the candidate about to be chosen.
+ */
 function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
-  const origin = centre(from);
+  const fromRect = from.getBoundingClientRect();
+  const origin = { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 };
   let best: HTMLElement | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
-  const fromRect = from.getBoundingClientRect();
-
   for (const candidate of document.querySelectorAll<HTMLElement>(FOCUSABLE)) {
-    if (candidate === from || candidate.hasAttribute('data-focus-skip') || !visible(candidate)) continue;
-    const point = centre(candidate);
-    const dx = point.x - origin.x;
-    const dy = point.y - origin.y;
+    if (candidate === from || candidate.hasAttribute('data-focus-skip')) continue;
+    const rect = candidate.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    const dx = rect.left + rect.width / 2 - origin.x;
+    const dy = rect.top + rect.height / 2 - origin.y;
 
     let along: number;
     let across: number;
@@ -86,7 +98,6 @@ function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
        * not move, which is what the television app does and what tells a viewer they are at the
        * end of it.
        */
-      const rect = candidate.getBoundingClientRect();
       if (rect.right <= fromRect.left || rect.left >= fromRect.right) continue;
       /*
        * Once they overlap, distance decides - centre offset only breaks ties.
@@ -111,13 +122,12 @@ function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
       // the nearest thing to its right anywhere on screen - which is the navigation bar, two
       // hundred pixels up - and the highlight leaves the page sideways. A row that has run out
       // should simply not move; Up and Down are how you leave it.
-      const rect = candidate.getBoundingClientRect();
       if (rect.bottom <= fromRect.top || rect.top >= fromRect.bottom) continue;
       along = direction === 'left' ? -dx : dx;
       across = Math.abs(dy);
     }
     const score = along + across * 4;
-    if (score < bestScore) {
+    if (score < bestScore && shown(candidate)) {
       bestScore = score;
       best = candidate;
     }
@@ -164,12 +174,32 @@ function remember(element: HTMLElement): void {
   if (name && id) lastInGroup.set(name, id);
 }
 
+/** When the highlight last moved, to tell a held key from a single press. */
+let lastMove = 0;
+
+/**
+ * A move that comes this soon after the last one is a held key, or presses faster than a smooth
+ * scroll can finish. A remote's auto-repeat is much faster than this; nobody taps that fast.
+ */
+const RAPID_MS = 180;
+
 export function focus(element: HTMLElement | null): void {
   if (!element) return;
   ensureFocusable(element);
   remember(element);
   element.focus({ preventScroll: true });
-  element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  /*
+   * Smooth for a single press, instant while the key is held.
+   *
+   * Each smooth scroll is an animation of a few hundred milliseconds, and a held key starts a new
+   * one with every repeat, each interrupting the last - so the list trails the highlight, and the
+   * next move is worked out from positions caught part way through an animation. Running down a
+   * list of channels is the one time a viewer wants the list to keep up rather than glide.
+   */
+  const now = Date.now();
+  const rapid = now - lastMove < RAPID_MS;
+  lastMove = now;
+  element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: rapid ? 'auto' : 'smooth' });
 }
 
 /**

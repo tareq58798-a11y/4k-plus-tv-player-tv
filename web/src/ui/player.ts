@@ -45,6 +45,7 @@
  * the row, after the buttons that do mirror.
  */
 import { focus } from './focus';
+import { lazyImage } from './images';
 import { t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
@@ -901,7 +902,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     thumb.className = 'pc-episode-thumb';
     if (episode.thumbnailUrl) {
       const image = document.createElement('img');
-      image.src = episode.thumbnailUrl;
+      lazyImage(image, episode.thumbnailUrl);
       image.alt = '';
       // A thumbnail that will not load leaves the tile as a plain box rather than a broken icon.
       image.addEventListener('error', () => image.remove());

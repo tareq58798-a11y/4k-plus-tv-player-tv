@@ -15,6 +15,7 @@ import type { PlaylistItem, SeriesDetails, SeriesEpisode } from '../shared/model
 import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
+import { lazyImage } from './images';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -123,7 +124,7 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
       const thumb = el('div', { class: 'episode-thumb' });
       if (episode.thumbnailUrl) {
         const image = el('img', { alt: '' }) as HTMLImageElement;
-        image.src = episode.thumbnailUrl;
+        lazyImage(image, episode.thumbnailUrl);
         image.addEventListener('error', () => image.remove());
         thumb.append(image);
       }

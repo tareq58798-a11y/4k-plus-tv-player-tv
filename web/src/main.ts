@@ -35,6 +35,7 @@ import {
   applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
 } from './shared/categories';
 import { openCategoryMenu } from './ui/categoryMenu';
+import { lazyImage, prefetchAfter } from './ui/images';
 import { appVersion, identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import { loadM3u } from './shared/m3u';
@@ -332,15 +333,33 @@ async function connectAndLoad(entered: ProviderLogin, status: HTMLElement): Prom
  * highlight out from under them, so the refresh only redraws when they are still on Home, where
  * nothing is in the middle of being done.
  */
-async function resumeFromCache(saved: ProviderLogin): Promise<void> {
+async function resumeFromCache(
+  saved: ProviderLogin,
+  cached: { playlist: LoadedPlaylist; ageMs: number },
+): Promise<void> {
   const key = cacheKey(saved);
-  const cached = await readCatalogue(key);
-  if (!cached) return;
-
   login = saved;
   catalogue = cached.playlist;
   showSection('home');
 
+  /*
+   * Refreshed once a day, not on every launch.
+   *
+   * This fetched the whole account again every time the app opened: several megabytes downloaded,
+   * parsed and written back to the database, all on the one thread that also answers the remote,
+   * during exactly the minute the viewer is finding something to watch. The Android app refreshes
+   * a cached playlist only when its auto-update interval has passed, and that interval defaults
+   * to daily (PlaylistViewModel.shouldAutoRefresh); this is that default. The interval setting
+   * itself is not offered here - see web/README.md - and Refresh playlist in Settings still
+   * fetches on demand.
+   */
+  if (cached.ageMs >= AUTO_REFRESH_MS) void refreshInBackground(saved, key);
+}
+
+/** The Android app's default auto-update interval, "daily". */
+const AUTO_REFRESH_MS = 24 * 60 * 60 * 1000;
+
+async function refreshInBackground(saved: ProviderLogin, key: string): Promise<void> {
   try {
     const fresh = await loadProvider(saved, { liveContainer: player.liveContainer });
     catalogue = fresh;
@@ -686,6 +705,16 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   }
   const groups = applyCategoryOrder(kind, providerGroups);
 
+  // Each category's entries, gathered once. Choosing a category used to filter the whole section
+  // - tens of thousands of entries on a full account - every time the highlight reached it, so
+  // running down the category list did that scan once per row passed.
+  const byGroup = new Map<string, PlaylistItem[]>();
+  for (const item of pool) {
+    const members = byGroup.get(item.group);
+    if (members) members.push(item);
+    else byGroup.set(item.group, [item]);
+  }
+
   /*
    * The rows the television app puts above the provider's own categories.
    *
@@ -901,7 +930,27 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     }, PREVIEW_DELAY_MS);
   }
 
+  /**
+   * How much of a category is drawn before the page gets a frame.
+   *
+   * Enough to fill the screen and the row below it - seven columns of posters, or a column of
+   * channel rows - and the rest follows a batch per frame. Drawing all four hundred at once is what
+   * made moving through the category list stick: every row passed built a full grid, with its
+   * images, stars and listeners, before the next key press could be looked at. Now each row passed
+   * costs a screenful, and a category the viewer only passes through never draws the rest at all.
+   */
+  const FIRST_BATCH = live ? 24 : 42;
+  const LATER_BATCH = live ? 30 : 35;
+  /** The frame that will draw the next batch of the current category, if any is left. */
+  let filling: number | null = null;
+  /** An entry that must be on the page as soon as the grid is drawn - see the return below. */
+  let reveal: string | null = null;
+
   function renderGrid(): void {
+    if (filling !== null) {
+      window.cancelAnimationFrame(filling);
+      filling = null;
+    }
     grid.textContent = '';
     // The one place a locked category can be held back. Guarding the focus handler instead would
     // miss the category the page opens on, which is simply the first in the list - and if that
@@ -924,7 +973,8 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     // search replaces whichever is showing and runs across the whole section, as it does on the
     // television - searching inside one category is rarely what somebody means by searching.
     const base = specials.find(([name]) => name === selected)?.[1]
-      ?? pool.filter((entry) => entry.group === selected);
+      ?? byGroup.get(selected)
+      ?? [];
     const query = search.trim().toLowerCase();
     const shown = query
       ? pool.filter((entry) => entry.name.toLowerCase().includes(query))
@@ -946,7 +996,24 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       );
       return;
     }
-    for (const item of shown.slice(0, 400)) {
+    const entries = shown.slice(0, 400);
+    const wanted = reveal === null ? -1 : entries.findIndex((entry) => itemKey(entry) === reveal);
+    reveal = null;
+    let drawn = 0;
+    const drawUpTo = (end: number): void => {
+      const batch = document.createDocumentFragment();
+      for (; drawn < Math.min(end, entries.length); drawn++) batch.append(entryCard(entries[drawn]!));
+      grid.append(batch);
+    };
+    const drawRest = (): void => {
+      filling = null;
+      drawUpTo(drawn + LATER_BATCH);
+      if (drawn < entries.length) filling = window.requestAnimationFrame(drawRest);
+    };
+    drawUpTo(Math.max(FIRST_BATCH, wanted + FIRST_BATCH));
+    if (drawn < entries.length) filling = window.requestAnimationFrame(drawRest);
+
+    function entryCard(item: PlaylistItem): HTMLElement {
       const card = el('div', {
         class: live ? 'channel-row' : 'poster',
         tabindex: '-1',
@@ -954,8 +1021,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         'data-focus-id': itemKey(item),
       });
       const art = el('img', { class: live ? 'channel-logo' : 'poster-art', alt: '' }) as HTMLImageElement;
-      if (item.logoUrl) art.src = item.logoUrl;
-      art.addEventListener('error', () => art.removeAttribute('src'));
+      lazyImage(art, item.logoUrl);
       // Portrait artwork with the name beneath it, which is what the television app's browse grids
       // show - not the landscape cards the landing rows use. The two are different shapes on
       // purpose: a row is a shelf of stills, a grid is a wall of posters.
@@ -978,6 +1044,8 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         if (count) count.textContent = String(favourites[1].length);
       });
       card.addEventListener('focus', () => {
+        // The next two rows' artwork, so it is there by the time the highlight is.
+        prefetchAfter(card, live ? 8 : 14);
         if (item.kind !== 'live') backdrop.show(item.logoUrl);
         focusedChannelId = item.channelId;
         if (item.kind === 'live') {
@@ -1018,6 +1086,8 @@ function browseScreen(current: Section, favoritesOnly = false): void {
               previewTimer = null;
             }
             previewing = null;
+            if (filling !== null) window.cancelAnimationFrame(filling);
+            filling = null;
             leaveScreen = null;
             // The list as the viewer is seeing it - sorted and filtered - so Up and Down in full
             // screen move to the channel that is actually next on their screen.
@@ -1036,7 +1106,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
           }
         }),
       );
-      grid.append(card);
+      return card;
     }
   }
 
@@ -1173,7 +1243,11 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   // Registered for every section, not only Live TV. Movies and Series never start a preview of
   // their own, but they can be the screen a viewer lands on *from* Live TV, and whatever is still
   // decoding has to be stopped by the page arriving rather than by the page leaving.
-  leaveScreen = stopPreview;
+  leaveScreen = () => {
+    if (filling !== null) window.cancelAnimationFrame(filling);
+    filling = null;
+    stopPreview();
+  };
   // Belt and braces: the page is only transparent while something is deliberately playing full
   // screen. Anywhere else an opaque page is what guarantees a stray frame cannot show through,
   // whatever the decoder is doing.
@@ -1225,7 +1299,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     : null;
   if (category) {
     // Focusing it is what selects it and redraws the grid - see the row's own focus handler - so
-    // the grid below is the right one by the time the poster is looked for.
+    // the grid below is the right one by the time the poster is looked for. The poster may be far
+    // down a category that is otherwise drawn a batch at a time, so the grid is told to include it.
+    reveal = returning!.focusKey;
     focus(category);
     const poster = grid.querySelector<HTMLElement>(`[data-focus-id="${cssEscape(returning!.focusKey)}"]`);
     if (poster) focus(poster);
@@ -1748,9 +1824,11 @@ function start(saved: ProviderLogin): void {
   // Straight to the catalogue already on the device when there is one; otherwise the sign-in
   // page with the saved details filled in, fetching while it shows.
   void (async () => {
+    // Handed over rather than read a second time: a full catalogue is megabytes to copy out of
+    // the database, and it was being read twice on every launch.
     const cached = await readCatalogue(cacheKey(saved));
     if (cached) {
-      void resumeFromCache(saved);
+      void resumeFromCache(saved, cached);
       return;
     }
     loginScreen('');
