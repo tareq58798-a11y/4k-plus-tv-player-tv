@@ -24,7 +24,6 @@ import { renderSeries } from './ui/series';
 import { renderDetails } from './ui/details';
 import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
-import { iconElement } from './ui/icons';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { createPlayerOverlay, type StripEpisode } from './ui/player';
@@ -37,8 +36,7 @@ import { appVersion, identity } from './platform/identity';
 import { activate, ActivationPending } from './shared/activation';
 import { loadM3u } from './shared/m3u';
 import {
-  isCategoryLocked, isChannelLocked, isUnlocked, markUnlocked, parental, relock,
-  removePin, setPin, toggleCategoryLock,
+  isCategoryLocked, isChannelLocked, isUnlocked, markUnlocked, parental,
 } from './shared/parental';
 
 const platform = detectPlatform();
@@ -535,83 +533,7 @@ function settingsScreen(openAt?: 'language'): void {
       catalogue = null;
       loginScreen();
     },
-    onSetPin: () => {
-      askPin({
-        title: t('create_parental_pin'),
-        mode: 'set',
-        onDone: (pin) => void setPin(pin).then(() => settingsScreen()),
-        onCancel: () => settingsScreen(),
-      });
-    },
-    onRemovePin: () => {
-      // Behind the PIN it is removing: otherwise the control protects nothing from the one person
-      // it exists to keep out.
-      askPin({
-        title: t('enter_parental_pin'),
-        mode: 'verify',
-        onDone: () => {
-          removePin();
-          relock();
-          settingsScreen();
-        },
-        onCancel: () => settingsScreen(),
-      });
-    },
-    onLockCategories: () => lockCategoriesScreen(),
     onBack: () => showSection(section),
-  });
-}
-
-/**
- * Which categories the PIN stands in front of.
- *
- * Every category in the catalogue, across all three kinds, because a viewer locking adult films
- * will also want the channels that carry them, and sending them to three separate lists to do one
- * job is how a control goes unused.
- */
-function lockCategoriesScreen(): void {
-  if (!catalogue) return;
-  clear();
-  const groups = [...new Set(catalogue.items.map((item) => item.group))].sort((a, b) => a.localeCompare(b));
-  const list = el('div', { class: 'sidebar wide', 'data-focus-group': 'lock-categories' });
-  for (const group of groups) {
-    // Lock and LockOpen, as the television's own lock list marks each category.
-    const lockIcon = (locked: boolean): SVGSVGElement =>
-      iconElement(locked ? 'lock' : 'lockOpen', locked ? 'settings-icon' : 'settings-icon muted');
-    let marker = lockIcon(isCategoryLocked(group));
-    const row = el(
-      'div',
-      {
-        class: 'settings-row',
-        tabindex: '-1',
-        'data-focus': '',
-        'data-focus-id': `lock-${group}`,
-        'aria-selected': String(isCategoryLocked(group)),
-      },
-      marker,
-      el('span', { class: 'settings-row-label' }, group),
-    );
-    row.addEventListener('click', () => {
-      const locked = toggleCategoryLock(group);
-      row.setAttribute('aria-selected', String(locked));
-      const next = lockIcon(locked);
-      marker.replaceWith(next);
-      marker = next;
-    });
-    list.append(row);
-  }
-  app.append(
-    el('div', { class: 'browser-title' }, t('lock_categories')),
-    el('div', { class: 'settings-note' }, t('lock_categories_desc')),
-    list,
-  );
-  focus(list.querySelector<HTMLElement>('[data-focus]'));
-
-  const release = pushKeyHandler((key: RemoteKey) => {
-    if (key !== 'back') return false;
-    release();
-    settingsScreen();
-    return true;
   });
 }
 

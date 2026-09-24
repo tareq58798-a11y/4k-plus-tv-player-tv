@@ -27,7 +27,12 @@ import {
   type VideoScalingPreference,
 } from '../shared/preferences';
 import type { LoadedPlaylist } from '../shared/models';
-import { cryptoAvailable, hasPin, parental, update } from '../shared/parental';
+import {
+  cryptoAvailable, hasPin, isUnlocked, markUnlocked, parental, setPin, toggleCategoryLock,
+  toggleChannelLock, update,
+} from '../shared/parental';
+import { itemKey } from '../shared/models';
+import { askPin } from './pin';
 import {
   hiddenCategories, hideCategory, unhideCategory, type CategoryKind,
 } from '../shared/categories';
@@ -90,9 +95,6 @@ export interface SettingsOptions {
    */
   categories: (kind: CategoryKind) => string[];
   onSignOut: () => void;
-  onSetPin: () => void;
-  onRemovePin: () => void;
-  onLockCategories: () => void;
 
   onClearCache: () => void;
 
@@ -116,7 +118,9 @@ type Page =
   | 'language'
   | 'history'
   | 'parental'
-  | 'categories';
+  | 'categories'
+  | 'lockCategories'
+  | 'lockChannels';
 
 /**
  * The tint each root row's icon carries, as SettingsMenuRow is called in SettingsScreen.kt:
@@ -134,7 +138,18 @@ const PAGE_ICON: Record<Exclude<Page, 'root'>, IconName> = {
   history: 'history',
   categories: 'visibilityOff',
   parental: 'adminPanelSettings',
+  lockCategories: 'lock',
+  lockChannels: 'lock',
 };
+
+/** Where Back goes from each page. The two lock lists belong to the parental page. */
+const PARENT: Partial<Record<Page, Page>> = {
+  lockCategories: 'parental',
+  lockChannels: 'parental',
+};
+
+/** At most this many channels are drawn at once, as the television caps its list; search narrows it. */
+const CHANNEL_LIST_LIMIT = 300;
 
 /** The three catalogues, in the order the navigation bar puts them, with the chip icons. */
 const KINDS: { kind: CategoryKind; label: () => string; icon: IconName }[] = [
@@ -188,14 +203,31 @@ function choiceRow(id: string, label: string, selected: boolean, onClick: () => 
   return row;
 }
 
-/** SettingsSwitch: title and description, then the switch at the far end. */
-function toggleRow(id: string, label: string, on: boolean, onClick: () => void, description?: string): HTMLElement {
-  const row = pressable(id, 'settings-row settings-choice', { 'aria-checked': String(on) });
-  row.append(
-    rowText(label, description),
-    iconElement(on ? 'toggleOn' : 'toggleOff', 'settings-switch'),
-  );
-  row.addEventListener('click', onClick);
+/** Material's Switch: a pill track with a thumb that grows and moves across when it is on. */
+function switchElement(): HTMLElement {
+  return el('span', { class: 'settings-switch', 'aria-hidden': 'true' }, el('span', { class: 'settings-switch-thumb' }));
+}
+
+/**
+ * SettingsSwitch: title and description, then the switch at the far end.
+ *
+ * A disabled one is drawn at half strength and is not a stop at all, as a disabled Switch is not
+ * focusable on the television - the highlight passes over it rather than landing on something
+ * that will not answer.
+ */
+function toggleRow(
+  id: string,
+  label: string,
+  on: boolean,
+  onClick: () => void,
+  description?: string,
+  enabled = true,
+): HTMLElement {
+  const row = enabled
+    ? pressable(id, 'settings-row settings-choice', { 'aria-checked': String(on) })
+    : el('div', { class: 'settings-row settings-choice is-disabled', 'aria-checked': String(on), 'aria-disabled': 'true' });
+  row.append(rowText(label, description), switchElement());
+  if (enabled) row.addEventListener('click', onClick);
   return row;
 }
 
@@ -207,17 +239,24 @@ function subheading(text: string): HTMLElement {
 export function renderSettings(host: HTMLElement, options: SettingsOptions): void {
   let page: Page = options.openAt ?? 'root';
 
-  const release = pushKeyHandler((key) => {
-    if (key !== 'back') return false;
-    // Back walks out one level at a time rather than leaving settings from four pages deep, which
-    // is how the television app behaves and what a viewer who opened a page by mistake expects.
-    // Except from the page settings was opened straight into, which is its first level.
+  /*
+   * Back walks out one level at a time rather than leaving settings from four pages deep, which is
+   * how the television app behaves and what a viewer who opened a page by mistake expects. Except
+   * from the page settings was opened straight into, which is its first level. The arrow beside
+   * the title does the same as the key.
+   */
+  function goBack(): void {
     if (page !== 'root' && page !== options.openAt) {
-      open('root');
-      return true;
+      open(PARENT[page] ?? 'root');
+      return;
     }
     release();
     options.onBack();
+  }
+
+  const release = pushKeyHandler((key) => {
+    if (key !== 'back') return false;
+    goBack();
     return true;
   });
 
@@ -225,14 +264,74 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   let focusNext: string | null = null;
 
   function open(next: Page): void {
-    // Coming back up to the menu lands on the row that was opened, not on the first row.
-    focusNext = next === 'root' && page !== 'root' ? `menu-${page}` : null;
+    // Coming back up lands on the row that opened the page just left, not on the first row.
+    const leaving = page;
+    focusNext = null;
+    if (next === 'root' && leaving !== 'root') focusNext = `menu-${leaving}`;
+    else if (PARENT[leaving] === next) focusNext = `open-${leaving}`;
     page = next;
     draw();
   }
 
+  /** The id of whatever holds the highlight, to put it back after a dialog closes. */
+  function currentId(): string | null {
+    return document.activeElement?.getAttribute('data-focus-id') ?? null;
+  }
+
+  /**
+   * Runs [action] once the PIN has been given, or straight away when there is nothing to guard.
+   *
+   * The television's requirePin: nothing is asked while parental control is off, while there is no
+   * PIN, or once it has been entered in this session. A cancelled prompt leaves the viewer where
+   * they were.
+   */
+  function requirePin(action: () => void): void {
+    if (!parental().enabled || !hasPin() || isUnlocked()) {
+      action();
+      return;
+    }
+    const here = currentId();
+    askPin({
+      title: t('enter_parental_pin'),
+      mode: 'verify',
+      onDone: () => {
+        markUnlocked();
+        action();
+      },
+      onCancel: () => redraw(here),
+    });
+  }
+
+  /**
+   * The PIN setup dialog, then [done].
+   *
+   * setPin also switches parental control on, which is right when the PIN is being made in order
+   * to switch it on and wrong when it is only being changed - so whether it was on is put back
+   * afterwards unless [enable] says otherwise.
+   */
+  function setUpPin(enable: boolean, done: () => void): void {
+    const here = currentId();
+    askPin({
+      title: t('create_parental_pin'),
+      mode: 'set',
+      onDone: (pin) => {
+        const wasEnabled = parental().enabled;
+        void setPin(pin).then((saved) => {
+          // Whoever has just typed the PIN twice knows it; asking for it again on the next press
+          // would be a formality.
+          if (saved) {
+            update({ enabled: enable || wasEnabled });
+            markUnlocked();
+          }
+          done();
+        });
+      },
+      onCancel: () => redraw(here),
+    });
+  }
+
   /** Redraws the page in place, keeping the highlight on the row that was just pressed. */
-  function redraw(id: string): void {
+  function redraw(id: string | null): void {
     focusNext = id;
     draw();
   }
@@ -247,6 +346,8 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       case 'history': return t('settings_privacy_history');
       case 'parental': return t('settings_parental_controls');
       case 'categories': return t('settings_category_visibility');
+      case 'lockCategories': return t('lock_categories');
+      case 'lockChannels': return t('lock_channels');
       default: return t('settings_title');
     }
   }
@@ -487,22 +588,26 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
    */
   let visibilityKind: CategoryKind = 'live';
 
-  function categoriesPage(): HTMLElement {
-    const wrap = el('div', { class: 'settings-group', 'data-focus-group': 'category-visibility' });
-    wrap.append(el('div', { class: 'settings-note' }, t('category_visibility_desc')));
-
+  /** The three catalogue chips, each with its icon, as the television's FilterChips. */
+  function kindTabs(selected: CategoryKind, idPrefix: string, pick: (kind: CategoryKind) => void): HTMLElement {
     const tabs = el('div', { class: 'kind-tabs' });
     for (const entry of KINDS) {
-      const id = `kind-${entry.kind}`;
-      const tab = pressable(id, 'settings-row kind-tab', { 'aria-selected': String(entry.kind === visibilityKind) });
+      const id = `${idPrefix}-${entry.kind}`;
+      const tab = pressable(id, 'settings-row kind-tab', { 'aria-selected': String(entry.kind === selected) });
       tab.append(iconElement(entry.icon, 'settings-icon'), el('span', { class: 'settings-row-label' }, entry.label()));
       tab.addEventListener('click', () => {
-        visibilityKind = entry.kind;
+        pick(entry.kind);
         redraw(id);
       });
       tabs.append(tab);
     }
-    wrap.append(tabs);
+    return tabs;
+  }
+
+  function categoriesPage(): HTMLElement {
+    const wrap = el('div', { class: 'settings-group', 'data-focus-group': 'category-visibility' });
+    wrap.append(el('div', { class: 'settings-note' }, t('category_visibility_desc')));
+    wrap.append(kindTabs(visibilityKind, 'kind', (kind) => { visibilityKind = kind; }));
 
     const all = options.categories(visibilityKind);
     const hidden = new Set(hiddenCategories(visibilityKind));
@@ -541,6 +646,15 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     return wrap;
   }
 
+  /*
+   * Parental controls, as the television lays the page out: the two switches, a divider, then
+   * four actions. Change PIN, and the two lock lists, are behind the PIN once there is one and the
+   * control is on - requirePin - and everything answers here rather than leaving for another
+   * screen, so the viewer stays on this page throughout.
+   *
+   * There is no Remove PIN row, because the television has none: switching the control off is how
+   * a viewer stops being asked, and it takes the PIN to do it.
+   */
   function parentalPage(): HTMLElement {
     const guard = el('div', { class: 'settings-group', 'data-focus-group': 'parental' });
 
@@ -550,33 +664,204 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       return guard;
     }
     const state = parental();
-    if (hasPin()) {
-      guard.append(
-        toggleRow('parental-enabled', t('enable_parental_control'), state.enabled, () => {
-          update({ enabled: !parental().enabled });
-          redraw('parental-enabled');
-        }, t('enable_parental_control_desc')),
-        toggleRow('parental-startup', t('ask_pin_on_startup'), state.askOnStartup, () => {
-          update({ askOnStartup: !parental().askOnStartup });
-          redraw('parental-startup');
-        }, t('ask_pin_on_startup_desc')),
-        el('div', { class: 'settings-divider' }),
-      );
-    }
-    guard.append(actionRow(
-      'pin-set',
-      'pin',
-      hasPin() ? t('change_pin') : t('create_parental_pin'),
-      hasPin() ? t('change_pin_desc') : t('create_parental_pin_desc'),
-      options.onSetPin,
-    ));
-    if (hasPin()) {
-      guard.append(
-        actionRow('parental-categories', 'lock', t('lock_categories'), t('lock_categories_desc'), options.onLockCategories),
-        actionRow('pin-remove', 'deleteForever', t('remove_pin'), undefined, options.onRemovePin, true),
-      );
-    }
+    const on = state.enabled && hasPin();
+    guard.append(
+      // Switching on with no PIN yet makes one first; switching off takes the PIN.
+      toggleRow('parental-enabled', t('enable_parental_control'), on, () => {
+        const done = (): void => redraw('parental-enabled');
+        if (on) requirePin(() => { update({ enabled: false }); done(); });
+        else if (!hasPin()) setUpPin(true, done);
+        else { update({ enabled: true }); done(); }
+      }, t('enable_parental_control_desc')),
+      // Only means anything while the control is on, so it is greyed out and passed over until then.
+      toggleRow('parental-startup', t('ask_pin_on_startup'), on && state.askOnStartup, () => {
+        update({ askOnStartup: !parental().askOnStartup });
+        redraw('parental-startup');
+      }, t('ask_pin_on_startup_desc'), on),
+      el('div', { class: 'settings-divider' }),
+      actionRow('pin-set', 'pin', t('change_pin'), t('change_pin_desc'), () => {
+        requirePin(() => setUpPin(false, () => redraw('pin-set')));
+      }),
+      actionRow('open-categories', 'visibilityOff', t('settings_category_visibility'), t('category_visibility_desc'), () => {
+        open('categories');
+      }),
+      actionRow('open-lockCategories', 'lock', t('lock_categories'), t('lock_categories_desc'), () => {
+        requirePin(() => open('lockCategories'));
+      }),
+      actionRow('open-lockChannels', 'lock', t('lock_channels'), t('lock_channels_desc'), () => {
+        requirePin(() => open('lockChannels'));
+      }),
+    );
     return guard;
+  }
+
+  /**
+   * The shared shape of the two lock lists: a description, a search box, "show locked only", the
+   * rows, and "unlock all" when anything is locked. The rows are redrawn on their own as the viewer
+   * types, so the search box keeps the highlight and the on-screen keyboard stays up.
+   */
+  interface LockEntry { key: string; label: string; detail?: string }
+
+  function lockList(config: {
+    group: string;
+    description: string;
+    searchLabel: string;
+    search: string;
+    onSearch: (value: string) => void;
+    lockedOnly: boolean;
+    onLockedOnly: () => void;
+    before?: HTMLElement;
+    entries: () => LockEntry[];
+    isLocked: (key: string) => boolean;
+    toggle: (key: string) => void;
+    emptyLocked: string;
+    emptySearch: string;
+    anyLocked: () => boolean;
+    unlockAllLabel: string;
+    unlockAll: () => void;
+    limit?: number;
+  }): HTMLElement {
+    const wrap = el('div', { class: 'settings-group', 'data-focus-group': config.group });
+    wrap.append(el('div', { class: 'settings-note' }, config.description));
+    if (config.before) wrap.append(config.before);
+
+    const field = el('input', {
+      class: 'settings-search',
+      type: 'text',
+      placeholder: config.searchLabel,
+      tabindex: '-1',
+      'data-focus': '',
+      'data-focus-id': `${config.group}-search`,
+    }) as HTMLInputElement;
+    field.value = config.search;
+    const box = el('label', { class: 'settings-search-box' }, iconElement('search', 'settings-search-icon'), field);
+    wrap.append(box);
+
+    wrap.append(toggleRow(`${config.group}-only`, t('show_locked_only'), config.lockedOnly, () => {
+      config.onLockedOnly();
+      redraw(`${config.group}-only`);
+    }));
+
+    const list = el('div', { class: 'settings-lock-list' });
+    wrap.append(list);
+    const footer = el('div', {});
+    wrap.append(footer);
+
+    function renderRows(): void {
+      list.textContent = '';
+      const query = config.search.trim().toLowerCase();
+      const shown = config.entries().filter((entry) =>
+        (!config.lockedOnly || config.isLocked(entry.key)) &&
+        (!query || entry.label.toLowerCase().includes(query)));
+      if (!shown.length) {
+        list.append(el('div', { class: 'settings-note' }, config.lockedOnly ? config.emptyLocked : config.emptySearch));
+      }
+      for (const entry of shown.slice(0, config.limit ?? shown.length)) {
+        const id = `${config.group}-row-${entry.key}`;
+        const row = pressable(id, 'settings-row settings-lock');
+        const paint = (): void => {
+          const locked = config.isLocked(entry.key);
+          row.textContent = '';
+          row.classList.toggle('is-locked', locked);
+          row.setAttribute('aria-checked', String(locked));
+          const text = el('div', { class: 'settings-row-text' }, el('div', { class: 'settings-row-label' }, entry.label));
+          text.append(entry.detail
+            ? el('div', { class: 'settings-row-desc' }, entry.detail)
+            : el('div', { class: 'settings-row-desc lock-state' }, locked ? t('locked_label') : t('unlocked_label')));
+          row.append(text, switchElement());
+        };
+        paint();
+        row.addEventListener('click', () => {
+          config.toggle(entry.key);
+          paint();
+          renderFooter();
+        });
+        list.append(row);
+      }
+    }
+
+    function renderFooter(): void {
+      footer.textContent = '';
+      if (!config.anyLocked()) return;
+      const button = pressable(`${config.group}-unlock-all`, 'settings-row settings-button');
+      button.append(iconElement('lockOpen', 'settings-icon'), el('span', { class: 'settings-row-label' }, config.unlockAllLabel));
+      button.addEventListener('click', () => {
+        config.unlockAll();
+        redraw(`${config.group}-search`);
+      });
+      footer.append(button);
+    }
+
+    let searchTimer: number | null = null;
+    field.addEventListener('input', () => {
+      config.onSearch(field.value);
+      config.search = field.value;
+      if (searchTimer !== null) window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => {
+        searchTimer = null;
+        renderRows();
+      }, 320);
+    });
+
+    renderRows();
+    renderFooter();
+    return wrap;
+  }
+
+  let lockKind: CategoryKind = 'live';
+  let categorySearch = '';
+  let categoriesLockedOnly = false;
+
+  /** Lock Categories: one catalogue at a time, as the television's chips choose. */
+  function lockCategoriesPage(): HTMLElement {
+    const inKind = (): string[] => options.categories(lockKind);
+    return lockList({
+      group: 'lock-categories',
+      description: t('lock_categories_desc'),
+      before: kindTabs(lockKind, 'lock-kind', (kind) => { lockKind = kind; categorySearch = ''; }),
+      searchLabel: t('search_categories'),
+      search: categorySearch,
+      onSearch: (value) => { categorySearch = value; },
+      lockedOnly: categoriesLockedOnly,
+      onLockedOnly: () => { categoriesLockedOnly = !categoriesLockedOnly; },
+      entries: () => inKind().map((name) => ({ key: name, label: name })),
+      isLocked: (name) => parental().lockedCategories.includes(name),
+      toggle: (name) => { toggleCategoryLock(name); },
+      emptyLocked: t('no_locked_categories'),
+      emptySearch: t('no_categories_match'),
+      anyLocked: () => inKind().some((name) => parental().lockedCategories.includes(name)),
+      unlockAllLabel: t('unlock_all_categories'),
+      unlockAll: () => {
+        const clearing = new Set(inKind());
+        update({ lockedCategories: parental().lockedCategories.filter((name) => !clearing.has(name)) });
+      },
+    });
+  }
+
+  let channelSearch = '';
+  let channelsLockedOnly = false;
+
+  /** Lock Channels: every live channel, its group under its name, the first 300 that match. */
+  function lockChannelsPage(): HTMLElement {
+    const channels = (options.playlist()?.items ?? []).filter((item) => item.kind === 'live');
+    return lockList({
+      group: 'lock-channels',
+      description: t('lock_channels_desc'),
+      searchLabel: t('search_channels'),
+      search: channelSearch,
+      onSearch: (value) => { channelSearch = value; },
+      lockedOnly: channelsLockedOnly,
+      onLockedOnly: () => { channelsLockedOnly = !channelsLockedOnly; },
+      entries: () => channels.map((item) => ({ key: itemKey(item), label: item.name, detail: item.group })),
+      isLocked: (key) => parental().lockedChannels.includes(key),
+      toggle: (key) => { toggleChannelLock(key); },
+      emptyLocked: t('no_locked_channels'),
+      emptySearch: t('no_channels_match'),
+      anyLocked: () => parental().lockedChannels.length > 0,
+      unlockAllLabel: t('unlock_all_channels'),
+      unlockAll: () => update({ lockedChannels: [] }),
+      limit: CHANNEL_LIST_LIMIT,
+    });
   }
 
   function body(): HTMLElement {
@@ -589,6 +874,8 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       case 'language': return languagePage();
       case 'parental': return parentalPage();
       case 'categories': return categoriesPage();
+      case 'lockCategories': return lockCategoriesPage();
+      case 'lockChannels': return lockChannelsPage();
       default: return rootPage();
     }
   }
@@ -596,7 +883,13 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function draw(): void {
     host.textContent = '';
     const content = body();
-    host.append(el('div', { class: 'browser-title settings-title' }, title()));
+    // The title row: the back arrow, then the page's name at 27sp Black, as the television heads
+    // every settings page. The arrow is a real stop and does what Back does.
+    const back = pressable('settings-back', 'settings-back');
+    back.setAttribute('aria-label', t('cd_back'));
+    back.append(iconElement('arrowBack', 'settings-back-icon'));
+    back.addEventListener('click', goBack);
+    host.append(el('div', { class: 'settings-title-row' }, back, el('div', { class: 'browser-title settings-title' }, title())));
     if (page === 'root') {
       host.append(content);
     } else {

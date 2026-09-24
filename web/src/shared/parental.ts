@@ -11,7 +11,7 @@
  * app refuses to set a PIN at all, rather than quietly falling back to storing the digits: a
  * control that silently offers less protection than it claims is worse than one that says no.
  */
-import { readJson, writeJson, remove } from '../platform/storage';
+import { readJson, writeJson } from '../platform/storage';
 
 const SETTINGS = 'parental';
 
@@ -84,12 +84,6 @@ export function hasPin(): boolean {
   return parental().pinHash !== null;
 }
 
-export function removePin(): void {
-  // The locks go with it. Leaving them behind would mean content stayed hidden with no PIN left
-  // to reveal it - a lock with no key.
-  remove(SETTINGS);
-}
-
 /** Locked only while there is a PIN and the control is on; otherwise nothing is held back. */
 function active(): ParentalSettings | null {
   const current = parental();
@@ -141,8 +135,4 @@ export function isUnlocked(): boolean {
 
 export function markUnlocked(): void {
   unlockedThisSession = true;
-}
-
-export function relock(): void {
-  unlockedThisSession = false;
 }

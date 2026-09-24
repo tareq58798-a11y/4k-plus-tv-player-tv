@@ -2099,10 +2099,42 @@ body.playing .backdrop-scrim {
   --settings-cyan: #23d7ee;
 }
 
-/* Title: 27sp, FontWeight.Black. */
+/* The title row: an IconButton with ArrowBack, then the title at 27sp, FontWeight.Black. */
+.settings-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--dim-gap-s);
+}
+
 .settings-title {
+  margin-bottom: 0;
   font-size: 54px;
   font-weight: 900;
+}
+
+.settings-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  margin-inline-start: -24px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.settings-back:focus {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-back-icon {
+  width: 48px;
+  height: 48px;
+}
+
+[dir='rtl'] .settings-back-icon {
+  transform: scaleX(-1);
 }
 
 /*
@@ -2275,15 +2307,54 @@ body.playing .backdrop-scrim {
   color: var(--settings-primary);
 }
 
+/*
+ * Material 3's Switch, which is what SettingsSwitch draws: a 52x32dp pill; off, the track is
+ * surfaceContainerHighest with a 2dp outline and a 16dp thumb in the outline colour; on, the track
+ * is primary and the thumb grows to 24dp in onPrimary and moves across. Theme.kt sets neither
+ * surfaceContainerHighest nor outline, so they are Material's dark baseline values.
+ */
 .settings-switch {
+  position: relative;
   flex: 0 0 auto;
-  width: 72px;
-  height: 72px;
-  color: var(--settings-on-variant);
+  box-sizing: border-box;
+  width: 104px;
+  height: 64px;
+  border-radius: 32px;
+  border: 4px solid #938f99;
+  background: #36343b;
+  transition: background-color var(--motion-focus-ms) ease, border-color var(--motion-focus-ms) ease;
 }
 
-.settings-choice[aria-checked='true'] .settings-switch {
-  color: var(--settings-primary);
+.settings-switch-thumb {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  border-radius: 50%;
+  background: #938f99;
+  transition: left var(--motion-focus-ms) ease, width var(--motion-focus-ms) ease,
+    height var(--motion-focus-ms) ease, margin-top var(--motion-focus-ms) ease;
+}
+
+.settings-row[aria-checked='true'] .settings-switch {
+  border-color: var(--settings-primary);
+  background: var(--settings-primary);
+}
+
+.settings-row[aria-checked='true'] .settings-switch-thumb {
+  left: 44px;
+  width: 48px;
+  height: 48px;
+  margin-top: -24px;
+  background: #ffffff;
+}
+
+/* A switch that cannot be used yet: the whole row at half strength, as contentAlpha .5 does. */
+.settings-row.is-disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* The row with the highlight gets a faint fill as well as the ring, so it holds up at a distance. */
@@ -2366,6 +2437,105 @@ body.playing .backdrop-scrim {
 
 .settings-row .settings-row-label:not(:last-child) {
   min-width: 0;
+}
+
+/* OutlinedTextField with a leading Search icon: 56dp tall, 4dp corners, a 1dp outline that turns
+   primary and 2dp when it has the highlight. */
+.settings-search-box {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  box-sizing: border-box;
+  height: 112px;
+  padding: 0 24px;
+  border: 2px solid var(--settings-on-variant);
+  border-radius: 8px;
+}
+
+.settings-search-box:focus-within {
+  border: 4px solid var(--settings-primary);
+  padding: 0 22px;
+}
+
+.settings-search-icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  color: var(--settings-on-variant);
+}
+
+.settings-search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 32px;
+  color: var(--tone-text-primary);
+}
+
+.settings-search::placeholder {
+  color: var(--settings-on-variant);
+}
+
+/* The search box carries the highlight on its outline, not as the global ring. */
+.settings-search:focus {
+  box-shadow: none;
+}
+
+.settings-lock-list > * + * {
+  margin-top: 16px;
+}
+
+/* A lock row: a 12dp tile, surfaceVariant at 42%, or Orange at 16% when locked; the name
+   SemiBold, then Locked in Orange or Unlocked, or the channel's group, at labelSmall. */
+.settings-lock {
+  padding: 14px 24px;
+  border-radius: 24px;
+  background: rgba(18, 48, 78, 0.42);
+}
+
+.settings-lock.is-locked {
+  background: rgba(255, 181, 71, 0.16);
+}
+
+.settings-lock .settings-row-label {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-lock .settings-row-desc {
+  font-size: 22px;
+}
+
+.settings-lock.is-locked .lock-state {
+  color: var(--settings-orange);
+}
+
+/* A filled Button, full width: primary, onPrimary, a pill 40dp tall, icon then label at 14sp. */
+.settings-button {
+  justify-content: center;
+  gap: 14px;
+  height: 80px;
+  padding: 0 48px;
+  border-radius: 40px;
+  background: var(--settings-primary);
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.settings-button .settings-icon {
+  width: 36px;
+  height: 36px;
+  color: #ffffff;
+}
+
+.settings-row.settings-button:focus {
+  background-color: var(--settings-primary);
 }
 
 /* The three catalogue chips, each with its own icon, as the television's FilterChips have. */
