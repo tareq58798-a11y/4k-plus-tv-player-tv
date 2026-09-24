@@ -105,6 +105,14 @@ stops it being reopened every few months.
   where a poster link is TMDB's (`image.tmdb.org/t/p/<size>/...`), the web asks TMDB for `w342`
   instead, the smallest width at least as wide as the widest card. Backgrounds and every other
   host's links are left as the provider gave them. See `posterArtwork` in `ui/images.ts`.
+* **OK on a channel.** The television app's OK leaves a full-screen channel, as Back does. Here
+  OK brings up the controls, at the owner's request: they expected the menu, and the channel
+  closing and restarting behind the list read as the picture cutting out. Back still leaves.
+  Decided on 2026-09-24.
+* **Player choices are per title.** The television app writes the subtitle background and skip
+  length chosen in the player back to its settings. Here nothing chosen in the player outlasts
+  the title (shape, tracks, subtitle background and size, skip length, speed), at the owner's
+  request; Settings is where lasting defaults are set. Decided on 2026-09-24.
 * **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
   refreshed from the provider (every launch, daily, every two days). This app uses Android's
   default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole

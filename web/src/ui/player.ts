@@ -43,6 +43,15 @@
  * it has no controller there, and so no way to change soundtrack on a channel at all; this does,
  * and dropping a working thing to match an absence would be a strange trade. It goes at the end of
  * the row, after the buttons that do mirror.
+ *
+ * ## Per title
+ *
+ * Everything chosen in here lasts for the title it was chosen on: the shape, the soundtrack, the
+ * subtitle track, subtitles on or off, their background and size, the skip length and the speed.
+ * The next film, episode or channel starts from the Settings defaults again. The television app
+ * does this for the shape and writes the subtitle background and skip length back to its settings;
+ * the owner asked for all of it to reset, so nothing here writes to preferences. Settings is where
+ * a lasting choice is made. Recorded in web/README.md.
  */
 import { focus } from './focus';
 import { lazyImage } from './images';
@@ -50,11 +59,8 @@ import { t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
   SUBTITLE_SIZES,
-  setSubtitleSize,
   subtitleSize,
   type SubtitleSize,
-  setSkipSeconds,
-  setSubtitleBackground,
   skipSeconds,
   subtitleBackground,
   videoScaling,
@@ -661,8 +667,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
         id: 'pc-menu-subtitle-backing',
         selected: captionBackground,
         onPick: () => {
+          // For this title only - see "Per title" at the top of the file.
           captionBackground = !captionBackground;
-          setSubtitleBackground(captionBackground);
           captions.classList.toggle('boxed', captionBackground);
         },
       },
@@ -675,7 +681,6 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
           selected: size === captionSize,
           onPick: () => {
             captionSize = size;
-            setSubtitleSize(size);
             applyCaptionSize();
           },
         })),
@@ -695,7 +700,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       label: t('skip_seconds_format', String(seconds)),
       id: `pc-menu-skip-${seconds}`,
       selected: seconds === skip,
-      onPick: () => { skip = seconds; setSkipSeconds(seconds); },
+      onPick: () => { skip = seconds; },
     })));
   });
 
@@ -1254,6 +1259,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   playPause.addEventListener('click', togglePlayback);
   settingsButton.addEventListener('click', openPanel);
 
+  /** When OK last brought the controls up - see the guard in handleKey. */
+  let okWokeAt = 0;
+  const OK_REPEAT_GUARD_MS = 500;
+
   function handleKey(key: RemoteKey): boolean {
     // Any press brings the chrome back rather than acting, so nothing happens unseen. The one
     // exception is Back, which leaves whether or not the controls are up.
@@ -1321,17 +1330,13 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }
 
     /*
-     * OK leaves a channel, exactly as Back does.
+     * OK on a channel brings up the controls - it no longer leaves.
      *
-     * The television app's reasoning, and it is right: Back already returns to the list, and OK
-     * is the button a viewer's thumb is resting on. On a film OK belongs to whatever is
-     * highlighted, so this is only while the controls are down - which on a channel is most of
-     * the time, because there is so little to put up.
+     * The television app has OK leave a channel exactly as Back does, and this copied it. The
+     * owner pressed OK expecting the menu, and instead the channel closed, the list came back and
+     * the stream started over behind it - reported as the picture cutting out and loading for a
+     * long time. Back still leaves. Recorded in web/README.md.
      */
-    if (live && !visible && !stripOpen && key === 'enter') {
-      options.onExit(positionMs);
-      return true;
-    }
 
     /*
      * A series with the controls down: Down opens the strip, not the controls.
@@ -1361,12 +1366,15 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
      * the controls: there the controls are the point, and Down has a timeline to reach.
      */
     if (!visible && !stripOpen) {
-      if (live && key !== towardsControls()) return true;
+      if (live && key !== towardsControls() && key !== 'enter') return true;
       setVisible(true);
       focus(firstStop());
+      if (key === 'enter') okWokeAt = Date.now();
       return true;
     }
     armHide();
+    // The same OK, still held and repeating, must not go on to press what it has just highlighted.
+    if (key === 'enter' && Date.now() - okWokeAt < OK_REPEAT_GUARD_MS) return true;
 
     switch (key) {
       case 'down':

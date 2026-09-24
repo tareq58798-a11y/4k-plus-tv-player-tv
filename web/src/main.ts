@@ -14,7 +14,7 @@ import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
 import {
-  clearActivity, continueWatching, favoriteItems, isFavorite, recentlyAdded, rememberPosition,
+  clearActivity, continueWatching, favoriteItems, recordWatched, watchedLately, isFavorite, recentlyAdded, rememberPosition,
   resumePosition, toggleFavorite,
 } from './shared/library';
 import { askResume } from './ui/resumeChoice';
@@ -76,6 +76,9 @@ let detachNav: (() => void) | null = null;
  * the round trip, which is the whole problem this solves.
  */
 let browseReturn: { section: Section; category: string; focusKey: string } | null = null;
+
+/** A channel still playing as it comes back to the list, for the list to keep as its preview. */
+let carriedPreview: string | null = null;
 
 /**
  * Escapes a string for use inside an attribute selector.
@@ -427,7 +430,7 @@ function rowsFor(current: Section, items: PlaylistItem[]): LandingRow[] {
     {
       id: `${current}-recent`,
       title: current === 'live' ? t('home_recently_watched_live') : t('section_recently_watched'),
-      items: continueWatching(mine),
+      items: watchedLately(mine),
       minSlots: 5,
       tile: {
         title: allCategories,
@@ -729,7 +732,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   const specials: [string, PlaylistItem[]][] = [
     [
       current === 'live' ? t('section_recently_watched') : t('section_continue_watching'),
-      continueWatching(pool, 60),
+      watchedLately(pool, 60),
     ],
     [t('section_favorites'), favoriteItems(pool, 60)],
   ];
@@ -827,7 +830,10 @@ function browseScreen(current: Section, favoritesOnly = false): void {
    * it, so the rectangle is the window - see schedulePreview.
    */
   let previewTimer: number | null = null;
-  let previewing: string | null = null;
+  // Adopted from full screen when the viewer has just come back from it - see onExit in playScreen.
+  let previewing: string | null = live ? carriedPreview : null;
+  carriedPreview = null;
+  if (previewing) document.body.classList.add('previewing');
 
   function stopPreview(): void {
     if (previewTimer !== null) {
@@ -1185,8 +1191,19 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       renderSidebar();
       focusCategory(group);
     };
+    /*
+     * OK on a category goes into it: the highlight moves to its first film, channel or series.
+     * Focusing the row has already drawn that category, so what OK adds is the step across. It did
+     * nothing at all before, which left Right as the only way in, and a press that does nothing is
+     * one the viewer assumes did not register. A locked category's first stop is its Unlock button.
+     */
     row.addEventListener('click', () => {
-      if (reordering) putDown();
+      if (reordering) {
+        putDown();
+        return;
+      }
+      if (selected !== group) return;
+      focus(grid.querySelector<HTMLElement>('[data-focus]'));
     });
     if (!special) holdOk(row, () => {
       if (reordering) {
@@ -1330,7 +1347,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
    * makes, including its debounce, so stepping straight off onto another channel cancels it
    * before it ever becomes a request.
    */
-  if (live) {
+  // Not when coming back to a channel: focusing its row has already asked for it, and this would
+  // replace it a moment later with the first channel of the category.
+  if (live && !category) {
     /*
      * The first real channel, not the first row.
      *
@@ -1407,7 +1426,9 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
       series: item,
       details,
       backdrop,
-      onEpisode: (episode) =>
+      onEpisode: (episode) => {
+        // The series goes on Series' Recently watched when one of its episodes is played.
+        recordWatched(item);
         playScreen(
           {
             ...item,
@@ -1429,7 +1450,8 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
               thumbnailUrl: entry.thumbnailUrl,
               streamUrl: entry.streamUrl,
             })),
-        ),
+        );
+      },
       // Back to the browser when that is where this was opened from, and to the landing when it
       // was not - a series reached from a Home row should not drop the viewer into a category
       // browser they never asked for. browseReturn is only set by the grid, and it is not
@@ -1559,6 +1581,9 @@ function playScreen(
       return;
     }
   }
+  // Live TV's Recently watched: every channel watched full screen, whichever way it was reached -
+  // chosen from the list, handed over from the preview, or zapped to.
+  if (item.kind === 'live') recordWatched(item);
   clear();
   document.body.classList.add('playing');
   // The preview's hole in the backdrop goes with the preview. Full screen takes the whole backdrop
@@ -1623,7 +1648,29 @@ function playScreen(
     },
     onExit: (at) => {
       rememberPosition(item, at, durationMs);
-      player.stop();
+      // A shape picked in the player was for this title. The player object outlives it, and
+      // without this the next title, or the preview this channel goes back to, opened in it.
+      player.setScaling(videoScaling());
+      /*
+       * A channel going back to its list keeps playing, as that list's preview.
+       *
+       * Going in is already a handover - the preview grows to full screen without reopening the
+       * stream. Coming out was not: the stream was stopped here, and the list then waited its
+       * preview delay and opened the same channel again from nothing, so leaving a channel meant
+       * seconds of black before the picture behind the list came back. The list adopts the running
+       * stream instead (see carriedPreview in browseScreen), and the highlight goes back to the
+       * channel that is playing, which after zapping is not the one that was opened.
+       *
+       * Only back to the list: a channel opened from a landing row goes back to a page with no
+       * preview, and there it has to stop.
+       */
+      if (item.kind === 'live' && browseReturn) {
+        carriedPreview = item.streamUrl;
+        browseReturn = { ...browseReturn, focusKey: itemKey(item) };
+        player.on(() => undefined);
+      } else {
+        player.stop();
+      }
       overlay.destroy();
       release();
       // Back to the list this was opened from, and to the landing when it was opened from there.
@@ -1721,6 +1768,8 @@ function playScreen(
     overlay.setPaused(false);
     player.setScaling(videoScaling());
   } else {
+    // The Settings shape from the first frame, not whatever the previous title was left in.
+    player.setScaling(videoScaling());
     void player.play(item.streamUrl, full).catch((error: unknown) => {
       overlay.setMessage(error instanceof Error ? error.message : String(error));
     });

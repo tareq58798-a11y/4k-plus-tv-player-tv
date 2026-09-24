@@ -660,9 +660,24 @@ class TizenPlayer implements MediaPlayer {
    * was without saying so.
    */
   private show(rect: DOMRect, method: string): boolean {
+    /*
+     * The whole area, then the method, then the rectangle.
+     *
+     * This set the rectangle and then the method, and on the set the rectangle it handed over was
+     * right - 420,0,1080,1080 for 1:1, read back over the inspector - while the picture did not
+     * change shape. Samsung's multimedia FAQ says the display method only works with the rectangle
+     * at 0,0,1920,1080. So the method is now set while the rectangle is the whole player area, and
+     * only then is the rectangle narrowed to the shape. Widening first matters when going from one
+     * named shape to another: otherwise the method would find the previous shape's narrowed box.
+     * A set that applies the method inside whatever rectangle it is given ends up the same.
+     *
+     * Not yet seen on a set. If 1:1 still does not change the picture, this is the place to look.
+     */
     try {
-      this.av.setDisplayRect(...this.device(rect));
+      const area = this.baseRect ?? rect;
+      this.av.setDisplayRect(...this.device(area));
       this.av.setDisplayMethod(method);
+      if (area !== rect) this.av.setDisplayRect(...this.device(rect));
       return true;
     } catch {
       return false;

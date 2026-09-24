@@ -11,6 +11,9 @@ import { itemKey, type PlaylistItem } from './models';
 
 const FAVORITES = 'favorites';
 const RESUME = 'resume';
+/** Channels and series the viewer has watched, newest first - see recordWatched. */
+const RECENT_CHANNELS = 'recent_channels';
+const RECENT_SERIES = 'recent_series';
 
 export type ResumeMap = Record<string, { positionMs: number; durationMs: number; at: number }>;
 
@@ -102,6 +105,58 @@ export function clearActivity(items: PlaylistItem[]): void {
     }
   }
   if (touchedResume) saveResume(resume);
+
+  for (const store of [RECENT_CHANNELS, RECENT_SERIES]) {
+    const recent = readJson<string[]>(store, []);
+    const kept = recent.filter((key) => !keys.has(key));
+    if (kept.length !== recent.length) writeJson(store, kept);
+  }
+}
+
+/**
+ * Notes that a channel or a series was watched, most recent first.
+ *
+ * Neither can use the resume points films use. A channel has no position, and rememberPosition
+ * refuses live items outright - so Live TV's Recently watched was only ever empty. A series is
+ * watched an episode at a time, and each episode's position is kept under the episode's own id,
+ * which no series in the catalogue carries - so Series' was empty too.
+ *
+ * The television keeps a separate list for each, and this is those lists: a channel goes on
+ * `recent_ids_v3` whenever it is played (rememberChannel, twenty kept), and a series goes on
+ * `recent_v1` whenever one of its episodes is (recordRecent in SeriesScreen.kt, thirty kept).
+ * Films are not recorded here - their row is Continue watching, and resume points are that.
+ */
+export function recordWatched(item: PlaylistItem): void {
+  if (item.kind === 'movie') return;
+  const store = item.kind === 'live' ? RECENT_CHANNELS : RECENT_SERIES;
+  const limit = item.kind === 'live' ? 20 : 30;
+  const key = itemKey(item);
+  const recent = readJson<string[]>(store, []);
+  writeJson(store, [key, ...recent.filter((entry) => entry !== key)].slice(0, limit));
+}
+
+/**
+ * The row above a section's categories: recently watched channels or series, in the order they
+ * were watched, and for films the ones part way through. [items] may be of any kinds; each is
+ * answered from its own record.
+ */
+export function watchedLately(items: PlaylistItem[], limit = 20): PlaylistItem[] {
+  const films = continueWatching(items.filter((item) => item.kind === 'movie'), limit);
+  const order = new Map<string, number>();
+  for (const store of [RECENT_CHANNELS, RECENT_SERIES]) {
+    readJson<string[]>(store, []).forEach((key, index) => order.set(key, index));
+  }
+  // Once each: a provider lists the same channel under several categories, all with one id.
+  const seen = new Set<string>();
+  const others = items
+    .filter((item) => {
+      const key = itemKey(item);
+      if (item.kind === 'movie' || !order.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => order.get(itemKey(a))! - order.get(itemKey(b))!);
+  return [...films, ...others].slice(0, limit);
 }
 
 /**
