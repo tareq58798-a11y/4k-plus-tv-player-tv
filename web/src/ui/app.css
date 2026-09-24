@@ -972,6 +972,15 @@ body.playing #app {
   cursor: pointer;
 }
 
+/* The confirm button of a destructive question - Remove - in the error colour, as on Android. */
+.dialog-text-button.danger {
+  color: #ffb4ab;
+}
+
+.dialog-text-button.danger:focus {
+  background: rgba(255, 180, 171, 0.16);
+}
+
 .dialog-text-button:focus {
   outline: none;
   box-shadow: none;
@@ -2998,4 +3007,242 @@ body.playing .backdrop-scrim {
 .code-row strong {
   unicode-bidi: isolate;
   font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* ---------------------------------------------------------- add playlist
+ *
+ * ManualPlaylistScreen: a column of OutlinedTextFields and FilterChips under the title, 16dp
+ * apart, 34dp in from the sides on a landscape screen. Every size is the television's doubled.
+ */
+.add-playlist {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 24px 68px;
+  height: 1080px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+/* Nothing in the column gives up height to fit: the page scrolls instead. Without this the fields
+   were squeezed to fit the screen's height, and only the password's wrapper kept its 56dp. */
+.add-playlist > * {
+  flex: none;
+}
+
+/* OutlinedTextField: 56dp tall, a 1dp outline that turns Cyan and 2dp when focused, 4dp corners. */
+.outlined-field {
+  box-sizing: border-box;
+  width: 100%;
+  height: 112px;
+  padding: 0 32px;
+  font-size: 32px;
+  font-family: inherit;
+  color: var(--tone-text-primary);
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 8px;
+}
+
+.outlined-field::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.outlined-field:focus {
+  outline: none;
+  border: 4px solid var(--tone-accent);
+}
+
+/* titleMedium, 16sp. */
+.add-label {
+  font-size: 32px;
+  font-weight: 500;
+  color: var(--tone-text-primary);
+}
+
+/* FilterChip: 32dp tall, 8dp corners, 12dp apart; the selected one filled, the other outlined. */
+.server-chips {
+  display: flex;
+  gap: 24px;
+}
+
+.server-chip {
+  display: flex;
+  align-items: center;
+  height: 64px;
+  padding: 0 32px;
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--tone-text-primary);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+  cursor: pointer;
+}
+
+.server-chip[aria-selected='true'] {
+  background: #0e4a55;
+  border-color: transparent;
+}
+
+.server-chip:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--tone-accent);
+}
+
+/* The eye sits inside the end of the field, as a trailing icon does. */
+.password-field {
+  position: relative;
+}
+
+.password-field .outlined-field {
+  padding-inline-end: 112px;
+}
+
+.password-eye {
+  position: absolute;
+  inset-inline-end: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  cursor: pointer;
+}
+
+.password-eye-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--tone-text-primary);
+}
+
+.password-eye:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* bodySmall, 12sp. */
+.add-note {
+  font-size: 24px;
+  color: var(--tone-text-secondary);
+}
+
+/* The 52dp button across the full width. */
+.add-submit {
+  width: 100%;
+  flex: none;
+  height: 104px;
+}
+
+.button.disabled {
+  opacity: 0.38;
+}
+
+/* ------------------------------------------------------ settings: playlists */
+
+/* The current playlist's name: an OutlinedTextField across the card. */
+.settings-field {
+  display: block;
+}
+
+/* Material's filled Button across the card, 40dp tall, with its leading icon; greyed while it has
+   nothing to do, as the television's Rename is until the name has been changed. */
+.settings-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 80px;
+  border-radius: 40px;
+  font-size: 28px;
+  font-weight: 500;
+  color: #ffffff;
+  background: #1499f5;
+  cursor: pointer;
+}
+
+.settings-button-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.settings-button.disabled {
+  color: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--tone-accent);
+}
+
+/* OutlinedButton, 52dp: Add another playlist at the foot of the saved playlists. */
+.settings-button.outlined {
+  height: 104px;
+  color: var(--tone-text-primary);
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+}
+
+/* A saved playlist: the card, then the bin beside it. */
+.saved-playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.saved-playlist {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* The one in use: tinted Cyan, as the television's card is (Cyan at 14%). */
+.saved-playlist.active {
+  background: rgba(35, 215, 238, 0.14);
+}
+
+.saved-playlist:not(.active) .settings-icon {
+  color: var(--settings-on-variant);
+}
+
+.saved-playlist-switch {
+  flex: none;
+  padding: 0 16px;
+  font-size: 28px;
+  font-weight: 500;
+  color: #1499f5;
+}
+
+.saved-playlist-remove {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 48px;
+  cursor: pointer;
+}
+
+.saved-playlist-remove .settings-icon {
+  color: #ffb4ab;
+}
+
+.saved-playlist-remove:focus {
+  outline: none;
+  background: rgba(255, 180, 171, 0.16);
+}
+
+/* The server chips inside the welcome page's manual entry sit under their label like a field. */
+.field .server-chips {
+  margin-top: 8px;
+}
+
+/* The status line takes no room until it has something to say, so the button stays on screen. */
+.add-playlist .message:empty {
+  display: none;
 }

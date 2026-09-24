@@ -23,6 +23,19 @@ export function locale(): string {
   return current;
 }
 
+/**
+ * [tag] with Latin digits, for formatting dates and times.
+ *
+ * Arabic's own numbering in the browser's date and time formatting is Arabic-Indic, so the clock
+ * in the bar, programme times and dates came out as ١١:٠٨ once the language was Arabic, while
+ * every other number in the app - counts, the player's clocks, versions - stayed 0-9. The owner
+ * asked for English digits in every language. The Unicode locale extension "nu-latn" asks the
+ * formatter for 0-9 and changes nothing else: month and day names stay in the viewer's language.
+ */
+export function latinDigits(tag: string): string {
+  return tag.includes('-u-') ? `${tag}-nu-latn` : `${tag}-u-nu-latn`;
+}
+
 export function isRtl(): boolean {
   return RTL_LOCALES.has(current);
 }

@@ -21,6 +21,8 @@ import { askResume } from './ui/resumeChoice';
 import { iconElement } from './ui/icons';
 import { dropKeyHandlers, focus, handleKey, pushKeyHandler } from './ui/focus';
 import { askExit } from './ui/exitDialog';
+import { renderAddPlaylist, passwordField, serverPicker } from './ui/addPlaylist';
+import { ACTIVE_LOGIN, activeLogin, forgetPlaylist, renamePlaylist, sameAccount, savedPlaylists, useLogin } from './shared/playlists';
 import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
 import { renderNav, trackNavHighlight, type Section } from './ui/nav';
@@ -31,7 +33,7 @@ import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { createPlayerOverlay, type StripEpisode } from './ui/player';
-import { backgroundMode, liveChannelSort, videoScaling } from './shared/preferences';
+import { autoUpdateAfterMs, backgroundMode, liveChannelSort, videoScaling } from './shared/preferences';
 import {
   applyCategoryOrder, hiddenCategories, hideCategory, moveCategory, moveCategoryToEnd,
 } from './shared/categories';
@@ -60,7 +62,6 @@ let backdrop: Backdrop;
  */
 const PREVIEW_DELAY_MS = 900;
 
-const SAVED_LOGIN = 'login';
 /** An M3U playlist has no account, so it is remembered by address instead of by login. */
 const SAVED_M3U = 'm3u';
 
@@ -272,21 +273,24 @@ function loginScreen(message = ''): void {
   backdrop.reset();
 
   const name = el('input', { type: 'text', value: '4K Plus TV', 'data-focus': '', 'data-focus-id': 'name' });
-  const address = el('input', { type: 'text', placeholder: 'http://example.com:80', 'data-focus': '', 'data-focus-id': 'address' });
+  // The server is chosen, not typed: the television's manual entry offers its two approved
+  // servers as chips and has no address box (see shared/servers.ts).
+  const servers = serverPicker('welcome');
   const username = el('input', { type: 'text', 'data-focus': '', 'data-focus-id': 'username' });
-  // Masked, so the characters are not readable across a room. Nothing typed here is logged.
-  const password = el('input', { type: 'password', 'data-focus': '', 'data-focus-id': 'password' });
+  // Masked, so the characters are not readable across a room, with the eye to check what was
+  // typed. Nothing typed here is logged.
+  const password = passwordField('password', '');
   const status = el('div', { class: 'message' }, message);
 
   const connect = el('button', { class: 'button', 'data-focus': '', 'data-focus-id': 'connect' }, t('connect'));
   connect.addEventListener('click', () => {
     const entered: ProviderLogin = {
       name: name.value.trim() || '4K Plus TV',
-      address: address.value.trim(),
+      address: servers.address(),
       username: username.value.trim(),
-      password: password.value,
+      password: password.input.value,
     };
-    if (!entered.address || !entered.username || !entered.password) {
+    if (!entered.username || !entered.password) {
       status.textContent = t('enter_all_fields');
       return;
     }
@@ -315,9 +319,9 @@ function loginScreen(message = ''): void {
         el('h2', {}, t('add_playlist_manually')),
         el('p', {}, t('add_playlist_manually_desc')),
         field(t('playlist_name_label'), name),
-        field(t('server_address_label'), address),
+        el('div', { class: 'field' }, el('span', {}, t('choose_your_server')), servers.element),
         field(t('username_label'), username),
-        field(t('password_label'), password),
+        field(t('password_label'), password.element),
         connect,
         status,
       ),
@@ -326,7 +330,7 @@ function loginScreen(message = ''): void {
   focus(name);
 }
 
-async function connectAndLoad(entered: ProviderLogin, status: HTMLElement): Promise<void> {
+async function connectAndLoad(entered: ProviderLogin, status: HTMLElement): Promise<boolean> {
   status.textContent = t('loading_your_playlist');
   try {
     const loaded = await loadProvider(entered, {
@@ -337,13 +341,106 @@ async function connectAndLoad(entered: ProviderLogin, status: HTMLElement): Prom
         status.textContent = `${t('loading_playlist_from_network')} (${partial.items.length})`;
       },
     });
-    writeJson(SAVED_LOGIN, entered);
+    // Saved alongside any others, and made the one in use - see shared/playlists.
+    useLogin(entered);
     login = entered;
     catalogue = loaded;
     void writeCatalogue(cacheKey(entered), loaded);
     showSection('home');
+    return true;
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : String(error);
+    return false;
+  }
+}
+
+/* -------------------------------------------------------------- playlists */
+
+/**
+ * Opens [target] as the playlist in use: from its cached catalogue straight away when there is
+ * one, otherwise fetched behind a loading line, and back to the welcome page with the reason when
+ * it cannot be reached. What start() does at launch, and what the television's switchTo does.
+ */
+function openPlaylist(target: ProviderLogin): void {
+  useLogin(target);
+  login = target;
+  catalogue = null;
+  void (async () => {
+    const cached = await readCatalogue(cacheKey(target));
+    if (cached) {
+      void resumeFromCache(target, cached);
+      return;
+    }
+    clear();
+    const status = el('div', { class: 'status' }, t('loading_your_playlist'));
+    app.append(status);
+    if (!(await connectAndLoad(target, status))) loginScreen(status.textContent ?? '');
+  })();
+}
+
+/**
+ * Removes [target] from the saved playlists, with its cached catalogue. When it was the one in use
+ * the next saved playlist opens instead, and with none left the welcome page, as the television's
+ * removeSource falls back to its activation screen.
+ */
+function removePlaylist(target: ProviderLogin): void {
+  void clearCatalogue(cacheKey(target));
+  const wasActive = login !== null && sameAccount(login, target);
+  const next = forgetPlaylist(target);
+  if (!wasActive) return;
+  if (next) {
+    openPlaylist(next);
+    return;
+  }
+  removeStored(SAVED_M3U);
+  login = null;
+  catalogue = null;
+  loginScreen();
+}
+
+/** Add Playlist, from Settings. Back returns to Settings > Playlists, where it was opened. */
+function addPlaylistScreen(): void {
+  clear();
+  backdrop.reset();
+  renderAddPlaylist(app, {
+    onBack: () => (catalogue ? settingsScreen(undefined, 'playlist') : loginScreen()),
+    onSubmit: async (entered, status) => {
+      await connectAndLoad(entered, status);
+    },
+  });
+}
+
+/**
+ * Check for a playlist: asks the activation service about this device's own codes, and opens
+ * whatever has been assigned. Resolves to the sentence to show when nothing new was opened.
+ */
+async function checkForPlaylist(): Promise<string | null> {
+  try {
+    const { mac, key } = await identity();
+    const result = await activate(mac, key);
+    if (result.kind === 'm3u') {
+      clear();
+      const status = el('div', { class: 'status' }, t('loading_your_playlist'));
+      app.append(status);
+      try {
+        catalogue = await loadM3u(result.name, result.url);
+        login = null;
+        writeJson(SAVED_M3U, { name: result.name, url: result.url });
+        // An M3U has no login; the saved logins stay saved, but none is the one in use.
+        removeStored(ACTIVE_LOGIN);
+        showSection('home');
+      } catch (error) {
+        loginScreen(error instanceof Error ? error.message : t('playlist_could_not_be_loaded'));
+      }
+      return null;
+    }
+    clear();
+    const status = el('div', { class: 'status' }, t('loading_your_playlist'));
+    app.append(status);
+    if (!(await connectAndLoad(result.login, status))) loginScreen(status.textContent ?? '');
+    return null;
+  } catch (error) {
+    return error instanceof ActivationPending ? t('check_device_playlist_none') : t('check_device_playlist_failed');
   }
 }
 
@@ -366,21 +463,17 @@ async function resumeFromCache(
   showSection('home');
 
   /*
-   * Refreshed once a day, not on every launch.
+   * Refreshed when the viewer's auto-update interval has passed, not on every launch.
    *
    * This fetched the whole account again every time the app opened: several megabytes downloaded,
    * parsed and written back to the database, all on the one thread that also answers the remote,
    * during exactly the minute the viewer is finding something to watch. The Android app refreshes
-   * a cached playlist only when its auto-update interval has passed, and that interval defaults
-   * to daily (PlaylistViewModel.shouldAutoRefresh); this is that default. The interval setting
-   * itself is not offered here - see web/README.md - and Refresh playlist in Settings still
-   * fetches on demand.
+   * a cached playlist only when its interval has passed (PlaylistViewModel.shouldAutoRefresh):
+   * every time, daily - the default - or every two days, chosen under Settings > Playlists >
+   * Automatic. Refresh playlist there still fetches on demand.
    */
-  if (cached.ageMs >= AUTO_REFRESH_MS) void refreshInBackground(saved, key);
+  if (cached.ageMs >= autoUpdateAfterMs()) void refreshInBackground(saved, key);
 }
-
-/** The Android app's default auto-update interval, "daily". */
-const AUTO_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 async function refreshInBackground(saved: ProviderLogin, key: string): Promise<void> {
   try {
@@ -538,11 +631,26 @@ function searchScreen(): void {
   });
 }
 
-function settingsScreen(openAt?: 'language'): void {
+function settingsScreen(openAt?: 'language', returnTo?: 'playlist'): void {
   clear();
   renderSettings(app, {
     // The globe in the bar opens the language list directly; the gear opens the menu.
     openAt,
+    returnTo,
+    currentLogin: () => login,
+    savedPlaylists,
+    onRename: (name) => {
+      if (!login) return;
+      login = renamePlaylist(login, name);
+      if (catalogue) {
+        catalogue = { ...catalogue, name };
+        void writeCatalogue(cacheKey(login), catalogue);
+      }
+    },
+    onAddPlaylist: addPlaylistScreen,
+    onSwitchPlaylist: openPlaylist,
+    onRemovePlaylist: removePlaylist,
+    onCheckForPlaylist: checkForPlaylist,
     // Read from the catalogue each time rather than from whatever the browse screens are showing,
     // so a hidden category still appears here - it is the only place one can be brought back.
     categories: (kind) => [
@@ -582,7 +690,7 @@ function settingsScreen(openAt?: 'language'): void {
       // The catalogue goes with the account. Leaving one behind would mean the next sign-in
       // opened on somebody else's playlist.
       if (login) void clearCatalogue(cacheKey(login));
-      removeStored(SAVED_LOGIN);
+      removeStored(ACTIVE_LOGIN);
       // The M3U goes too. Leaving it would have the next start quietly reload the playlist the
       // viewer has just removed.
       removeStored(SAVED_M3U);
@@ -1928,7 +2036,7 @@ function boot(): void {
     };
   }
 
-  const saved = readJson<ProviderLogin | null>(SAVED_LOGIN, null);
+  const saved = activeLogin();
   const savedM3u = readJson<{ name: string; url: string } | null>(SAVED_M3U, null);
   if (!saved && savedM3u) {
     // An M3U has no login to replay, so it is simply fetched again. There is no cache behind it
@@ -1976,25 +2084,11 @@ function boot(): void {
 }
 
 function start(saved: ProviderLogin): void {
-  // Straight to the catalogue already on the device when there is one; otherwise the sign-in
-  // page with the saved details filled in, fetching while it shows.
-  void (async () => {
-    // Handed over rather than read a second time: a full catalogue is megabytes to copy out of
-    // the database, and it was being read twice on every launch.
-    const cached = await readCatalogue(cacheKey(saved));
-    if (cached) {
-      void resumeFromCache(saved, cached);
-      return;
-    }
-    loginScreen('');
-    const status = app.querySelector<HTMLElement>('.message');
-    const fields = app.querySelectorAll<HTMLInputElement>('.field input');
-    if (fields[0]) fields[0].value = saved.name;
-    if (fields[1]) fields[1].value = saved.address;
-    if (fields[2]) fields[2].value = saved.username;
-    if (fields[3]) fields[3].value = saved.password;
-    if (status) void connectAndLoad(saved, status);
-  })();
+  // Straight to the catalogue already on the device when there is one; otherwise fetched behind a
+  // loading line, and the welcome page with the reason if the provider cannot be reached. This
+  // used to fill the saved details into the welcome page's form, which has no address box now -
+  // the saved login is used as it is, whichever server it names.
+  openPlaylist(saved);
 }
 
 boot();

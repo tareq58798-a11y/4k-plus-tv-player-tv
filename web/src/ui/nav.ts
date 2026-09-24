@@ -10,7 +10,7 @@
  *    page, the indicator leaves the tab - otherwise two things on screen both look selected and
  *    neither is clearly where the next press will go.
  */
-import { locale, t } from '../shared/i18n';
+import { latinDigits, locale, t } from '../shared/i18n';
 
 export type Section = 'home' | 'live' | 'movies' | 'series';
 
@@ -134,8 +134,8 @@ export function renderNav(host: HTMLElement, options: NavOptions): HTMLElement {
 
   function paintClock(): void {
     const now = new Date();
-    const date = now.toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' });
-    const time = now.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+    const date = now.toLocaleDateString(latinDigits(locale()), { weekday: 'short', day: 'numeric', month: 'short' });
+    const time = now.toLocaleTimeString(latinDigits(locale()), { hour: 'numeric', minute: '2-digit' });
     clock.textContent = `${date}  ·  ${time}`;
   }
   paintClock();

@@ -8,6 +8,7 @@
  * Fetched for the channel the viewer settles on, never for a whole list. A category of four
  * hundred channels would otherwise be four hundred requests to show two lines about one of them.
  */
+import { latinDigits } from '../shared/i18n';
 import { shortEpg } from '../shared/xtream';
 import type { EpgProgram, PlaylistItem, ProviderLogin } from '../shared/models';
 
@@ -70,7 +71,8 @@ export function createEpgLoader(login: ProviderLogin | null, onResult: (channel:
 /** 20:05, in the viewer's own locale and clock convention. */
 export function clockTime(epochSeconds: number, locale: string): string {
   try {
-    return new Date(epochSeconds * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    // Latin digits in every language - see latinDigits.
+    return new Date(epochSeconds * 1000).toLocaleTimeString(latinDigits(locale), { hour: '2-digit', minute: '2-digit' });
   } catch {
     const date = new Date(epochSeconds * 1000);
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;

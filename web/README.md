@@ -133,17 +133,16 @@ stops it being reopened every few months.
   screen. Here it is fitted inside the screen with dark space either side, at the owner's request,
   so a poster used as a background shows all of itself rather than a slice of its middle. A
   landscape backdrop of the screen's shape looks the same either way. Decided on 2026-09-24.
+* **English digits in every language.** Dates and times are formatted with Latin digits
+  (`-u-nu-latn`, see `latinDigits` in `shared/i18n.ts`), so Arabic shows 11:08 rather than ١١:٠٨,
+  at the owner's request. Month and day names stay in the viewer's language. Decided on
+  2026-09-24.
 * **Back goes to Home.** The television steps back a level at a time (category browser to its
   section, section to Home, Home to "Exit app?"). Here Back from any page - a section, a category
   browser, a film's page, a series, search, Settings - goes straight to Home, and Home asks the
   television's "Exit app?", at the owner's request. Inside Settings a sub-page still goes up to the
   Settings menu first, and the player still returns to wherever the title was opened from.
   Decided on 2026-09-24.
-* **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
-  refreshed from the provider (every launch, daily, every two days). This app uses Android's
-  default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole
-  account on every launch did it on the same thread that answers the remote. Refresh playlist in
-  Settings still fetches on demand. Decided on 2026-09-24.
 * **Start muted, and embedded-subtitle handling.** Decisions the decoder makes for us on this
   platform. A switch that does nothing is worse than an absent one.
 * **Down opening the episode strip while the controls are up.** On the television,

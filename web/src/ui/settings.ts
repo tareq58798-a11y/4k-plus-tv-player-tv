@@ -10,10 +10,13 @@
  * Only the pages that exist are listed. A row leading to a page nobody has written is worse than a
  * missing row - it invites a press and answers with nothing.
  */
-import { availableLocales, locale, setLocale, t } from '../shared/i18n';
+import { availableLocales, latinDigits, locale, setLocale, t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
+  autoUpdateInterval,
+  type AutoUpdateInterval,
   backgroundMode,
+  setAutoUpdateInterval,
   liveChannelSort,
   setLiveChannelSort,
   setBackgroundMode,
@@ -26,7 +29,9 @@ import {
   type LiveChannelSort,
   type VideoScalingPreference,
 } from '../shared/preferences';
-import type { LoadedPlaylist } from '../shared/models';
+import type { LoadedPlaylist, ProviderLogin } from '../shared/models';
+import { sameAccount } from '../shared/playlists';
+import { confirm } from './confirmDialog';
 import {
   cryptoAvailable, hasPin, isUnlocked, markUnlocked, parental, setPin, toggleCategoryLock,
   toggleChannelLock, update,
@@ -88,15 +93,34 @@ export interface SettingsOptions {
    */
   openAt?: 'language';
   /**
+   * A page to come back to, as an ordinary page rather than a first level: Back from it goes to
+   * the settings menu. Add Playlist returns here, to Settings > Playlists, where it was opened.
+   */
+  returnTo?: 'playlist';
+  /**
    * Every category the current playlist has, per kind, whether hidden or not.
    *
    * Asked for rather than passed as a value because hiding one changes the answer, and a list
    * captured when settings opened would stop matching what the page is showing.
    */
   categories: (kind: CategoryKind) => string[];
+  /** Leaves the playlist in use when it is not a saved login - an M3U. */
   onSignOut: () => void;
 
   onClearCache: () => void;
+  /** The provider login in use, or null for an M3U or nothing. */
+  currentLogin: () => ProviderLogin | null;
+  /** Every saved provider login, for Manage saved playlists. */
+  savedPlaylists: () => ProviderLogin[];
+  onRename: (name: string) => void;
+  onAddPlaylist: () => void;
+  onSwitchPlaylist: (login: ProviderLogin) => void;
+  onRemovePlaylist: (login: ProviderLogin) => void;
+  /**
+   * Asks the activation service whether a playlist has been assigned to this device, and loads it
+   * if one has. Resolves to what to tell the viewer when the answer is not a new playlist.
+   */
+  onCheckForPlaylist: () => Promise<string | null>;
 
   /** The loaded catalogue, for the App info page. Asked for, so it reflects the current one. */
   playlist: () => LoadedPlaylist | null;
@@ -112,6 +136,7 @@ export interface SettingsOptions {
 type Page =
   | 'root'
   | 'playlist'
+  | 'playlists'
   | 'info'
   | 'playback'
   | 'appearance'
@@ -131,6 +156,7 @@ type Tint = 'orange' | 'blue' | 'cyan';
 /** Each page's icon, the one SettingsScreen.kt gives both its menu row and its SettingsSection. */
 const PAGE_ICON: Record<Exclude<Page, 'root'>, IconName> = {
   playlist: 'playlistPlay',
+  playlists: 'playlistPlay',
   info: 'info',
   playback: 'playCircle',
   appearance: 'wallpaper',
@@ -144,6 +170,7 @@ const PAGE_ICON: Record<Exclude<Page, 'root'>, IconName> = {
 
 /** Where Back goes from each page. The two lock lists belong to the parental page. */
 const PARENT: Partial<Record<Page, Page>> = {
+  playlists: 'playlist',
   lockCategories: 'parental',
   lockChannels: 'parental',
 };
@@ -237,7 +264,7 @@ function subheading(text: string): HTMLElement {
 }
 
 export function renderSettings(host: HTMLElement, options: SettingsOptions): void {
-  let page: Page = options.openAt ?? 'root';
+  let page: Page = options.openAt ?? options.returnTo ?? 'root';
 
   /*
    * Back walks out one level at a time rather than leaving settings from four pages deep, which is
@@ -339,6 +366,7 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function title(): string {
     switch (page) {
       case 'playlist': return t('settings_playlists');
+      case 'playlists': return t('playlists_title');
       case 'info': return t('settings_app_info');
       case 'playback': return t('settings_playback');
       case 'appearance': return t('settings_appearance');
@@ -427,7 +455,7 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       factRow(
         t('expiry_date_label'),
         playlist?.expiryEpochSeconds
-          ? new Date(playlist.expiryEpochSeconds * 1000).toLocaleDateString(locale())
+          ? new Date(playlist.expiryEpochSeconds * 1000).toLocaleDateString(latinDigits(locale()))
           : t('not_provided'),
       ),
     );
@@ -565,13 +593,165 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     return appearance;
   }
 
+  /** What Check for a playlist last said, shown in its row until the page is left. */
+  let checkMessage: string | null = null;
+  let checking = false;
+
+  /**
+   * Settings > Playlists, in the television's order (SettingsScreen.kt, SettingsPage.PLAYLIST):
+   * Manage saved playlists; the current playlist's name with Rename; Refresh playlist; Automatic,
+   * the three auto-update intervals; Check for a playlist; Add another playlist; Remove playlist;
+   * and the provider account it is signed in as.
+   */
   function playlistPage(): HTMLElement {
-    const actions = el('div', { class: 'settings-group', 'data-focus-group': 'settings-actions' });
-    actions.append(
-      actionRow('clear-cache', 'refresh', t('refresh_playlist'), t('refresh_playlist_desc'), options.onClearCache),
-      actionRow('sign-out', 'deleteForever', t('remove_playlist_action'), t('remove_playlist_desc'), options.onSignOut, true),
+    const group = el('div', { class: 'settings-group', 'data-focus-group': 'settings-actions' });
+    const current = options.currentLogin();
+
+    group.append(
+      actionRow('open-playlists', 'playlistPlay', t('manage_saved_playlists'), t('manage_saved_playlists_desc'), () => open('playlists')),
+      el('div', { class: 'settings-divider' }),
     );
-    return actions;
+
+    if (current) {
+      group.append(subheading(t('current_playlist')));
+      const name = el('input', {
+        class: 'outlined-field settings-field',
+        type: 'text',
+        placeholder: t('playlist_name_label'),
+        tabindex: '-1',
+        'data-focus': '',
+        'data-focus-id': 'playlist-name',
+      }) as HTMLInputElement;
+      name.value = current.name;
+      // The television's Button: enabled once the name is not blank and differs from the saved one.
+      const rename = pressable('rename-playlist', 'settings-button');
+      rename.append(iconElement('rename', 'settings-button-icon'), el('span', {}, t('rename_action')));
+      const changed = (): boolean => Boolean(name.value.trim()) && name.value.trim() !== current.name;
+      const refreshRename = (): void => {
+        rename.classList.toggle('disabled', !changed());
+      };
+      name.addEventListener('input', refreshRename);
+      refreshRename();
+      rename.addEventListener('click', () => {
+        if (!changed()) return;
+        options.onRename(name.value.trim());
+        redraw('rename-playlist');
+      });
+      group.append(name, rename);
+    }
+
+    group.append(
+      actionRow('clear-cache', 'refresh', t('refresh_playlist'), t('refresh_playlist_desc'), options.onClearCache),
+      el('div', { class: 'settings-divider' }),
+      subheading(t('auto_update_title')),
+    );
+    const interval = autoUpdateInterval();
+    const INTERVALS: { value: AutoUpdateInterval; label: () => string }[] = [
+      { value: 'everytime', label: () => t('auto_update_everytime') },
+      { value: 'daily', label: () => t('auto_update_daily') },
+      { value: 'every_2_days', label: () => t('auto_update_every_2_days') },
+    ];
+    for (const entry of INTERVALS) {
+      const id = `auto-update-${entry.value}`;
+      group.append(choiceRow(id, entry.label(), entry.value === interval, () => {
+        setAutoUpdateInterval(entry.value);
+        redraw(id);
+      }));
+    }
+
+    group.append(el('div', { class: 'settings-divider' }));
+    // For a device whose playlist is assigned in the dashboard: one press to ask, rather than
+    // removing the playlist and going back through the welcome page to find out. What it says
+    // stands in for the television's snackbar, in the row's own description.
+    group.append(
+      actionRow(
+        'check-playlist',
+        'sync',
+        t('check_device_playlist'),
+        checking ? t('check_device_playlist_checking') : checkMessage ?? t('check_device_playlist_desc'),
+        () => {
+          if (checking) return;
+          checking = true;
+          checkMessage = null;
+          redraw('check-playlist');
+          void options.onCheckForPlaylist().then((message) => {
+            checking = false;
+            // A playlist that was found has already replaced this page with Home.
+            if (message === null || !host.isConnected) return;
+            checkMessage = message;
+            if (page === 'playlist') redraw('check-playlist');
+          });
+        },
+      ),
+      actionRow('add-playlist', 'addCircleOutline', t('add_another_playlist'), t('add_another_playlist_desc'), options.onAddPlaylist),
+      actionRow('sign-out', 'deleteForever', t('remove_playlist_action'), t('remove_playlist_desc'), () => {
+        confirm({
+          id: 'remove-playlist',
+          title: t('remove_playlist_dialog_title'),
+          message: t('remove_playlist_dialog_body'),
+          dismissLabel: t('action_cancel'),
+          confirmLabel: t('action_remove'),
+          destructive: true,
+          onConfirm: () => (current ? options.onRemovePlaylist(current) : options.onSignOut()),
+        });
+      }, true),
+    );
+    group.append(
+      el(
+        'div',
+        { class: 'settings-note' },
+        current?.username ? t('provider_account_label', current.username) : t('m3u_playlist_label'),
+      ),
+    );
+    return group;
+  }
+
+  /**
+   * Manage saved playlists - PlaylistManagerScreen on the television. Each saved playlist as a
+   * card: its name, and "Active playlist" or the account it signs in as. Pressing a card that is
+   * not in use switches to it; the bin beside each asks, then removes it. "Add another playlist"
+   * at the foot.
+   */
+  function playlistsPage(): HTMLElement {
+    const group = el('div', { class: 'settings-group', 'data-focus-group': 'saved-playlists' });
+    group.append(el('div', { class: 'settings-note' }, t('playlists_manager_desc')));
+    const current = options.currentLogin();
+    options.savedPlaylists().forEach((saved, index) => {
+      const active = current !== null && sameAccount(saved, current);
+      const card = pressable(`saved-${index}`, active ? 'settings-row saved-playlist active' : 'settings-row saved-playlist');
+      card.append(
+        iconElement('accountCircle', 'settings-icon'),
+        rowText(saved.name, active ? t('active_playlist_status') : t('provider_login_status', saved.username)),
+      );
+      if (!active) card.append(el('span', { class: 'saved-playlist-switch' }, t('action_switch')));
+      card.addEventListener('click', () => {
+        if (!active) options.onSwitchPlaylist(saved);
+      });
+      const bin = pressable(`saved-${index}-remove`, 'saved-playlist-remove');
+      bin.setAttribute('aria-label', t('remove_playlist_action'));
+      bin.append(iconElement('deleteOutline', 'settings-icon'));
+      bin.addEventListener('click', () => {
+        confirm({
+          id: 'remove-saved-playlist',
+          title: t('remove_playlist_confirm_title', saved.name),
+          message: t('remove_playlist_confirm_body'),
+          dismissLabel: t('action_cancel'),
+          confirmLabel: t('action_remove'),
+          destructive: true,
+          onConfirm: () => {
+            options.onRemovePlaylist(saved);
+            // Still here when it was not the one in use; the list is shorter now.
+            if (host.isConnected && page === 'playlists') redraw(null);
+          },
+        });
+      });
+      group.append(el('div', { class: 'saved-playlist-row' }, card, bin));
+    });
+    const add = pressable('saved-add', 'settings-button outlined');
+    add.append(iconElement('addCircleOutline', 'settings-button-icon'), el('span', {}, t('add_another_playlist')));
+    add.addEventListener('click', options.onAddPlaylist);
+    group.append(add);
+    return group;
   }
 
   /**
@@ -865,6 +1045,7 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function body(): HTMLElement {
     switch (page) {
       case 'playlist': return playlistPage();
+      case 'playlists': return playlistsPage();
       case 'info': return infoPage();
       case 'playback': return playbackPage();
       case 'history': return historyPage();

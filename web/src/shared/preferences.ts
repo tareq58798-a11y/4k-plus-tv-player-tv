@@ -161,3 +161,33 @@ export function liveChannelSort(): LiveChannelSort {
 export function setLiveChannelSort(order: LiveChannelSort): void {
   writeJson(LIVE_SORT_KEY, order);
 }
+
+/**
+ * How often a cached playlist is fetched again from the provider when the app opens.
+ *
+ * Settings > Playlists > Automatic on the television, under the same key and values
+ * (`auto_update_interval` in playback_settings), and the same default, daily. Refresh playlist
+ * fetches on demand whichever is chosen.
+ */
+const AUTO_UPDATE_KEY = 'auto_update_interval';
+const AUTO_UPDATES = ['everytime', 'daily', 'every_2_days'] as const;
+export type AutoUpdateInterval = (typeof AUTO_UPDATES)[number];
+
+export function autoUpdateInterval(): AutoUpdateInterval {
+  const stored = readJson<unknown>(AUTO_UPDATE_KEY, 'daily');
+  return AUTO_UPDATES.includes(stored as AutoUpdateInterval) ? (stored as AutoUpdateInterval) : 'daily';
+}
+
+export function setAutoUpdateInterval(interval: AutoUpdateInterval): void {
+  writeJson(AUTO_UPDATE_KEY, interval);
+}
+
+/** How old a cached playlist may be before it is fetched again, as shouldAutoRefresh decides. */
+export function autoUpdateAfterMs(): number {
+  const day = 24 * 60 * 60 * 1000;
+  switch (autoUpdateInterval()) {
+    case 'everytime': return 0;
+    case 'every_2_days': return 2 * day;
+    default: return day;
+  }
+}
