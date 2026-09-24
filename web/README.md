@@ -129,6 +129,11 @@ stops it being reopened every few months.
   every fifteen seconds while playing, not only on leaving. "Play from beginning" has no Android
   string yet, so it is in strings.local.ts in English only. Added at the owner's request on
   2026-09-24; the Android app is unchanged.
+* **(The other way round) a subtitle size.** Small, Medium, Large and Extra large in the player's
+  subtitles menu on films and series, kept between titles. The television leaves captions to
+  media3 and has no size setting. Medium is the 40px this player always drew; the labels are in
+  strings.local.ts in English only. Added at the owner's request on 2026-09-24; the Android app is
+  unchanged.
 * **Named aspect frames that always change the picture.** See the table above. The television's
   16:9 and 4:3 do nothing to a stream already of a similar shape; here each gives its shape.
   Changed at the owner's request on 2026-09-24; the Android app is unchanged.

@@ -48,6 +48,10 @@ import { focus } from './focus';
 import { t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
+  SUBTITLE_SIZES,
+  setSubtitleSize,
+  subtitleSize,
+  type SubtitleSize,
   setSkipSeconds,
   setSubtitleBackground,
   skipSeconds,
@@ -600,6 +604,23 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    */
   let captionBackground = subtitleBackground();
   captions.classList.toggle('boxed', captionBackground);
+
+  /*
+   * How large the line is drawn. The captions are this app's own text - AVPlay hands over the cue
+   * rather than painting it - so the size is simply the font size of that box: 40px at Medium, which
+   * is what it always was, scaled by the choice. Kept between titles, like the backing above.
+   */
+  let captionSize = subtitleSize();
+  const applyCaptionSize = (): void => {
+    captions.style.fontSize = `${Math.round(40 * SUBTITLE_SIZES[captionSize])}px`;
+  };
+  applyCaptionSize();
+  const SIZE_LABELS: Record<SubtitleSize, () => string> = {
+    small: () => t('subtitle_size_small'),
+    medium: () => t('subtitle_size_medium'),
+    large: () => t('subtitle_size_large'),
+    xlarge: () => t('subtitle_size_xlarge'),
+  };
   let subtitlesOn = true;
 
   function applySubtitlesOn(next: boolean): void {
@@ -644,6 +665,20 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
           captions.classList.toggle('boxed', captionBackground);
         },
       },
+      // Films and series only. A channel's subtitles are rare and its menu stays as it was.
+      ...(live ? [] : [
+        { label: t('subtitle_size'), id: 'pc-menu-subtitle-size', inert: true },
+        ...(Object.keys(SUBTITLE_SIZES) as SubtitleSize[]).map((size) => ({
+          label: SIZE_LABELS[size](),
+          id: `pc-menu-subtitle-size-${size}`,
+          selected: size === captionSize,
+          onPick: () => {
+            captionSize = size;
+            setSubtitleSize(size);
+            applyCaptionSize();
+          },
+        })),
+      ]),
     ], true);
   });
 

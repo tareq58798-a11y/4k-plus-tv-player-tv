@@ -87,6 +87,28 @@ export function setSubtitleBackground(on: boolean): void {
 }
 
 /**
+ * How large the player draws subtitles, as a multiple of its own 40px line.
+ *
+ * Not a television value: the television leaves captions to media3's SubtitleView and offers no
+ * size. Medium is the size this player has always used, and the other three step from it - small
+ * enough to keep a long line on one row, large enough to read across a room.
+ */
+export const SUBTITLE_SIZES = { small: 0.8, medium: 1, large: 1.3, xlarge: 1.6 } as const;
+
+export type SubtitleSize = keyof typeof SUBTITLE_SIZES;
+
+const SUBTITLE_SIZE_KEY = 'subtitle_size';
+
+export function subtitleSize(): SubtitleSize {
+  const stored = readJson<string>(SUBTITLE_SIZE_KEY, 'medium');
+  return stored in SUBTITLE_SIZES ? (stored as SubtitleSize) : 'medium';
+}
+
+export function setSubtitleSize(size: SubtitleSize): void {
+  writeJson(SUBTITLE_SIZE_KEY, size);
+}
+
+/**
  * How far the skip buttons and Left/Right on the timeline move, in seconds.
  *
  * The same five choices the television app offers, and the same default. It was fixed at ten here,

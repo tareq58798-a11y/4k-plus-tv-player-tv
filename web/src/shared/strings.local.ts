@@ -57,6 +57,13 @@ export const LOCAL_EN = {
   // asking, so it has no string for starting again; "Resume {1}" is its own and is used beside
   // this one.
   play_from_beginning: 'Play from beginning',
+  // The size choices in the player's subtitles menu. The television has no subtitle size setting,
+  // so there is nothing of its to extract.
+  subtitle_size: 'Subtitle size',
+  subtitle_size_small: 'Small',
+  subtitle_size_medium: 'Medium',
+  subtitle_size_large: 'Large',
+  subtitle_size_xlarge: 'Extra large',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;
