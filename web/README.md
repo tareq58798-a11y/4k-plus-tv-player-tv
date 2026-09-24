@@ -122,6 +122,10 @@ stops it being reopened every few months.
   however often they are pressed. Here presses in quick succession grow: after two, each is worth
   three skips, then six, then twelve. The timeline itself follows the television (a twentieth of
   the running time per press, sent to the decoder once the presses stop). Decided on 2026-09-24.
+* **A category search on Movies and Series.** The television has a "Search categories" box only
+  on Live TV, beside "Search channels". Here all three sections have both boxes - categories at
+  the top of the category column, titles at the top of the posters or channels - at the owner's
+  request. Decided on 2026-09-24.
 * **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
   refreshed from the provider (every launch, daily, every two days). This app uses Android's
   default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole

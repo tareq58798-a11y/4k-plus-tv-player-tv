@@ -701,6 +701,53 @@ body.playing #app {
   border-color: var(--tone-accent);
 }
 
+/*
+ * The column that holds the title search above the posters or the channels.
+ *
+ * It takes over the sizing the grid and the channel list used to do as children of .browser: the
+ * poster column takes the width left beside the categories, the channel column keeps its fixed
+ * width. Both stay 880px tall in all, the height of the category pane beside them, with the box
+ * taking a fixed 80px of it (64 and a 16 gap) and the list below the rest.
+ *
+ * Heights are given outright rather than left to flex. The grid inside has already been blank on
+ * a television once over row sizing (see the note on .grid), and a fixed height is the arrangement
+ * that was measured to work there.
+ */
+.browse-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 880px;
+}
+
+.browse-column.live {
+  flex: 0 0 var(--dim-channel-pane-width);
+  width: var(--dim-channel-pane-width);
+}
+
+.entry-search {
+  flex: none;
+  height: 64px;
+  margin-bottom: 16px;
+}
+
+.browse-column > .grid,
+.browse-column > .channel-list {
+  flex: none;
+  height: 800px;
+}
+
+.browse-column > .channel-list {
+  width: 100%;
+}
+
+.category-empty {
+  padding: 10px 22px;
+  font-size: var(--type-category-label);
+  color: var(--tone-text-secondary);
+}
+
 .grid-empty {
   grid-column: 1 / -1;
   padding: var(--dim-gap-l) 0;

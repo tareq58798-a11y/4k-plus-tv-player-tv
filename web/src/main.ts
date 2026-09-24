@@ -1134,34 +1134,20 @@ function browseScreen(current: Section, favoritesOnly = false): void {
    * hand-move would forget itself after a single nudge.
    */
   function renderSidebar(): void {
-    sidebar.textContent = '';
-    // The box sits above the list, where the television app puts it. Typing in it is the one thing
-    // on this screen that is not a D-pad move, so it is first in the focus order rather than
-    // buried under a hundred categories.
-    const field = el('input', {
-      class: 'category-search',
-      type: 'text',
-      placeholder: current === 'live' ? t('search_channels') : current === 'movies' ? t('search_all_movies') : t('search_all_series'),
-      tabindex: '-1',
-      'data-focus': '',
-      'data-focus-id': 'browse-search',
-      'data-focus-up': 'none',
-    }) as HTMLInputElement;
-    field.value = search;
-    field.addEventListener('input', () => {
-      search = field.value;
-      // Debounced for the reason the television app debounces it: a provider list runs to tens of
-      // thousands of titles, and re-filtering and re-drawing on every keystroke is what made
-      // typing feel like it was lagging a letter behind.
-      if (searchTimer !== null) window.clearTimeout(searchTimer);
-      searchTimer = window.setTimeout(() => {
-        searchTimer = null;
-        renderGrid();
-      }, 320);
-    });
-    sidebar.append(field);
+    categoryList.textContent = '';
+    // While the category box has something in it, only the provider's categories whose names
+    // contain it, and none of the rows above them - Android's serverCategories filter, which also
+    // drops Recently watched and Favorites while a query is typed. Case-insensitive, as there.
+    const categoryNeedle = categoryQuery.trim().toLocaleLowerCase();
+    const listed = categoryNeedle
+      ? groups.filter((group) => group.toLocaleLowerCase().includes(categoryNeedle))
+      : [...specialNames, ...groups];
+    if (!listed.length) {
+      categoryList.append(el('div', { class: 'category-empty' }, t('no_categories_match')));
+      return;
+    }
 
-    for (const group of [...specialNames, ...groups]) {
+    for (const group of listed) {
     const special = specialNames.includes(group);
     const row = el(
       'div',
@@ -1183,6 +1169,12 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     // without needing a press for each one.
     row.addEventListener('focus', () => {
       selected = group;
+      // Choosing a category ends a search of the titles, as on the television (channelQuery = ""
+      // on entering a category): the grid is that category's again, not the search's results.
+      if (search) {
+        search = '';
+        entryField.value = '';
+      }
       for (const other of sidebar.querySelectorAll('.category')) {
         other.setAttribute('aria-selected', String(other.getAttribute('data-focus-id') === group));
       }
@@ -1244,7 +1236,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         onDismiss: () => undefined,
       });
     });
-    sidebar.append(row);
+    categoryList.append(row);
     }
   }
 
@@ -1258,7 +1250,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
 
   /** Puts the highlight back on a named row after the list has been rebuilt under it. */
   function focusCategory(group: string): void {
-    for (const row of sidebar.children) {
+    for (const row of categoryList.children) {
       if (row.getAttribute('data-focus-id') === group) {
         focus(row as HTMLElement);
         return;
@@ -1279,6 +1271,63 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   // whatever the decoder is doing.
   document.body.classList.remove('playing');
 
+  /*
+   * Two search boxes, where the television puts them: one at the top of the category column that
+   * narrows the list of categories, and one at the top of the channels or the posters that searches
+   * every title in the section. There used to be only the second, sitting over the categories,
+   * which read as a search of the categories and was not one.
+   *
+   * Both are made once and kept. The category list is redrawn under its box as the query changes;
+   * redrawing the box as well would take the highlight, and the on-screen keyboard, away from the
+   * viewer in the middle of typing.
+   */
+  let categoryQuery = '';
+  let categoryTimer: number | null = null;
+  const categoryField = el('input', {
+    class: 'category-search',
+    type: 'text',
+    placeholder: t('search_categories'),
+    tabindex: '-1',
+    'data-focus': '',
+    'data-focus-id': 'category-search',
+    'data-focus-up': 'none',
+  }) as HTMLInputElement;
+  categoryField.addEventListener('input', () => {
+    categoryQuery = categoryField.value;
+    if (categoryTimer !== null) window.clearTimeout(categoryTimer);
+    categoryTimer = window.setTimeout(() => {
+      categoryTimer = null;
+      renderSidebar();
+    }, 200);
+  });
+  const categoryList = el('div', { class: 'category-list' });
+  sidebar.append(categoryField, categoryList);
+
+  const entryField = el('input', {
+    class: 'category-search entry-search',
+    type: 'text',
+    placeholder: current === 'live' ? t('search_channels') : current === 'movies' ? t('search_all_movies') : t('search_all_series'),
+    tabindex: '-1',
+    'data-focus': '',
+    'data-focus-id': 'browse-search',
+    'data-focus-up': 'none',
+    // Down goes to the first result, not to whichever poster happens to sit under the middle of a
+    // box as wide as the grid.
+    'data-focus-down': `[data-focus-group="${live ? 'browser-channels' : 'browser-grid'}"] [data-focus]`,
+  }) as HTMLInputElement;
+  entryField.addEventListener('input', () => {
+    search = entryField.value;
+    // Debounced for the reason the television app debounces it: a provider list runs to tens of
+    // thousands of titles, and re-filtering and re-drawing on every keystroke is what made
+    // typing feel like it was lagging a letter behind.
+    if (searchTimer !== null) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      searchTimer = null;
+      renderGrid();
+    }, 320);
+  });
+  const entryColumn = el('div', { class: live ? 'browse-column live' : 'browse-column' }, entryField, grid);
+
   renderSidebar();
 
   const back = el('div', { class: 'browser-title' }, t(current === 'live' ? 'nav_live_tv' : current === 'movies' ? 'nav_movies' : 'nav_series'));
@@ -1292,17 +1341,17 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         'div',
         { class: 'browser' },
         sidebar,
-        grid,
+        entryColumn,
         // No preview pane any more: the picture is the whole background, so this column carries
         // only what is on - see the rect in schedulePreview.
         el('div', { class: 'browser-main' }, guide),
       ),
     );
   } else {
-    // The grid is a flex child of .browser directly, not wrapped: it has to be the thing that
-    // takes the width left over by the category column, because that width is what decides how
-    // wide its seven columns are.
-    app.append(back, el('div', { class: 'browser' }, sidebar, grid));
+    // The column holding the title search and the grid is what takes the width left over by the
+    // category column (see .browse-column), because that width is what decides how wide the
+    // grid's seven columns are.
+    app.append(back, el('div', { class: 'browser' }, sidebar, entryColumn));
   }
   renderGrid();
 
@@ -1799,6 +1848,22 @@ function boot(): void {
   backdrop = new Backdrop(backdropHost);
 
   window.addEventListener('keydown', (event) => {
+    /*
+     * Typing in a search box is typing, not remote buttons.
+     *
+     * Space is mapped to Play/Pause and Backspace to Back, so that a keyboard can stand in for a
+     * remote - and inside a text box that ate every space (searching "film 7" searched "film7")
+     * and made deleting a letter leave the page. In a box, those two, and any other key that
+     * produces a character, go to the box. The remote's own Back is a different key (10009 on
+     * Samsung) and still works from inside one.
+     */
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement &&
+      (event.key === ' ' || event.key === 'Backspace' || event.key === 'Delete' || event.key.length === 1)
+    ) {
+      return;
+    }
     const key = keyOf(event, platform);
     if (!key) return;
     // Back is the one key a television acts on itself when the app ignores it - Samsung closes
