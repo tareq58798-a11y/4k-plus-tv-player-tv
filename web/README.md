@@ -106,6 +106,12 @@ stops it being reopened every few months.
   artwork with a left-hand gradient (85% at the edge) and a top-to-bottom one (88% at the foot).
   Here every section gets the flat 30% black that Live TV already had, so the other three are as
   light as Live TV. Changed at the owner's request on 2026-09-24. The Android app is unchanged.
+* **Mirrored player controls in Arabic.** The television lets media3's controller follow the
+  language, so in Arabic rewind is on the right and fast-forward on the left, and its options bar
+  moves to the top left. Here the transport, the timeline, the bottom bar and the options row are
+  pinned left to right, top right, in every language, because a player's controls read the same
+  way everywhere. The words stay Arabic, and the episode strip still reads right to left. Changed
+  at the owner's request on 2026-09-24. The Android app is unchanged.
 
 ## State
 

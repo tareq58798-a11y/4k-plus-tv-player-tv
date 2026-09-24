@@ -32,6 +32,7 @@ import {
   hiddenCategories, hideCategory, unhideCategory, type CategoryKind,
 } from '../shared/categories';
 import { focus, pushKeyHandler } from './focus';
+import { iconElement, type IconName } from './icons';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -73,7 +74,13 @@ function languageName(code: string): string {
 }
 
 export interface SettingsOptions {
-  /** A page to open straight into, instead of the root menu. */
+  /**
+   * A page to open straight into, instead of the root menu.
+   *
+   * Back from that page leaves settings altogether, back to wherever it was opened from - the
+   * globe in the bar is a shortcut to one page, and the television's LanguageScreen returns to
+   * `overlayReturn` the same way rather than to a settings menu the viewer never opened.
+   */
   openAt?: 'language';
   /**
    * Every category the current playlist has, per kind, whether hidden or not.
@@ -82,8 +89,6 @@ export interface SettingsOptions {
    * captured when settings opened would stop matching what the page is showing.
    */
   categories: (kind: CategoryKind) => string[];
-  /** Redraws whatever is underneath, because changing language changes every word on screen. */
-  onLanguageChanged: () => void;
   onSignOut: () => void;
   onSetPin: () => void;
   onRemovePin: () => void;
@@ -113,12 +118,91 @@ type Page =
   | 'parental'
   | 'categories';
 
-/** The three catalogues, in the order the navigation bar puts them. */
-const KINDS: { kind: CategoryKind; label: () => string }[] = [
-  { kind: 'live', label: () => t('nav_live_tv') },
-  { kind: 'movie', label: () => t('nav_movies') },
-  { kind: 'series', label: () => t('nav_series') },
+/**
+ * The tint each root row's icon carries, as SettingsMenuRow is called in SettingsScreen.kt:
+ * Orange, BrandBlue or Cyan from ui/theme/Theme.kt. A page's own card header is always Cyan.
+ */
+type Tint = 'orange' | 'blue' | 'cyan';
+
+/** Each page's icon, the one SettingsScreen.kt gives both its menu row and its SettingsSection. */
+const PAGE_ICON: Record<Exclude<Page, 'root'>, IconName> = {
+  playlist: 'playlistPlay',
+  info: 'info',
+  playback: 'playCircle',
+  appearance: 'wallpaper',
+  language: 'language',
+  history: 'history',
+  categories: 'visibilityOff',
+  parental: 'adminPanelSettings',
+};
+
+/** The three catalogues, in the order the navigation bar puts them, with the chip icons. */
+const KINDS: { kind: CategoryKind; label: () => string; icon: IconName }[] = [
+  { kind: 'live', label: () => t('nav_live_tv'), icon: 'liveTv' },
+  { kind: 'movie', label: () => t('nav_movies'), icon: 'movie' },
+  { kind: 'series', label: () => t('nav_series'), icon: 'videoLibrary' },
 ];
+
+/** The focusable shell every pressable row shares. */
+function pressable(id: string, className: string, extra: Record<string, string> = {}): HTMLDivElement {
+  return el('div', { class: className, tabindex: '-1', 'data-focus': '', 'data-focus-id': id, ...extra });
+}
+
+/** A label with an optional quieter line under it, which takes the row's spare width. */
+function rowText(label: string, description?: string): HTMLElement {
+  const text = el('div', { class: 'settings-row-text' }, el('div', { class: 'settings-row-label' }, label));
+  if (description) text.append(el('div', { class: 'settings-row-desc' }, description));
+  return text;
+}
+
+/**
+ * SettingsAction: an icon, a title with its description, and a chevron, on a 13dp tile.
+ * Destructive ones take the error colour on both icon and title, as on the television.
+ */
+function actionRow(
+  id: string,
+  icon: IconName,
+  label: string,
+  description: string | undefined,
+  onClick: () => void,
+  destructive = false,
+): HTMLElement {
+  const row = pressable(id, destructive ? 'settings-row settings-action danger' : 'settings-row settings-action');
+  row.append(
+    iconElement(icon, 'settings-icon'),
+    rowText(label, description),
+    iconElement('chevronRight', 'settings-chevron'),
+  );
+  row.addEventListener('click', onClick);
+  return row;
+}
+
+/** RadioSetting: a radio button, then the title and any description. */
+function choiceRow(id: string, label: string, selected: boolean, onClick: () => void, description?: string): HTMLElement {
+  const row = pressable(id, 'settings-row settings-choice', { 'aria-selected': String(selected) });
+  row.append(
+    iconElement(selected ? 'radioChecked' : 'radioUnchecked', 'settings-radio'),
+    rowText(label, description),
+  );
+  row.addEventListener('click', onClick);
+  return row;
+}
+
+/** SettingsSwitch: title and description, then the switch at the far end. */
+function toggleRow(id: string, label: string, on: boolean, onClick: () => void, description?: string): HTMLElement {
+  const row = pressable(id, 'settings-row settings-choice', { 'aria-checked': String(on) });
+  row.append(
+    rowText(label, description),
+    iconElement(on ? 'toggleOn' : 'toggleOff', 'settings-switch'),
+  );
+  row.addEventListener('click', onClick);
+  return row;
+}
+
+/** A heading inside a page, above the group of rows it introduces. */
+function subheading(text: string): HTMLElement {
+  return el('div', { class: 'settings-note strong' }, text);
+}
 
 export function renderSettings(host: HTMLElement, options: SettingsOptions): void {
   let page: Page = options.openAt ?? 'root';
@@ -127,9 +211,9 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     if (key !== 'back') return false;
     // Back walks out one level at a time rather than leaving settings from four pages deep, which
     // is how the television app behaves and what a viewer who opened a page by mistake expects.
-    if (page !== 'root') {
-      page = 'root';
-      draw();
+    // Except from the page settings was opened straight into, which is its first level.
+    if (page !== 'root' && page !== options.openAt) {
+      open('root');
       return true;
     }
     release();
@@ -137,8 +221,19 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     return true;
   });
 
+  /** Where the highlight goes on the next draw, when it should not start at the top. */
+  let focusNext: string | null = null;
+
   function open(next: Page): void {
+    // Coming back up to the menu lands on the row that was opened, not on the first row.
+    focusNext = next === 'root' && page !== 'root' ? `menu-${page}` : null;
     page = next;
+    draw();
+  }
+
+  /** Redraws the page in place, keeping the highlight on the row that was just pressed. */
+  function redraw(id: string): void {
+    focusNext = id;
     draw();
   }
 
@@ -156,12 +251,13 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     }
   }
 
-  /** A row on the root menu: a label that opens a page. */
-  function menuRow(id: string, label: string, target: Page): HTMLElement {
-    const row = el(
-      'div',
-      { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': `menu-${id}` },
-      label,
+  /** SettingsMenuRow: a tinted icon, the page's name, and a chevron. */
+  function menuRow(target: Exclude<Page, 'root'>, label: string, tint: Tint): HTMLElement {
+    const row = pressable(`menu-${target}`, 'settings-menu-row');
+    row.append(
+      iconElement(PAGE_ICON[target], `settings-icon tint-${tint}`),
+      el('span', { class: 'settings-row-label' }, label),
+      iconElement('chevronRight', 'settings-chevron'),
     );
     row.addEventListener('click', () => open(target));
     return row;
@@ -169,17 +265,26 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
 
   function rootPage(): HTMLElement {
     const menu = el('div', { class: 'settings-menu', 'data-focus-group': 'settings-menu' });
-    // The television app's own order and grouping: what the viewer watches with, then how it
-    // looks, then what they restrict.
+    // The television app's own order, grouping and tints: two panels, what the viewer watches
+    // with and how it looks, then what they keep and restrict. Then the version, under both.
     menu.append(
-      menuRow('playlist', t('settings_playlists'), 'playlist'),
-      menuRow('info', t('settings_app_info'), 'info'),
-      menuRow('playback', t('settings_playback'), 'playback'),
-      menuRow('appearance', t('settings_appearance'), 'appearance'),
-      menuRow('language', t('cd_language'), 'language'),
-      menuRow('history', t('settings_privacy_history'), 'history'),
-      menuRow('categories', t('settings_category_visibility'), 'categories'),
-      menuRow('parental', t('settings_parental_controls'), 'parental'),
+      el(
+        'div',
+        { class: 'settings-panel' },
+        menuRow('playlist', t('settings_playlists'), 'orange'),
+        menuRow('info', t('settings_app_info'), 'blue'),
+        menuRow('playback', t('settings_playback'), 'cyan'),
+        menuRow('appearance', t('settings_appearance'), 'orange'),
+        menuRow('language', t('cd_language'), 'cyan'),
+      ),
+      el(
+        'div',
+        { class: 'settings-panel' },
+        menuRow('history', t('settings_privacy_history'), 'cyan'),
+        menuRow('categories', t('settings_category_visibility'), 'orange'),
+        menuRow('parental', t('settings_parental_controls'), 'blue'),
+      ),
+      el('div', { class: 'settings-footer' }, t('footer_version', options.appVersion)),
     );
     return menu;
   }
@@ -208,12 +313,13 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     const playlist = options.playlist();
     const tizen = /Tizen ([\d.]+)/.exec(navigator.userAgent)?.[1];
 
-    group.append(el('div', { class: 'settings-note strong' }, t('application_label')));
+    group.append(subheading(t('application_label')));
     group.append(factRow(t('app_name_label'), t('app_name')));
     group.append(factRow(t('version_label'), options.appVersion));
     if (tizen) group.append(factRow('Tizen', tizen));
 
-    group.append(el('div', { class: 'settings-note strong' }, t('active_playlist_label')));
+    group.append(el('div', { class: 'settings-divider' }));
+    group.append(subheading(t('active_playlist_label')));
     group.append(factRow(t('name_label'), playlist?.name || t('no_active_playlist')));
     group.append(factRow(t('status_label'), playlist?.accountStatus || t('not_provided')));
     group.append(
@@ -242,28 +348,17 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function playbackPage(): HTMLElement {
     const group = el('div', { class: 'settings-group', 'data-focus-group': 'playback' });
 
-    group.append(el('div', { class: 'settings-note strong' }, t('skip_interval')));
+    group.append(subheading(t('skip_interval')));
     const currentSkip = skipSeconds();
     for (const seconds of SKIP_CHOICES) {
-      const row = el(
-        'div',
-        {
-          class: 'settings-row',
-          tabindex: '-1',
-          'data-focus': '',
-          'data-focus-id': `skip-${seconds}`,
-          'aria-selected': String(seconds === currentSkip),
-        },
-        t('skip_seconds_format', String(seconds)),
-      );
-      row.addEventListener('click', () => {
+      const id = `skip-${seconds}`;
+      group.append(choiceRow(id, t('skip_seconds_format', String(seconds)), seconds === currentSkip, () => {
         setSkipSeconds(seconds);
-        draw();
-      });
-      group.append(row);
+        redraw(id);
+      }));
     }
 
-    group.append(el('div', { class: 'settings-note strong' }, t('video_scaling')));
+    group.append(subheading(t('video_scaling')));
     const currentScaling = videoScaling();
     const SCALINGS: { mode: VideoScalingPreference; label: () => string; desc: () => string }[] = [
       // Three, not seven, exactly as the television app's Settings screen does it: this is the
@@ -276,30 +371,19 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       { mode: 'stretch', label: () => t('video_stretch'), desc: () => t('video_stretch_desc') },
     ];
     for (const entry of SCALINGS) {
-      const row = el(
-        'div',
-        {
-          class: 'settings-row',
-          tabindex: '-1',
-          'data-focus': '',
-          'data-focus-id': `scaling-${entry.mode}`,
-          'aria-selected': String(entry.mode === currentScaling),
-        },
-        entry.label(),
-      );
-      row.append(el('div', { class: 'settings-row-desc' }, entry.desc()));
-      row.addEventListener('click', () => {
+      const id = `scaling-${entry.mode}`;
+      group.append(choiceRow(id, entry.label(), entry.mode === currentScaling, () => {
         setVideoScaling(entry.mode);
-        draw();
-      });
-      group.append(row);
+        redraw(id);
+      }, entry.desc()));
     }
 
     // Live TV only, and the whole section says so. On Movies and Series the provider's order
     // barely registers - those are walls of artwork the eye searches rather than lists it reads -
     // and a sort control that silently applied to all three would be doing something different
     // from what it says.
-    group.append(el('div', { class: 'settings-note strong' }, t('live_channel_sort')));
+    group.append(el('div', { class: 'settings-divider' }));
+    group.append(subheading(t('live_channel_sort')));
     const currentSort = liveChannelSort();
     const SORTS: { order: LiveChannelSort; label: () => string }[] = [
       { order: 'default', label: () => t('sort_default') },
@@ -307,42 +391,20 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
       { order: 'za', label: () => t('sort_za') },
     ];
     for (const entry of SORTS) {
-      const row = el(
-        'div',
-        {
-          class: 'settings-row',
-          tabindex: '-1',
-          'data-focus': '',
-          'data-focus-id': `sort-${entry.order}`,
-          'aria-selected': String(entry.order === currentSort),
-        },
-        entry.label(),
-      );
-      row.addEventListener('click', () => {
+      const id = `sort-${entry.order}`;
+      group.append(choiceRow(id, entry.label(), entry.order === currentSort, () => {
         setLiveChannelSort(entry.order);
-        draw();
-      });
-      group.append(row);
+        redraw(id);
+      }));
     }
 
-    group.append(el('div', { class: 'settings-note strong' }, t('subtitles_label')));
+    group.append(el('div', { class: 'settings-divider' }));
+    group.append(subheading(t('subtitles_label')));
     const backing = subtitleBackground();
-    const backingRow = el(
-      'div',
-      {
-        class: 'settings-row',
-        tabindex: '-1',
-        'data-focus': '',
-        'data-focus-id': 'subtitle-backing',
-        'aria-selected': String(backing),
-      },
-      t('subtitle_background'),
-    );
-    backingRow.addEventListener('click', () => {
+    group.append(toggleRow('subtitle-backing', t('subtitle_background'), backing, () => {
       setSubtitleBackground(!backing);
-      draw();
-    });
-    group.append(backingRow);
+      redraw('subtitle-backing');
+    }));
     return group;
   }
 
@@ -355,103 +417,61 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
    */
   function historyPage(): HTMLElement {
     const group = el('div', { class: 'settings-group', 'data-focus-group': 'history' });
-    const rows: [string, string, string, () => void][] = [
-      ['movies', t('clear_movie_activity'), t('clear_movie_activity_desc'), options.onClearMovieActivity],
-      ['series', t('clear_series_activity'), t('clear_series_activity_desc'), options.onClearSeriesActivity],
-      ['live', t('clear_live_activity'), t('clear_live_activity_desc'), options.onClearLiveActivity],
-    ];
-    for (const [id, label, description, action] of rows) {
-      const row = el(
-        'div',
-        { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': `clear-${id}` },
-        label,
-      );
-      row.append(el('div', { class: 'settings-row-desc' }, description));
-      row.addEventListener('click', action);
-      group.append(row);
-    }
+    group.append(
+      actionRow('clear-movies', 'movie', t('clear_movie_activity'), t('clear_movie_activity_desc'), options.onClearMovieActivity),
+      actionRow('clear-series', 'videoLibrary', t('clear_series_activity'), t('clear_series_activity_desc'), options.onClearSeriesActivity),
+      actionRow('clear-live', 'liveTv', t('clear_live_activity'), t('clear_live_activity_desc'), options.onClearLiveActivity),
+    );
     return group;
   }
 
+  /*
+   * Picking a language redraws this page where it is, in the new language, with the highlight on
+   * the language just chosen. It used to hand off to the caller, which rebuilt settings from the
+   * root menu - so a viewer who had come here from the globe in the bar was left on a settings menu
+   * they had never opened. The television recreates its Activity and comes back on the same
+   * screen; this is that, without the restart.
+   */
   function languagePage(): HTMLElement {
     const languages = el('div', { class: 'settings-group', 'data-focus-group': 'languages' });
-  for (const code of availableLocales()) {
-    const row = el(
-      'div',
-      {
-        class: 'settings-row',
-        tabindex: '-1',
-        'data-focus': '',
-        'data-focus-id': `lang-${code}`,
-        'aria-selected': String(code === locale()),
-      },
-      languageName(code),
-    );
-    row.addEventListener('click', () => {
-      setLocale(code);
-      options.onLanguageChanged();
-    });
-    languages.append(row);
-  }
+    for (const code of availableLocales()) {
+      const id = `lang-${code}`;
+      languages.append(choiceRow(id, languageName(code), code === locale(), () => {
+        setLocale(code);
+        redraw(id);
+      }));
+    }
     return languages;
   }
 
-  // Appearance. Two rows rather than a switch, because a switch on a television has to say what
-  // it is a switch *for*, and by the time that label is written the two named choices are shorter
-  // and clearer than the question.
+  // Appearance. Two choices, then one description for whichever is in force, under the pair - as
+  // the television's segmented button does it, rather than a sentence inside each row.
   function appearancePage(): HTMLElement {
-  const appearance = el('div', { class: 'settings-group', 'data-focus-group': 'appearance' });
-  const currentMode = backgroundMode();
-  for (const mode of ['modern', 'classic'] as const) {
-    const row = el(
-      'div',
-      {
-        class: 'settings-row',
-        tabindex: '-1',
-        'data-focus': '',
-        'data-focus-id': `background-${mode}`,
-        'aria-selected': String(mode === currentMode),
-      },
-      mode === 'classic' ? t('background_classic') : t('background_modern'),
+    const appearance = el('div', { class: 'settings-group', 'data-focus-group': 'appearance' });
+    const currentMode = backgroundMode();
+    for (const mode of ['modern', 'classic'] as const) {
+      const id = `background-${mode}`;
+      appearance.append(choiceRow(id, mode === 'classic' ? t('background_classic') : t('background_modern'), mode === currentMode, () => {
+        setBackgroundMode(mode);
+        redraw(id);
+      }));
+    }
+    appearance.append(
+      el(
+        'div',
+        { class: 'settings-note' },
+        currentMode === 'classic' ? t('background_classic_desc') : t('background_modern_desc'),
+      ),
     );
-    row.addEventListener('click', () => {
-      setBackgroundMode(mode);
-      draw();
-    });
-    appearance.append(row);
-  }
-  // One description, under the pair, for whichever is in force - not a description inside each
-  // row. These columns are narrower than they look: four groups share the width, so a sentence
-  // inside a row wraps to four lines and turns a 69-pixel row into a 205-pixel one, which makes
-  // the two options look like two paragraphs rather than a choice.
-  appearance.append(
-    el(
-      'div',
-      { class: 'settings-note' },
-      currentMode === 'classic' ? t('background_classic_desc') : t('background_modern_desc'),
-    ),
-  );
     return appearance;
   }
 
   function playlistPage(): HTMLElement {
-  const actions = el('div', { class: 'settings-group', 'data-focus-group': 'settings-actions' });
-
-  const clear = el(
-    'div',
-    { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'clear-cache' },
-    t('refresh_playlist'),
-  );
-  clear.addEventListener('click', options.onClearCache);
-
-  const signOut = el(
-    'div',
-    { class: 'settings-row danger', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'sign-out' },
-    t('remove_playlist_action'),
-  );
-  signOut.addEventListener('click', options.onSignOut);
-
-  actions.append(clear, signOut);
+    const actions = el('div', { class: 'settings-group', 'data-focus-group': 'settings-actions' });
+    actions.append(
+      actionRow('clear-cache', 'refresh', t('refresh_playlist'), t('refresh_playlist_desc'), options.onClearCache),
+      actionRow('sign-out', 'deleteForever', t('remove_playlist_action'), t('remove_playlist_desc'), options.onSignOut, true),
+    );
     return actions;
   }
 
@@ -469,23 +489,16 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
 
   function categoriesPage(): HTMLElement {
     const wrap = el('div', { class: 'settings-group', 'data-focus-group': 'category-visibility' });
+    wrap.append(el('div', { class: 'settings-note' }, t('category_visibility_desc')));
 
     const tabs = el('div', { class: 'kind-tabs' });
     for (const entry of KINDS) {
-      const tab = el(
-        'div',
-        {
-          class: 'settings-row kind-tab',
-          tabindex: '-1',
-          'data-focus': '',
-          'data-focus-id': `kind-${entry.kind}`,
-          'aria-selected': String(entry.kind === visibilityKind),
-        },
-        entry.label(),
-      );
+      const id = `kind-${entry.kind}`;
+      const tab = pressable(id, 'settings-row kind-tab', { 'aria-selected': String(entry.kind === visibilityKind) });
+      tab.append(iconElement(entry.icon, 'settings-icon'), el('span', { class: 'settings-row-label' }, entry.label()));
       tab.addEventListener('click', () => {
         visibilityKind = entry.kind;
-        draw();
+        redraw(id);
       });
       tabs.append(tab);
     }
@@ -510,22 +523,17 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
     const list = el('div', { class: 'category-visibility-list' });
     for (const name of names) {
       const isHidden = hidden.has(name);
-      const row = el(
-        'div',
-        {
-          class: `settings-row${isHidden ? ' muted' : ''}`,
-          tabindex: '-1',
-          'data-focus': '',
-          'data-focus-id': `visibility-${name}`,
-          'aria-selected': String(!isHidden),
-        },
-        name,
+      const id = `visibility-${name}`;
+      const row = pressable(id, `settings-row settings-choice${isHidden ? ' muted' : ''}`);
+      row.append(
+        iconElement(isHidden ? 'visibilityOff' : 'visibility', 'settings-icon'),
+        el('span', { class: 'settings-row-label' }, name),
+        el('span', { class: 'row-state' }, isHidden ? t('hide_category_action') : t('action_see_all')),
       );
-      row.append(el('span', { class: 'row-state' }, isHidden ? t('hide_category_action') : t('action_see_all')));
       row.addEventListener('click', () => {
         if (isHidden) unhideCategory(visibilityKind, name);
         else hideCategory(visibilityKind, name);
-        draw();
+        redraw(id);
       });
       list.append(row);
     }
@@ -534,51 +542,40 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   }
 
   function parentalPage(): HTMLElement {
-  const guard = el('div', { class: 'settings-group', 'data-focus-group': 'parental' });
+    const guard = el('div', { class: 'settings-group', 'data-focus-group': 'parental' });
 
-  if (!cryptoAvailable()) {
-    // Said plainly rather than offering a control that would store the digits in the clear.
-    guard.append(el('div', { class: 'settings-note' }, t('epg_no_info')));
-  } else {
-    const state = parental();
-    const pinRow = el(
-      'div',
-      { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'pin-set' },
-      hasPin() ? t('change_pin_desc') : t('create_parental_pin'),
-    );
-    pinRow.addEventListener('click', options.onSetPin);
-    guard.append(pinRow);
-
-    if (hasPin()) {
-      const toggle = (id: string, label: string, on: boolean, act: () => void) => {
-        const row = el(
-          'div',
-          { class: 'settings-row', tabindex: '-1', 'data-focus': '', 'data-focus-id': id, 'aria-selected': String(on) },
-          label,
-        );
-        row.addEventListener('click', act);
-        return row;
-      };
-      guard.append(
-        toggle('parental-enabled', t('enable_parental_control'), state.enabled, () => {
-          update({ enabled: !parental().enabled });
-          draw();
-        }),
-        toggle('parental-startup', t('ask_pin_on_startup'), state.askOnStartup, () => {
-          update({ askOnStartup: !parental().askOnStartup });
-          draw();
-        }),
-        toggle('parental-categories', t('lock_categories'), state.lockedCategories.length > 0, options.onLockCategories),
-      );
-      const removeRow = el(
-        'div',
-        { class: 'settings-row danger', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'pin-remove' },
-        t('parental_pin_removed'),
-      );
-      removeRow.addEventListener('click', options.onRemovePin);
-      guard.append(removeRow);
+    if (!cryptoAvailable()) {
+      // Said plainly rather than offering a control that would store the digits in the clear.
+      guard.append(el('div', { class: 'settings-note' }, t('epg_no_info')));
+      return guard;
     }
-  }
+    const state = parental();
+    if (hasPin()) {
+      guard.append(
+        toggleRow('parental-enabled', t('enable_parental_control'), state.enabled, () => {
+          update({ enabled: !parental().enabled });
+          redraw('parental-enabled');
+        }, t('enable_parental_control_desc')),
+        toggleRow('parental-startup', t('ask_pin_on_startup'), state.askOnStartup, () => {
+          update({ askOnStartup: !parental().askOnStartup });
+          redraw('parental-startup');
+        }, t('ask_pin_on_startup_desc')),
+        el('div', { class: 'settings-divider' }),
+      );
+    }
+    guard.append(actionRow(
+      'pin-set',
+      'pin',
+      hasPin() ? t('change_pin') : t('create_parental_pin'),
+      hasPin() ? t('change_pin_desc') : t('create_parental_pin_desc'),
+      options.onSetPin,
+    ));
+    if (hasPin()) {
+      guard.append(
+        actionRow('parental-categories', 'lock', t('lock_categories'), t('lock_categories_desc'), options.onLockCategories),
+        actionRow('pin-remove', 'deleteForever', t('remove_pin'), undefined, options.onRemovePin, true),
+      );
+    }
     return guard;
   }
 
@@ -599,8 +596,25 @@ export function renderSettings(host: HTMLElement, options: SettingsOptions): voi
   function draw(): void {
     host.textContent = '';
     const content = body();
-    host.append(el('div', { class: 'browser-title' }, title()), content);
-    focus(content.querySelector<HTMLElement>('[data-focus]'));
+    host.append(el('div', { class: 'browser-title settings-title' }, title()));
+    if (page === 'root') {
+      host.append(content);
+    } else {
+      // SettingsSection: the page's own card, with its icon and name at the head in Cyan.
+      host.append(
+        el(
+          'div',
+          { class: 'settings-section' },
+          el('div', { class: 'settings-section-head' }, iconElement(PAGE_ICON[page], 'settings-icon'), title()),
+          content,
+        ),
+      );
+    }
+    const wanted = focusNext
+      ? content.querySelector<HTMLElement>(`[data-focus-id="${CSS.escape(focusNext)}"]`)
+      : null;
+    focusNext = null;
+    focus(wanted ?? content.querySelector<HTMLElement>('[data-focus]'));
   }
 
   draw();

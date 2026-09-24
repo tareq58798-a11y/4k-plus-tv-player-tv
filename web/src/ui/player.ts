@@ -45,7 +45,7 @@
  * the row, after the buttons that do mirror.
  */
 import { focus } from './focus';
-import { isRtl, t } from '../shared/i18n';
+import { t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
   setSkipSeconds,
@@ -197,6 +197,11 @@ function icon(path: string): SVGSVGElement {
   node.setAttribute('fill', 'currentColor');
   svg.append(node);
   return svg;
+}
+
+/** Whether a row's document order runs right to left on screen, from its computed direction. */
+function runsRightToLeft(element: HTMLElement): boolean {
+  return getComputedStyle(element).direction === 'rtl';
 }
 
 function button(id: string, label: string, path: string): HTMLElement {
@@ -432,6 +437,18 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   if (live) optionsRow.append(settingsButton);
   chrome.append(optionsRow);
 
+  /*
+   * The controls read left to right in every language.
+   *
+   * In Arabic the page is dir=rtl, and these rows used to follow it: rewind on the right,
+   * fast-forward on the left, the options in reverse. Reported as the controls being inverted, and
+   * changed at the owner's request. Playback controls conventionally do not mirror - forward in
+   * time is to the right on every player - so these four are pinned left to right while the words
+   * around them stay Arabic. The television mirrors its media3 controller here; this deliberately
+   * does not, and web/README.md records it.
+   */
+  for (const row of [transport, bar, bottom, optionsRow]) row.dir = 'ltr';
+
   /** Every option button, left to right, for the walk along the row. */
   const optionButtons = (): HTMLElement[] =>
     Array.from(optionsRow.querySelectorAll<HTMLElement>('.pc-button'));
@@ -561,7 +578,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     const here = document.activeElement as HTMLElement | null;
     for (const row of panelRows()) {
       if (here === null || !row.includes(here)) continue;
-      const next = row[row.indexOf(here) + (rightward ? 1 : -1)];
+      // The panel follows the page, so it runs right to left in Arabic; see stepAcross.
+      const next = row[row.indexOf(here) + (rightward !== runsRightToLeft(panel) ? 1 : -1)];
       if (next) focus(next);
       return true;
     }
@@ -964,9 +982,15 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   }
 
   // Drives both, and not only while the controls are up: the banner is most often on screen
-  // when they are not.
+  // when they are not. Only while the banner is up, though. The resolution comes from AVPlay's
+  // getTotalTrackInfo, a synchronous call into the decoder; asked twice a second for as long as a
+  // channel was watched, it took the page's time away from the remote for nothing anyone could see.
   const resolutionTimer = live
-    ? window.setInterval(() => { paintBannerResolution(); tickBanner(); }, 500)
+    ? window.setInterval(() => {
+        if (banner.classList.contains('is-hidden')) return;
+        paintBannerResolution();
+        tickBanner();
+      }, 500)
     : null;
 
   function openPanel(): void {
@@ -994,13 +1018,14 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   /**
    * The key that points at the options row, and its opposite.
    *
-   * The row is anchored to the trailing edge of the screen, so which arrow points at it mirrors
-   * with the language exactly as `towardsBar` and `awayFromBar` do on the television: Right and
-   * Left in English, Left and Right in Arabic. One fetches the controls, the other puts them away
-   * from the far end of the row.
+   * Right and Left in every language, because the row is pinned top right in every language
+   * (`.pc-options { right: 16px }`). The television's `towardsBar` mirrors because its bar moves to
+   * the top left in Arabic; this one never moved, so mirroring the key had Arabic fetching the row
+   * with the arrow that points away from it. What stays true on both is that the key points at the
+   * row.
    */
-  const towardsControls = (): RemoteKey => (isRtl() ? 'left' : 'right');
-  const awayFromControls = (): RemoteKey => (isRtl() ? 'right' : 'left');
+  const towardsControls = (): RemoteKey => 'right';
+  const awayFromControls = (): RemoteKey => 'left';
 
   /*
    * The order Down walks with the controls up, which is the television app's walk for a film:
@@ -1090,27 +1115,34 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     if (panelOpen) { stepPanelAcross(rightward); return true; }
     const here = document.activeElement;
     /*
+     * Which way document order runs across the screen depends on the row: the control rows are
+     * pinned left to right, and the strip and the panel follow the page, which is right to left in
+     * Arabic. Stepping by document order alone once sent Right leftwards; this goes the way the
+     * arrow points in any of them.
+     */
+    const step = (row: HTMLElement): number => (rightward !== runsRightToLeft(row) ? 1 : -1);
+    /*
      * Along the strip, which is the reason it exists: RelatedItemsStrip is a LazyRow and Left and
      * Right move along it there. This walk was missing, so the strip opened on the episode playing
-     * and no press could reach any other. Mirrored with the language because the strip is a flex
-     * row in a page that is dir=rtl in Arabic, as the LazyRow mirrors; stops at either end.
+     * and no press could reach any other. Stops at either end.
      */
     if (stripOpen) {
       const cards = stopsIn(strip);
       const at = here instanceof HTMLElement ? cards.indexOf(here) : -1;
-      const next = at < 0 ? cards[0] : cards[at + (rightward !== isRtl() ? 1 : -1)];
+      const next = at < 0 ? cards[0] : cards[at + step(strip)];
       if (next) focus(next);
       return true;
     }
     if (!(here instanceof HTMLElement)) return false;
     const inOptions = optionsRow.contains(here);
     let row: HTMLElement[] | null = null;
-    if (inOptions) row = optionButtons();
-    else if (transport.contains(here)) row = [rewind, playPause, forward];
-    else if (bottomIcons.contains(here)) row = Array.from(bottomIcons.children) as HTMLElement[];
-    if (!row) return false;
+    let owner: HTMLElement | null = null;
+    if (inOptions) { row = optionButtons(); owner = optionsRow; }
+    else if (transport.contains(here)) { row = [rewind, playPause, forward]; owner = transport; }
+    else if (bottomIcons.contains(here)) { row = Array.from(bottomIcons.children) as HTMLElement[]; owner = bottomIcons; }
+    if (!row || !owner) return false;
     const at = row.indexOf(here);
-    const next = row[at + (rightward ? 1 : -1)];
+    const next = row[at + step(owner)];
     if (next) { focus(next); return true; }
     /*
      * On a channel, running off the *inner* end of the options row puts the controls away.
@@ -1217,10 +1249,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
      * Waking the controls on a channel: the key that points at them, and only that one.
      *
      * A channel opens with the picture clean, so something has to be the key that goes and fetches
-     * the options row, and it is the one pointing towards the corner the row sits in - Right in
-     * English, Left in Arabic, mirroring the way the row itself is anchored. That is `towardsBar`
-     * on the television, and the same key closes the row from its far end (see stepAcross), so
-     * the gesture is symmetrical: out to the controls, back in to the picture.
+     * the options row, and it is the one pointing towards the corner the row sits in, which is
+     * Right in every language here (see towardsControls). That is `towardsBar` on the television,
+     * and the opposite key closes the row from its inner end (see stepAcross), so the gesture is
+     * symmetrical: out to the controls, back in to the picture.
      *
      * Any other key is swallowed rather than acting. On a bare picture there is nothing else for
      * a press to act on, and a key that silently does nothing is better than one that does

@@ -2082,93 +2082,262 @@ body.playing .backdrop-scrim {
 }
 
 /*
- * The root menu: one column of pages, as on Android.
+ * Settings, drawn as SettingsScreen.kt draws it. Every number is its dp doubled.
+ *
+ * The colours are ui/theme/Theme.kt's dark scheme, which Tokens.kt does not carry and so the token
+ * extraction cannot reach: surface 0xFF0A1B31, surfaceVariant 0xFF12304E, onSurfaceVariant
+ * 0xFFB7CAE2, primary BrandBlue 0xFF1499F5, and the three icon tints Orange 0xFFFFB547, BrandBlue
+ * and Cyan 0xFF23D7EE. Written out here with their names rather than invented.
+ */
+:root {
+  --settings-surface: rgba(10, 27, 49, 0.96);
+  --settings-surface-variant: rgba(18, 48, 78, 0.55);
+  --settings-on-variant: #b7cae2;
+  --settings-primary: #1499f5;
+  --settings-orange: #ffb547;
+  --settings-blue: #1499f5;
+  --settings-cyan: #23d7ee;
+}
+
+/* Title: 27sp, FontWeight.Black. */
+.settings-title {
+  font-size: 54px;
+  font-weight: 900;
+}
+
+/*
+ * The root menu: two SettingsMenuGroups, 16dp apart, each a 20dp-rounded surface at 96%.
  *
  * Narrow on purpose. A row that runs the full 1760px puts its label at the far left of a very long
  * highlight, and on a television the highlight is how you know where you are - a wide one is
  * harder to place at a glance than a narrow one, not easier.
  */
 .settings-menu {
-  width: 760px;
+  width: 900px;
 }
 
-.settings {
+.settings-panel {
+  background: var(--settings-surface);
+  border-radius: 40px;
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+
+/* SettingsMenuRow: 18dp by 17dp padding, a 23dp icon, 16dp to a 17sp Medium title, a chevron. */
+.settings-menu-row {
   display: flex;
-  /* Was 120px, which was affordable at three columns and is not at four: flex takes the gaps out
-     of the columns, and every pixel of gap is a pixel the text has to wrap around. */
-  gap: var(--dim-gap-l);
-}
-
-/*
- * One page's worth of settings. Now that each page is on its own, a group gets a readable width
- * instead of a share of a crowded row - which is what makes a sentence inside a row affordable
- * again, and why the pages still to be ported do not have to fight for space.
- */
-.settings-group {
-  width: 760px;
-  min-width: 0;
-}
-
-.settings-row {
-  padding: 18px var(--dim-gap-l);
-  margin-bottom: var(--dim-gap-s);
-  border-radius: var(--dim-radius-card);
-  background: var(--tone-glass);
-  font-size: 28px;
+  align-items: center;
+  gap: 32px;
+  padding: 34px 36px;
+  font-size: 34px;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.settings-row[aria-selected='true'] {
-  background: var(--tone-category-gradient);
-  color: #04131f;
+.settings-menu-row .settings-row-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-menu-row .settings-icon {
+  width: 46px;
+  height: 46px;
+}
+
+/* Inside a clipped panel the ring is drawn inwards, or the panel's rounded edge would cut it off. */
+.settings-menu-row:focus {
+  box-shadow: inset 0 0 0 3px var(--tone-accent);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settings-icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  color: var(--settings-cyan);
+}
+
+.settings-icon.tint-orange { color: var(--settings-orange); }
+.settings-icon.tint-blue { color: var(--settings-blue); }
+.settings-icon.tint-cyan { color: var(--settings-cyan); }
+.settings-icon.muted { color: var(--settings-on-variant); }
+
+.settings-chevron {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  color: var(--settings-on-variant);
+}
+
+/* In Arabic the chevron points the way the page reads, as Compose mirrors ChevronRight. */
+[dir='rtl'] .settings-chevron {
+  transform: scaleX(-1);
+}
+
+/* The version under the menu: bodySmall in onSurfaceVariant, 6dp in. */
+.settings-footer {
+  padding: 0 12px;
+  font-size: 24px;
+  color: var(--settings-on-variant);
+}
+
+/* SettingsSection: an ElevatedCard, 20dp rounded, 17dp padding, its children 11dp apart. */
+.settings-section {
+  width: 1100px;
+  max-height: 860px;
+  box-sizing: border-box;
+  padding: 34px;
+  border-radius: 40px;
+  background: var(--settings-surface);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.settings-section::-webkit-scrollbar {
+  display: none;
+}
+
+/* Its head: the page icon in Cyan, 9dp, then the name at 19sp bold. */
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
+  font-size: 38px;
   font-weight: 700;
 }
 
-.settings-row.danger {
+.settings-group {
+  min-width: 0;
+}
+
+.settings-group > * + * {
+  margin-top: 22px;
+}
+
+/* A row that can be pressed. The icon, the text column and whatever sits at the end, in a line. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 16px 24px;
+  border-radius: 26px;
+  font-size: 32px;
+  cursor: pointer;
+}
+
+.settings-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-row-label {
+  line-height: 1.25;
+}
+
+/* SettingsAction: a 13dp tile of surfaceVariant at 55%, 12dp padding, title SemiBold. */
+.settings-action {
+  padding: 24px;
+  background: var(--settings-surface-variant);
+}
+
+.settings-action .settings-row-label {
+  font-weight: 600;
+}
+
+.settings-row.danger,
+.settings-row.danger .settings-icon {
   color: var(--tone-live-red);
 }
 
-/* The second line on a row that needs one - what a scaling mode does, what a clear button will
-   forget. Quieter than the label above it and not a target of its own. */
+/* The second line: bodySmall, onSurfaceVariant. Not a target of its own. */
 .settings-row-desc {
-  margin-top: 6px;
-  font-size: 22px;
+  margin-top: 4px;
+  font-size: 24px;
   font-weight: 400;
   line-height: 1.3;
-  color: var(--tone-text-muted);
+  color: var(--settings-on-variant);
 }
 
-.settings-row[aria-selected='true'] .settings-row-desc {
-  color: rgba(4, 19, 31, 0.75);
+/* RadioSetting and SettingsSwitch: no tile of their own, only the control beside the words. */
+.settings-choice {
+  padding: 8px 16px;
 }
 
-/* A read-only fact on the App info page: label on the left, value on the right. Not a .settings-row
-   because nothing here can be pressed, and giving it the same shape would invite the press. */
+.settings-radio {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  color: var(--settings-on-variant);
+}
+
+.settings-choice[aria-selected='true'] .settings-radio {
+  color: var(--settings-primary);
+}
+
+.settings-switch {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  color: var(--settings-on-variant);
+}
+
+.settings-choice[aria-checked='true'] .settings-switch {
+  color: var(--settings-primary);
+}
+
+/* The row with the highlight gets a faint fill as well as the ring, so it holds up at a distance. */
+.settings-row:focus {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.settings-action:focus {
+  background-color: rgba(35, 215, 238, 0.16);
+}
+
+/* HorizontalDivider: 1dp of outline between the parts of a page. */
+.settings-divider {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* A read-only fact on the App info page: InformationRow, label in onSurfaceVariant on the left,
+   the value SemiBold on the right. Not a .settings-row, because nothing here can be pressed. */
 .settings-fact {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--dim-gap-m);
-  padding: 14px var(--dim-gap-l);
-  font-size: 26px;
+  padding: 8px 0;
+  font-size: 30px;
+}
+
+.settings-group > .settings-fact + .settings-fact {
+  margin-top: 0;
 }
 
 .settings-fact-label {
-  color: var(--tone-text-muted);
+  color: var(--settings-on-variant);
   flex: 0 0 auto;
 }
 
 .settings-fact-value {
   color: var(--tone-text-primary);
-  text-align: right;
+  font-weight: 600;
+  text-align: end;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-/* A heading inside a page, above the group of rows it introduces. */
+/* Notes inside a card sit on the card's own 17dp padding, not on an indent of their own. */
+.settings-section .settings-note {
+  padding: 0;
+}
+
+/* A heading inside a page, above the rows it introduces: Text(fontWeight = Bold). */
 .settings-note.strong {
-  margin: var(--dim-gap-m) 0 var(--dim-gap-s);
-  font-size: 26px;
+  padding: 0;
+  font-size: 32px;
   font-weight: 700;
   color: var(--tone-text-primary);
 }
@@ -2179,10 +2348,14 @@ body.playing .backdrop-scrim {
   color: var(--tone-text-muted);
 }
 
+.settings-row.muted .settings-icon {
+  color: var(--settings-on-variant);
+}
+
 /* The state sits at the end of the row, away from the name, so a long category name does not push
    it about and the column of states stays readable down the list. */
 .settings-row .row-state {
-  float: right;
+  margin-inline-start: auto;
   font-size: 24px;
   color: var(--tone-text-muted);
 }
@@ -2191,16 +2364,36 @@ body.playing .backdrop-scrim {
   color: inherit;
 }
 
+.settings-row .settings-row-label:not(:last-child) {
+  min-width: 0;
+}
+
+/* The three catalogue chips, each with its own icon, as the television's FilterChips have. */
 .kind-tabs {
   display: flex;
-  gap: var(--dim-gap-xs);
-  margin-bottom: var(--dim-gap-s);
+  gap: 16px;
 }
 
 .kind-tabs .kind-tab {
   flex: 1;
-  margin-bottom: 0;
-  text-align: center;
+  justify-content: center;
+  padding: 16px 24px;
+  background: var(--settings-surface-variant);
+}
+
+.kind-tabs .kind-tab .settings-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.kind-tabs .kind-tab[aria-selected='true'] {
+  background: var(--tone-category-gradient);
+  color: #04131f;
+  font-weight: 700;
+}
+
+.kind-tabs .kind-tab[aria-selected='true'] .settings-icon {
+  color: #04131f;
 }
 
 /*

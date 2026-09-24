@@ -9,14 +9,14 @@ import { detectPlatform, keyOf, registerPlatformKeys, type RemoteKey } from './p
 import { createPlayer, type MediaPlayer } from './platform/video';
 import { readJson, writeJson, remove as removeStored } from './platform/storage';
 import { cacheKey, clearCatalogue, readCatalogue, writeCatalogue } from './platform/cache';
-import { setLocale, isRtl, locale, t } from './shared/i18n';
+import { setLocale, locale, t } from './shared/i18n';
 import { loadProvider, movieDetails, seriesDetails } from './shared/xtream';
 import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from './shared/models';
 import { itemKey } from './shared/models';
 import {
   clearActivity, continueWatching, favoriteItems, recentlyAdded, rememberPosition,
 } from './shared/library';
-import { focus, handleKey, pushKeyHandler, setFocusDirection } from './ui/focus';
+import { focus, handleKey, pushKeyHandler } from './ui/focus';
 import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
 import { renderNav, trackNavHighlight, type Section } from './ui/nav';
@@ -24,6 +24,7 @@ import { renderSeries } from './ui/series';
 import { renderDetails } from './ui/details';
 import { renderSearch } from './ui/search';
 import { renderSettings } from './ui/settings';
+import { iconElement } from './ui/icons';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
 import { createPlayerOverlay, type StripEpisode } from './ui/player';
@@ -492,11 +493,6 @@ function settingsScreen(openAt?: 'language'): void {
     categories: (kind) => [
       ...new Set((catalogue?.items ?? []).filter((item) => item.kind === kind).map((item) => item.group)),
     ].sort((a, b) => a.localeCompare(b)),
-    // Every word on screen changes, so the page behind is rebuilt rather than patched.
-    onLanguageChanged: () => {
-      setFocusDirection(isRtl());
-      settingsScreen();
-    },
     // Asked for rather than captured, so App info describes the catalogue that is loaded now.
     playlist: () => catalogue,
     appVersion: appVersion(),
@@ -579,6 +575,10 @@ function lockCategoriesScreen(): void {
   const groups = [...new Set(catalogue.items.map((item) => item.group))].sort((a, b) => a.localeCompare(b));
   const list = el('div', { class: 'sidebar wide', 'data-focus-group': 'lock-categories' });
   for (const group of groups) {
+    // Lock and LockOpen, as the television's own lock list marks each category.
+    const lockIcon = (locked: boolean): SVGSVGElement =>
+      iconElement(locked ? 'lock' : 'lockOpen', locked ? 'settings-icon' : 'settings-icon muted');
+    let marker = lockIcon(isCategoryLocked(group));
     const row = el(
       'div',
       {
@@ -588,11 +588,15 @@ function lockCategoriesScreen(): void {
         'data-focus-id': `lock-${group}`,
         'aria-selected': String(isCategoryLocked(group)),
       },
-      group,
+      marker,
+      el('span', { class: 'settings-row-label' }, group),
     );
     row.addEventListener('click', () => {
       const locked = toggleCategoryLock(group);
       row.setAttribute('aria-selected', String(locked));
+      const next = lockIcon(locked);
+      marker.replaceWith(next);
+      marker = next;
     });
     list.append(row);
   }
@@ -1543,7 +1547,6 @@ function playScreen(
 function boot(): void {
   registerPlatformKeys(platform);
   setLocale(navigator.language?.slice(0, 2) ?? 'en');
-  setFocusDirection(isRtl());
   player = createPlayer(platform, video);
   backdrop = new Backdrop(backdropHost);
 

@@ -123,6 +123,9 @@ const SUBTITLE_FALLBACK_LABEL = 'Subtitles';
 /** How long a cue stays up when the stream does not say. About the length of a spoken line. */
 const SUBTITLE_FALLBACK_MS = 4000;
 
+/** Longest a seek is waited for before the next one is let through anyway. */
+const SEEK_TIMEOUT_MS = 5000;
+
 /**
  * Digs a language out of AVPlay's `extra_info`, or gives up quietly.
  *
@@ -183,7 +186,8 @@ interface AvPlay {
   play(): void;
   pause(): void;
   stop(): void;
-  seekTo(ms: number): void;
+  /** Blocks the page until the seek completes unless both callbacks are given. */
+  seekTo(ms: number, onSuccess?: () => void, onError?: (e: unknown) => void): void;
   getCurrentTime(): number;
   getDuration(): number;
   getState(): string;
@@ -232,6 +236,12 @@ class TizenPlayer implements MediaPlayer {
    */
   private baseRect: DOMRect | null = null;
   private scaling: VideoScaling = 'fit';
+  /** True while AVPlay is still carrying out a seek. */
+  private seeking = false;
+  /** The latest position asked for while a seek was running, to go to when it finishes. */
+  private queuedSeek: number | null = null;
+  /** Bumped by stop(), so a late answer to a seek on the previous stream changes nothing. */
+  private seekGeneration = 0;
 
   constructor() {
     const webapis = (window as unknown as { webapis?: { avplay?: AvPlay } }).webapis;
@@ -328,12 +338,49 @@ class TizenPlayer implements MediaPlayer {
   }
 
   seekBy(deltaMs: number): void {
-    const target = Math.max(0, this.av.getCurrentTime() + deltaMs);
-    this.av.seekTo(target);
+    // From the position already asked for when one is pending, so three quick presses of
+    // fast-forward go three steps rather than re-reading a clock that has not moved yet.
+    const from = this.queuedSeek ?? this.av.getCurrentTime();
+    this.seekTo(from + deltaMs);
   }
 
+  /*
+   * Asynchronous, and one at a time.
+   *
+   * Without callbacks AVPlay's seekTo is synchronous: the page does nothing - no key handled, no
+   * highlight moved - until the decoder has found the new position, which on a network stream is
+   * easily a second or more. A run of presses on the timeline queued that up press by press, and
+   * the controls seemed to stop answering. With callbacks it returns at once. A second seek issued
+   * before the first has finished is refused by AVPlay, so presses made meanwhile are folded into
+   * one: only the last position asked for is kept, and it is sent when the running seek ends.
+   */
   seekTo(positionMs: number): void {
-    this.av.seekTo(Math.max(0, Math.round(positionMs)));
+    const target = Math.max(0, Math.round(positionMs));
+    if (this.seeking) {
+      this.queuedSeek = target;
+      return;
+    }
+    this.seeking = true;
+    this.queuedSeek = null;
+    let settled = false;
+    const generation = this.seekGeneration;
+    const settle = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(watchdog);
+      if (generation !== this.seekGeneration) return;
+      this.seeking = false;
+      const next = this.queuedSeek;
+      if (next !== null) this.seekTo(next);
+    };
+    // A set that never answers must not leave every later seek queued behind this one for good.
+    const watchdog = window.setTimeout(settle, SEEK_TIMEOUT_MS);
+    try {
+      this.av.seekTo(target, settle, settle);
+    } catch {
+      // Not seekable in this state (still preparing, or a live stream). Nothing to wait for.
+      settle();
+    }
   }
 
   setSpeed(rate: number): void {
@@ -562,6 +609,9 @@ class TizenPlayer implements MediaPlayer {
       window.clearInterval(this.ticker);
       this.ticker = null;
     }
+    this.seeking = false;
+    this.queuedSeek = null;
+    this.seekGeneration += 1;
     try {
       this.av.stop();
       this.av.close();

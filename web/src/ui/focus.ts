@@ -9,9 +9,11 @@
  *
  * Rules carried over from the television app:
  *
- *  - **Right-to-left mirrors.** In Arabic the whole layout flips, so Left must mean "towards the
- *    start of the row", which is the right-hand side of the screen. Hard-coding the direction was
- *    the bug that stopped Arabic moving between posters at all.
+ *  - **An arrow goes where it points, in every language.** In Arabic the layout mirrors, and
+ *    because candidates are found by where they are on screen, Left already reaches whatever is to
+ *    the left. This used to swap Left and Right for Arabic as well, which on top of a mirrored
+ *    layout sent the highlight the opposite way from the arrow pressed. The television's focus
+ *    search is geometric the same way.
  *  - **A row remembers where you were.** Leaving a row and coming back puts the highlight where it
  *    was, not at the beginning. Without it, stepping up to the tabs and back down loses your place
  *    in a list of four hundred channels.
@@ -27,12 +29,6 @@ const FOCUSABLE = '[data-focus]';
 
 /** Where the highlight was when each group was last left, so returning restores it. */
 const lastInGroup = new Map<string, string>();
-
-let rtl = false;
-
-export function setFocusDirection(isRtl: boolean): void {
-  rtl = isRtl;
-}
 
 export function focused(): HTMLElement | null {
   const active = document.activeElement;
@@ -209,15 +205,9 @@ export function move(direction: Direction): boolean {
     focus(first);
     return Boolean(first);
   }
-  // In Arabic the layout mirrors, so Left means "towards the start of the row", which is on the
-  // right of the screen. Mirroring here rather than at each call site is what keeps every grid,
-  // row and list correct in both directions at once.
-  const effective: Direction =
-    rtl && direction === 'left' ? 'right' : rtl && direction === 'right' ? 'left' : direction;
-
   const declared = override(from, direction);
   if (declared === from) return true;
-  const target = declared ?? nearest(from, effective);
+  const target = declared ?? nearest(from, direction);
   if (!target) return false;
   focus(resolveGroupEntry(from, target));
   return true;
