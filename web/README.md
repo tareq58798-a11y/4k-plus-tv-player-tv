@@ -133,6 +133,12 @@ stops it being reopened every few months.
   screen. Here it is fitted inside the screen with dark space either side, at the owner's request,
   so a poster used as a background shows all of itself rather than a slice of its middle. A
   landscape backdrop of the screen's shape looks the same either way. Decided on 2026-09-24.
+* **Back goes to Home.** The television steps back a level at a time (category browser to its
+  section, section to Home, Home to "Exit app?"). Here Back from any page - a section, a category
+  browser, a film's page, a series, search, Settings - goes straight to Home, and Home asks the
+  television's "Exit app?", at the owner's request. Inside Settings a sub-page still goes up to the
+  Settings menu first, and the player still returns to wherever the title was opened from.
+  Decided on 2026-09-24.
 * **The auto-update interval.** Android lets the viewer choose how often a cached playlist is
   refreshed from the provider (every launch, daily, every two days). This app uses Android's
   default, daily, without offering the choice: a set that re-downloaded and re-parsed the whole

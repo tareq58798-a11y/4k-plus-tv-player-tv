@@ -19,7 +19,8 @@ import {
 } from './shared/library';
 import { askResume } from './ui/resumeChoice';
 import { iconElement } from './ui/icons';
-import { focus, handleKey, pushKeyHandler } from './ui/focus';
+import { dropKeyHandlers, focus, handleKey, pushKeyHandler } from './ui/focus';
+import { askExit } from './ui/exitDialog';
 import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
 import { renderNav, trackNavHighlight, type Section } from './ui/nav';
@@ -125,6 +126,25 @@ function clear(): void {
   detachNav?.();
   detachNav = null;
   app.textContent = '';
+  // The screen going is its key handlers going too - see dropKeyHandlers - and any dialog left open
+  // over it, which would otherwise stay on screen with nothing answering the remote.
+  dropKeyHandlers();
+  for (const leftover of document.querySelectorAll('.dialog-backdrop, .pin-overlay')) leftover.remove();
+}
+
+/**
+ * Back from any page goes to Home, and Back on Home asks whether to leave the app.
+ *
+ * What the owner asked for. The television steps back one level at a time - a category browser to
+ * its section, a section to Home, Home to "Exit app?" - and this was stepping back less than that:
+ * the three section pages had no Back at all, and Home had nothing either, because Back is
+ * always taken from the set here (Samsung would otherwise close the app). Now every page's Back
+ * lands on Home, including the category browsers, a film's page, a series' seasons, search and
+ * Settings; Home asks the television's question. The player is not a page: Back there still
+ * returns to wherever the title was opened from. Recorded in web/README.md.
+ */
+function goHome(): void {
+  showSection('home');
 }
 
 /* ------------------------------------------------------------------ login */
@@ -367,7 +387,11 @@ async function refreshInBackground(saved: ProviderLogin, key: string): Promise<v
     const fresh = await loadProvider(saved, { liveContainer: player.liveContainer });
     catalogue = fresh;
     void writeCatalogue(key, fresh);
-    if (section === 'home' && app.querySelector('.landing')) showSection('home');
+    // Not under an open dialog - "Exit app?" on Home is the likely one - which the redraw would
+    // take away mid-question.
+    if (section === 'home' && app.querySelector('.landing') && !document.querySelector('.dialog-backdrop, .pin-overlay')) {
+      showSection('home');
+    }
   } catch {
     // The cached catalogue is still on screen and still usable. A television that cannot reach
     // the provider this minute should not be an error message over a working playlist.
@@ -491,6 +515,14 @@ function showSection(next: Section): void {
   // Focus starts on the bar, so the section tab is lit and Down enters the page - the same place
   // the television app starts.
   focus(bar.querySelector<HTMLElement>(`[data-focus-id="tab-${next}"]`));
+
+  // Home asks before leaving the app; the other sections go to Home. See goHome.
+  pushKeyHandler((key: RemoteKey) => {
+    if (key !== 'back') return false;
+    if (next === 'home') askExit();
+    else goHome();
+    return true;
+  });
 }
 
 /* --------------------------------------------------- search and settings */
@@ -502,7 +534,7 @@ function searchScreen(): void {
     items: catalogue.items,
     backdrop,
     onOpen: (item) => playScreen(item),
-    onBack: () => showSection(section),
+    onBack: goHome,
   });
 }
 
@@ -558,7 +590,7 @@ function settingsScreen(openAt?: 'language'): void {
       catalogue = null;
       loginScreen();
     },
-    onBack: () => showSection(section),
+    onBack: goHome,
   });
 }
 
@@ -1457,7 +1489,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     }
     if (key !== 'back') return false;
     release();
-    showSection(current);
+    goHome();
     return true;
   });
 }
@@ -1512,7 +1544,7 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
       // was not - a series reached from a Home row should not drop the viewer into a category
       // browser they never asked for. browseReturn is only set by the grid, and it is not
       // consumed until the browser next draws, so its presence is the question being asked.
-      onBack: () => (browseReturn ? browseScreen(section) : showSection(section)),
+      onBack: goHome,
     });
   } catch (error) {
     /*
@@ -1531,7 +1563,7 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
     );
     const leave = (): void => {
       release();
-      showSection(section);
+      goHome();
     };
     back.addEventListener('click', leave);
     app.append(back);
@@ -1560,7 +1592,7 @@ async function detailsScreen(item: PlaylistItem): Promise<void> {
   clear();
   document.body.classList.remove('playing');
 
-  const back = (): void => browseScreen(section);
+  const back = goHome;
   const open = (): void => playScreen(item);
 
   const draw = (details: MovieDetails | null, loading: boolean): HTMLElement =>

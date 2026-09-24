@@ -950,7 +950,16 @@ body.playing #app {
 .dialog-buttons {
   display: flex;
   justify-content: flex-end;
+  /* AlertDialog's 8dp between its dismiss and confirm buttons. */
+  gap: 16px;
   margin-top: 48px;
+}
+
+/* AlertDialog's text: bodyMedium, 14sp, in onSurfaceVariant. */
+.dialog-message {
+  font-size: 28px;
+  line-height: 40px;
+  color: #cac4d0;
 }
 
 /* TextButton: primary BrandBlue, labelLarge 14sp Medium, a 40dp pill. */

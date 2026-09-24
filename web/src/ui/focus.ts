@@ -259,6 +259,19 @@ export function pushKeyHandler(handler: KeyHandler): () => void {
   };
 }
 
+/**
+ * Forgets every screen's key handler, for when the screen itself is being replaced.
+ *
+ * Screens released their handler when Back was pressed on them and not when they were left any
+ * other way - playing a film from its page, choosing a section from the bar - so the stack kept
+ * handlers for pages that were gone. They answered a later Back that reached them and sent the
+ * viewer to a page they were not on. Every screen puts its handler on after the page is cleared, so
+ * clearing the page is when the old ones go.
+ */
+export function dropKeyHandlers(): void {
+  handlers.length = 0;
+}
+
 export function handleKey(key: RemoteKey): void {
   for (let index = handlers.length - 1; index >= 0; index--) {
     if (handlers[index]!(key)) return;
