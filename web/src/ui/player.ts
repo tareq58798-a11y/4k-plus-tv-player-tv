@@ -39,10 +39,9 @@
  * things this port deliberately does not have; the remaining buttons keep the television app's
  * order rather than closing the gaps.
  *
- * The one addition is the settings gear on a channel. The television app has no gear there because
- * it has no controller there, and so no way to change soundtrack on a channel at all; this does,
- * and dropping a working thing to match an absence would be a strange trade. It goes at the end of
- * the row, after the buttons that do mirror.
+ * A channel's row is the shape button alone. It used to carry subtitles and a settings gear for the
+ * soundtrack as well - the gear an addition the television does not have - and both were removed
+ * at the owner's request; see where optionsRow is filled.
  *
  * ## Per title
  *
@@ -439,12 +438,17 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   // glyphs gives them nothing to aim at.
   aspectButton.classList.add('is-accent');
 
-  optionsRow.append(subtitlesButton);
-  if (!live) optionsRow.append(skipButton, qualityButton);
+  /*
+   * On a channel, the shape button alone.
+   *
+   * A channel's row had subtitles, the shape, and a settings gear this app added for choosing a
+   * soundtrack. The owner asked for the gear and the subtitles button to go: broadcast channels
+   * rarely carry either, and three buttons were three stops to get past on the way to the one that
+   * is used. The television's own row for a channel has no gear either. A film or an episode keeps
+   * all of its buttons.
+   */
+  if (!live) optionsRow.append(subtitlesButton, skipButton, qualityButton);
   optionsRow.append(aspectButton);
-  // The gear has no home on a channel - there is no bottom bar to put it in - so it goes here,
-  // after the buttons that do mirror the television app. See the note at the top of this file.
-  if (live) optionsRow.append(settingsButton);
   chrome.append(optionsRow);
 
   /*
