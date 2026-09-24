@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -174,6 +175,32 @@ internal fun applySubtitleBackground(view: PlayerView, background: Boolean) {
             )
         }
     )
+}
+
+/**
+ * The subtitle sizes a viewer can pick on a phone, keyed as they are stored under "subtitle_size"
+ * in playback_settings, each a multiple of media3's own default caption size. Normal is exactly
+ * that default, so choosing it puts the view back as it was before this setting existed.
+ */
+internal val SUBTITLE_SIZES = listOf("small" to .75f, "normal" to 1f, "large" to 1.3f, "xlarge" to 1.6f)
+
+internal fun storedSubtitleSize(stored: String?): String =
+    stored?.takeIf { key -> SUBTITLE_SIZES.any { it.first == key } } ?: "normal"
+
+/**
+ * Draws cues at [size]. The size is a fraction of the view's height, which is how SubtitleView
+ * sizes them by default, so it scales with the player rather than being a fixed pixel size that
+ * reads differently between the portrait box and full screen.
+ *
+ * A stream can carry its own font sizes (SSA and TTML often do), and those would override the
+ * choice, so they are ignored whenever the viewer has picked anything other than Normal - the
+ * same way applySubtitleBackground ignores embedded styles once the box is switched off.
+ */
+internal fun applySubtitleSize(view: PlayerView, size: String) {
+    val subtitles = view.subtitleView ?: return
+    val scale = SUBTITLE_SIZES.firstOrNull { it.first == size }?.second ?: 1f
+    subtitles.setApplyEmbeddedFontSizes(scale == 1f)
+    subtitles.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * scale)
 }
 
 internal fun applyRequestedAspectRatio(view: PlayerView, mode: String) {

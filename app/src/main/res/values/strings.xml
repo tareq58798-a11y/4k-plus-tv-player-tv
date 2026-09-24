@@ -109,6 +109,11 @@
 
     <!-- Live TV -->
     <string name="live_tv_channels_count">%1$d channels</string>
+    <!-- How many channels, movies or series a category holds, as a bare figure at the end of a
+         category in the phone's landscape category column, which is too narrow for "12 movies".
+         A resource rather than toString() so the figure is formatted for the app's language like
+         every other number on screen. Not translated: it is only the number. -->
+    <string name="category_item_count" translatable="false">%1$d</string>
     <string name="epg_now_format">Now: %1$s</string>
     <string name="epg_next_format">Next: %1$s</string>
     <string name="epg_no_info">No Info</string>
@@ -130,6 +135,8 @@
     <string name="movies_star_empty">Movies you star will appear here.</string>
     <string name="movies_watch_empty">Movies you play will appear here.</string>
     <string name="resume_time">Resume %1$s</string>
+    <!-- Beside "Resume 12:34" on a phone, for a film or episode with a saved position. -->
+    <string name="start_over_action">Start over</string>
     <string name="watched_label">Watched</string>
     <string name="play_action">Play</string>
     <string name="watch_trailer">Watch trailer</string>
@@ -339,6 +346,11 @@
     <string name="landing_open_favorites">Open your favorites</string>
     <string name="subtitle_background_hide">Hide subtitle background</string>
     <string name="subtitle_background_show">Show subtitle background</string>
+    <!-- The subtitle size choices in the player's subtitles menu, phone only. -->
+    <string name="subtitle_size_small">Small subtitles</string>
+    <string name="subtitle_size_normal">Normal subtitles</string>
+    <string name="subtitle_size_large">Large subtitles</string>
+    <string name="subtitle_size_xlarge">Extra large subtitles</string>
     <string name="check_device_playlist">Check for a playlist</string>
     <string name="check_device_playlist_desc">Ask whether a playlist has been assigned to this device</string>
     <string name="check_device_playlist_checking">Checking with the activation service…</string>

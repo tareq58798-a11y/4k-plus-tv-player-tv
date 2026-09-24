@@ -129,6 +129,7 @@
     <string name="movies_star_empty">ستظهر هنا الأفلام التي تفضّلها.</string>
     <string name="movies_watch_empty">ستظهر هنا الأفلام التي تشاهدها.</string>
     <string name="resume_time">استئناف %1$s</string>
+    <string name="start_over_action">البدء من جديد</string>
     <string name="play_action">تشغيل</string>
     <string name="watch_trailer">مشاهدة الإعلان</string>
     <string name="loading_movie_info">جارٍ تحميل معلومات الفيلم…</string>
@@ -326,6 +327,10 @@
     <string name="landing_open_favorites">افتح المفضلة</string>
     <string name="subtitle_background_hide">إخفاء خلفية الترجمة</string>
     <string name="subtitle_background_show">إظهار خلفية الترجمة</string>
+    <string name="subtitle_size_small">ترجمة صغيرة</string>
+    <string name="subtitle_size_normal">ترجمة عادية</string>
+    <string name="subtitle_size_large">ترجمة كبيرة</string>
+    <string name="subtitle_size_xlarge">ترجمة كبيرة جدًا</string>
     <string name="check_device_playlist">البحث عن قائمة تشغيل</string>
     <string name="check_device_playlist_desc">تحقق مما إذا تم تعيين قائمة تشغيل لهذا الجهاز</string>
     <string name="check_device_playlist_checking">جارٍ التحقق من خدمة التفعيل…</string>

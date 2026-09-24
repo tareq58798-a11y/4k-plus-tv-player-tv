@@ -124,6 +124,7 @@
     <string name="movies_star_empty">Отмеченные избранным фильмы появятся здесь.</string>
     <string name="movies_watch_empty">Просмотренные фильмы появятся здесь.</string>
     <string name="resume_time">Продолжить с %1$s</string>
+    <string name="start_over_action">Смотреть сначала</string>
     <string name="play_action">Воспроизвести</string>
     <string name="watch_trailer">Смотреть трейлер</string>
     <string name="loading_movie_info">Загрузка информации о фильме…</string>
@@ -315,6 +316,10 @@
     <string name="landing_open_favorites">Открыть избранное</string>
     <string name="subtitle_background_hide">Скрыть фон субтитров</string>
     <string name="subtitle_background_show">Показать фон субтитров</string>
+    <string name="subtitle_size_small">Мелкие субтитры</string>
+    <string name="subtitle_size_normal">Обычные субтитры</string>
+    <string name="subtitle_size_large">Крупные субтитры</string>
+    <string name="subtitle_size_xlarge">Очень крупные субтитры</string>
     <string name="check_device_playlist">Проверить наличие плейлиста</string>
     <string name="check_device_playlist_desc">Узнать, назначен ли плейлист этому устройству</string>
     <string name="check_device_playlist_checking">Запрос к службе активации…</string>

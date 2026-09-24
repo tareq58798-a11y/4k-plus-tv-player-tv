@@ -1819,6 +1819,9 @@ private fun MoviesScreen(
     // scroll position remembered there would not survive the trip back. See LandscapeMovieBrowser.
     val categoryListState = rememberLazyListState()
     var selectedMovie by remember { mutableStateOf<PlaylistItem?>(null) }
+    // Set by the details page's Start over, on a phone: the next play of selectedMovie ignores its
+    // saved position. Every other way into the player - Resume, the landing's resume - clears it.
+    var playFromStart by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<MovieDetailsInfo?>(null) }
     var detailsLoading by remember { mutableStateOf(false) }
     var detailsError by remember { mutableStateOf<String?>(null) }
@@ -1858,6 +1861,7 @@ private fun MoviesScreen(
             selectedMovie = movie
             details = null
             detailsError = null
+            playFromStart = false
             view = if (request.autoPlay) MovieView.PLAYER else MovieView.DETAILS
         }
         onResumeHandled()
@@ -1950,7 +1954,7 @@ private fun MoviesScreen(
                 selectedMovie?.let { movie ->
                     MoviePlayer(
                         movie = movie,
-                        startPosition = progress[channelKey(movie)] ?: 0L,
+                        startPosition = if (playFromStart) 0L else progress[channelKey(movie)] ?: 0L,
                         onProgress = { position, duration -> saveProgress(movie, position, duration) },
                         onExit = { view = MovieView.DETAILS },
                         modifier = Modifier.fillMaxSize()
@@ -2080,7 +2084,8 @@ private fun MoviesScreen(
                                             }},
                                             onFavorite = ::toggleFavorite,
                                             onMovie = ::openDetails,
-                                            progress = progress
+                                            progress = progress,
+                                            countLabel = stringResource(R.string.movies_count, sectionMovies.size)
                                         )
                                     }
                                 }
@@ -2111,7 +2116,8 @@ private fun MoviesScreen(
                             favorite = channelKey(movie) in favoriteIds,
                             resumePosition = progress[channelKey(movie)] ?: 0L,
                             onFavorite = { toggleFavorite(movie) },
-                            onPlay = { recordRecent(movie); view = MovieView.PLAYER },
+                            onPlay = { playFromStart = false; recordRecent(movie); view = MovieView.PLAYER },
+                            onPlayFromStart = { playFromStart = true; recordRecent(movie); view = MovieView.PLAYER },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -2167,6 +2173,17 @@ private fun LandscapeMovieBrowser(
     val displayed = if (query.isBlank()) base else movies.filter { it.name.contains(query.trim(), true) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
+    // How many movies each category in the column holds, shown on a phone only. One pass over the
+    // list rather than a count per category: a panel's movies run to tens of thousands and its
+    // categories to hundreds, and this composable recomposes as the viewer moves.
+    val categoryCounts = remember(movies, recent, favorites, continueWatching, isTv) {
+        if (isTv) emptyMap<String, Int>()
+        else movies.groupingBy { it.group }.eachCount() + mapOf(
+            "Continue watching" to continueWatching.size,
+            "Recently watched" to recent.size,
+            "Favorites" to favorites.size
+        )
+    }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
     var reorderingCategory by remember { mutableStateOf<String?>(null) }
     // The category whose long-press menu is open, if any. The gesture opens a menu now rather
@@ -2301,6 +2318,7 @@ private fun LandscapeMovieBrowser(
                         ) {
                             Row(Modifier.padding(start = 12.dp, top = 7.dp, bottom = 7.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(localizedSectionTitle(category), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, fontWeight = if (category == selectedCategory) FontWeight.Bold else FontWeight.Normal)
+                                if (!isTv) CategoryCountBadge(categoryCounts[category] ?: 0, MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (isReordering) Icon(Icons.Default.SwapVert, null, tint = Orange, modifier = Modifier.size(18.dp))
                             }
                         }
@@ -2347,7 +2365,10 @@ private fun LandscapeLiveBrowser(
      *  Continue watching, Recently watched and Favorites have nothing behind them to hide. */
     onHideCategory: ((String) -> Unit)? = null,
     onBack: () -> Unit,
-    loadEpg: suspend (PlaylistItem) -> Result<EpgNowNext>
+    loadEpg: suspend (PlaylistItem) -> Result<EpgNowNext>,
+    /** Channels per category, by the names in [categories], for the figure a phone shows beside
+     *  each. Passed in because Recently watched is only known to the caller. Empty on a television. */
+    categoryCounts: Map<String, Int> = emptyMap()
 ) {
     var channelSearch by remember { mutableStateOf("") }
     var categorySearch by remember { mutableStateOf("") }
@@ -2543,6 +2564,7 @@ private fun LandscapeLiveBrowser(
                             ) {
                                 Row(Modifier.padding(start = 11.dp, top = 5.dp, bottom = 5.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(localizedSectionTitle(category), Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = Type.CategoryLabel)
+                                    if (!isTv) CategoryCountBadge(categoryCounts[category] ?: 0, Color.White.copy(alpha = .72f))
                                     if (isReordering) Icon(Icons.Default.SwapVert, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 }
                             }
@@ -2687,6 +2709,50 @@ private fun LandscapeLiveBrowser(
         }
 }
 
+/**
+ * A shelf's title with, under it, how many items the shelf's category holds.
+ *
+ * Shared by the portrait shelves of Movies, Series and Live TV, which only a phone ever lays out -
+ * the television is always landscape and uses the category column instead. The title keeps its
+ * own behaviour: a tap sees all, a held finger opens the category menu where there is one.
+ */
+@Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+internal fun ShelfTitle(
+    title: String,
+    countLabel: String?,
+    onSeeAll: () -> Unit,
+    onLongPressTitle: (() -> Unit)?,
+    fontSize: TextUnit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .then(
+                if (onLongPressTitle == null) Modifier
+                else Modifier.combinedClickable(onLongClick = onLongPressTitle, onClick = onSeeAll)
+            )
+            .padding(vertical = 4.dp)
+    ) {
+        Text(title, fontSize = fontSize, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (countLabel != null) {
+            Text(countLabel, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+    }
+}
+
+/** The figure at the end of a category in the phone's landscape category column. */
+@Composable
+internal fun CategoryCountBadge(count: Int, color: Color) {
+    Text(
+        stringResource(R.string.category_item_count, count),
+        Modifier.padding(start = 6.dp),
+        color = color,
+        fontSize = 12.sp,
+        maxLines = 1
+    )
+}
+
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun MovieShelf(
@@ -2700,22 +2766,13 @@ private fun MovieShelf(
     onLongPressTitle: (() -> Unit)? = null,
     onFavorite: (PlaylistItem) -> Unit,
     onMovie: (PlaylistItem) -> Unit,
-    progress: Map<String, Long> = emptyMap()
+    progress: Map<String, Long> = emptyMap(),
+    /** "12 movies", under the title. The shelves are the phone's portrait browse view only. */
+    countLabel: String? = null
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                localizedSectionTitle(title),
-                Modifier.weight(1f)
-                    .then(
-                        if (onLongPressTitle == null) Modifier
-                        else Modifier.combinedClickable(onLongClick = onLongPressTitle, onClick = onSeeAll)
-                    )
-                    .padding(vertical = 4.dp),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
+            ShelfTitle(localizedSectionTitle(title), countLabel, onSeeAll, onLongPressTitle, 18.sp, Modifier.weight(1f))
             onHide?.let {
                 AnimatedIconButton(onClick = it, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, localizedSectionTitle(title)), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2946,6 +3003,50 @@ private fun PlayActionButton(
     }
 }
 
+/** Plays a title from the beginning despite its saved position. Phone only - see MovieDetails. */
+@Composable
+private fun StartOverButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    OutlinedButton(onClick = onClick, modifier = modifier) {
+        Icon(Icons.Default.RestartAlt, null)
+        Spacer(Modifier.width(7.dp))
+        Text(stringResource(R.string.start_over_action))
+    }
+}
+
+/**
+ * Resume or start over, for an episode with a saved position, on a phone.
+ *
+ * An episode has no page of its own with a Play button - a tap on the row plays it - so the choice
+ * is asked here instead, in the same AlertDialog shape as CategoryActionsDialog. Resume is listed
+ * first because it is what a returning viewer usually wants and was the only behaviour before.
+ */
+@Composable
+internal fun ResumeOrStartOverDialog(
+    title: String,
+    resumePosition: Long,
+    onResume: () -> Unit,
+    onStartOver: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column {
+                CategoryAction(Icons.Default.PlayArrow, stringResource(R.string.resume_time, formatPlaybackTime(resumePosition))) {
+                    onDismiss(); onResume()
+                }
+                CategoryAction(Icons.Default.RestartAlt, stringResource(R.string.start_over_action)) {
+                    onDismiss(); onStartOver()
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        }
+    )
+}
+
 @Composable
 private fun MovieDetails(
     movie: PlaylistItem,
@@ -2956,6 +3057,8 @@ private fun MovieDetails(
     resumePosition: Long,
     onFavorite: () -> Unit,
     onPlay: () -> Unit,
+    /** Plays from the beginning despite a saved position. Offered on a phone only - see below. */
+    onPlayFromStart: () -> Unit,
     modifier: Modifier
 ) {
     val context = LocalContext.current
@@ -2971,6 +3074,11 @@ private fun MovieDetails(
     // button below - see trailerVideoId.
     val trailerId = remember(details?.trailerUrl) { trailerVideoId(details?.trailerUrl) }
     val isTv = remember { context.isTvDevice() }
+    // A film with a saved position offers both, on a phone: Play becomes "Resume 12:34" as it
+    // always has, and Start over sits beside it. It used to be the one button, which always resumed,
+    // and the only way to see the start again was to drag the timeline back. The television keeps
+    // its single button.
+    val offerStartOver = !isTv && resumePosition > 0L
     val playFocusRequester = remember { FocusRequester() }
     LaunchedEffect(movie, isTv) {
         if (isTv) runCatching { playFocusRequester.requestFocus() }
@@ -2996,6 +3104,7 @@ private fun MovieDetails(
                     onClick = onPlay,
                     modifier = Modifier.fillMaxWidth().height(46.dp).focusRequester(playFocusRequester)
                 )
+                if (offerStartOver) StartOverButton(onPlayFromStart, Modifier.fillMaxWidth().height(44.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     trailerId?.let { id ->
                         OutlinedButton(onClick = { openTrailer(context, id) }, modifier = Modifier.weight(1f).height(44.dp)) {
@@ -3112,6 +3221,7 @@ private fun MovieDetails(
                 )
             }
         }
+        if (offerStartOver) StartOverButton(onPlayFromStart, Modifier.fillMaxWidth().height(48.dp))
         trailerId?.let { id ->
             OutlinedButton(
                 onClick = { openTrailer(context, id) },
@@ -3379,6 +3489,17 @@ private fun LiveTvScreen(
             serverCategories.forEach { group -> add(group to channels.filter { it.group == group }) }
         }
     }
+    // Channels per category for the phone's landscape category column - see LandscapeLiveBrowser.
+    // One pass over the channels rather than a count per category, and skipped on a television,
+    // which does not show them.
+    val isTvDevice = remember { context.isTvDevice() }
+    val liveCategoryCounts = remember(channels, recentChannels, favoriteChannels, isTvDevice) {
+        if (isTvDevice) emptyMap<String, Int>()
+        else channels.groupingBy { it.group }.eachCount() + mapOf(
+            recentlyWatched to recentChannels.size,
+            favorites to favoriteChannels.size
+        )
+    }
     val selectedChannels = remember(selectedCategory, recentChannels, favoriteChannels, channels) {
         when (selectedCategory) {
             recentlyWatched -> recentChannels
@@ -3527,7 +3648,8 @@ private fun LiveTvScreen(
                     parental.edit().putStringSet("hidden_live_categories", updated).apply()
                 },
                             onBack = onBack,
-                            loadEpg = loadEpg
+                            loadEpg = loadEpg,
+                            categoryCounts = liveCategoryCounts
                         )
                     }
                 }
@@ -3593,7 +3715,8 @@ private fun LiveTvScreen(
                                             rememberChannel(it)
                                             view = LiveView.PLAYER
                                         },
-                                        onFavorite = ::toggleFavorite
+                                        onFavorite = ::toggleFavorite,
+                                        countLabel = stringResource(R.string.live_tv_channels_count, sectionChannels.size)
                                     )
                                 }
                             }
@@ -3895,22 +4018,13 @@ private fun ChannelCategorySection(
      *  are views rather than categories, where there is nothing to hide or reorder. */
     onLongPressTitle: (() -> Unit)? = null,
     onChannel: (PlaylistItem) -> Unit,
-    onFavorite: (PlaylistItem) -> Unit
+    onFavorite: (PlaylistItem) -> Unit,
+    /** "12 channels", under the title. These sections are the phone's portrait Live TV only. */
+    countLabel: String? = null
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                localizedSectionTitle(title),
-                Modifier.weight(1f)
-                    .then(
-                        if (onLongPressTitle == null) Modifier
-                        else Modifier.combinedClickable(onLongClick = onLongPressTitle, onClick = onSeeAll)
-                    )
-                    .padding(vertical = 4.dp),
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
-                maxLines = 1
-            )
+            ShelfTitle(localizedSectionTitle(title), countLabel, onSeeAll, onLongPressTitle, 17.sp, Modifier.weight(1f))
             onHide?.let {
                 AnimatedIconButton(onClick = it, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, localizedSectionTitle(title)), tint = MaterialTheme.colorScheme.onSurfaceVariant)

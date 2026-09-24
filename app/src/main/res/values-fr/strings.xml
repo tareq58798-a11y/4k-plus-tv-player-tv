@@ -124,6 +124,7 @@
     <string name="movies_star_empty">Les films que vous ajoutez en favoris apparaîtront ici.</string>
     <string name="movies_watch_empty">Les films que vous regardez apparaîtront ici.</string>
     <string name="resume_time">Reprendre à %1$s</string>
+    <string name="start_over_action">Reprendre depuis le début</string>
     <string name="play_action">Lecture</string>
     <string name="watch_trailer">Voir la bande-annonce</string>
     <string name="loading_movie_info">Chargement des informations du film…</string>
@@ -315,6 +316,10 @@
     <string name="landing_open_favorites">Ouvrir vos favoris</string>
     <string name="subtitle_background_hide">Masquer le fond des sous-titres</string>
     <string name="subtitle_background_show">Afficher le fond des sous-titres</string>
+    <string name="subtitle_size_small">Petits sous-titres</string>
+    <string name="subtitle_size_normal">Sous-titres normaux</string>
+    <string name="subtitle_size_large">Grands sous-titres</string>
+    <string name="subtitle_size_xlarge">Très grands sous-titres</string>
     <string name="check_device_playlist">Rechercher une playlist</string>
     <string name="check_device_playlist_desc">Vérifie si une playlist a été attribuée à cet appareil</string>
     <string name="check_device_playlist_checking">Vérification auprès du service d\'activation…</string>

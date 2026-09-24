@@ -124,6 +124,7 @@
     <string name="movies_star_empty">آپ کی پسندیدہ فلمیں یہاں ظاہر ہوں گی۔</string>
     <string name="movies_watch_empty">آپ کی دیکھی گئی فلمیں یہاں ظاہر ہوں گی۔</string>
     <string name="resume_time">%1$s سے دوبارہ شروع کریں</string>
+    <string name="start_over_action">شروع سے چلائیں</string>
     <string name="play_action">چلائیں</string>
     <string name="watch_trailer">ٹریلر دیکھیں</string>
     <string name="loading_movie_info">فلم کی معلومات لوڈ ہو رہی ہیں…</string>
@@ -315,6 +316,10 @@
     <string name="landing_open_favorites">اپنے پسندیدہ کھولیں</string>
     <string name="subtitle_background_hide">سب ٹائٹل کا پس منظر چھپائیں</string>
     <string name="subtitle_background_show">سب ٹائٹل کا پس منظر دکھائیں</string>
+    <string name="subtitle_size_small">چھوٹے سب ٹائٹل</string>
+    <string name="subtitle_size_normal">عام سب ٹائٹل</string>
+    <string name="subtitle_size_large">بڑے سب ٹائٹل</string>
+    <string name="subtitle_size_xlarge">بہت بڑے سب ٹائٹل</string>
     <string name="check_device_playlist">پلے لسٹ تلاش کریں</string>
     <string name="check_device_playlist_desc">دیکھیں کہ اس ڈیوائس کو کوئی پلے لسٹ دی گئی ہے یا نہیں</string>
     <string name="check_device_playlist_checking">ایکٹیویشن سروس سے تصدیق کی جا رہی ہے…</string>

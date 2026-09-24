@@ -449,6 +449,9 @@ internal fun MoviePlayer(
     // native view hierarchy (or falls through to the app's normal back handling) first.
     var subtitlesEnabled by remember { mutableStateOf(settings.getBoolean("subtitles_enabled", true)) }
     var subtitleBackground by remember { mutableStateOf(settings.getBoolean("subtitle_background", true)) }
+    // Kept like the background above: it is about the viewer's eyes and the size of their screen,
+    // not about whatever is playing, so it should not reset between titles the way videoMode does.
+    var subtitleSize by remember { mutableStateOf(storedSubtitleSize(settings.getString("subtitle_size", null))) }
     var externalSubtitle by remember(movie) { mutableStateOf<Uri?>(null) }
     var skipSeconds by remember { mutableIntStateOf(settings.getInt("skip_seconds", 10).takeIf { it in listOf(5, 10, 15, 30, 60) } ?: 10) }
     var seekFeedback by remember { mutableStateOf<Pair<Boolean, Long>?>(null) }
@@ -654,6 +657,7 @@ internal fun MoviePlayer(
                         resizeMode = videoResizeMode
                         applyRequestedAspectRatio(this, videoMode)
                         applySubtitleBackground(this, subtitleBackground)
+                        if (!isTv) applySubtitleSize(this, subtitleSize)
                         this.player = player
                         installDoubleTapSeek(
                             this, player, skipSeconds,
@@ -672,6 +676,7 @@ internal fun MoviePlayer(
                     it.resizeMode = videoResizeMode
                     applyRequestedAspectRatio(it, videoMode)
                     applySubtitleBackground(it, subtitleBackground)
+                    if (!isTv) applySubtitleSize(it, subtitleSize)
                     installDoubleTapSeek(
                         it, player, skipSeconds,
                         onSwipeUp = { relatedStripExpanded = true },
@@ -733,6 +738,11 @@ internal fun MoviePlayer(
                     subtitleBackground = it
                     settings.edit().putBoolean("subtitle_background", it).apply()
                 },
+                subtitleSize = subtitleSize,
+                onSubtitleSizeChange = if (isTv) null else { { size: String ->
+                    subtitleSize = size
+                    settings.edit().putString("subtitle_size", size).apply()
+                } },
                 externalSubtitle = externalSubtitle,
                 onExternalSubtitleChange = { externalSubtitle = it },
                 skipSeconds = skipSeconds,
@@ -1109,6 +1119,10 @@ private fun PlaybackOptionsOverlay(
     onSubtitlesEnabledChange: (Boolean) -> Unit,
     subtitleBackground: Boolean,
     onSubtitleBackgroundChange: (Boolean) -> Unit,
+    // A phone's subtitle size choices, listed in the subtitles menu under the background toggle.
+    // Null leaves them out, which is what the television passes - see SUBTITLE_SIZES.
+    subtitleSize: String = "normal",
+    onSubtitleSizeChange: ((String) -> Unit)? = null,
     externalSubtitle: Uri?,
     onExternalSubtitleChange: (Uri?) -> Unit,
     skipSeconds: Int,
@@ -1250,6 +1264,19 @@ private fun PlaybackOptionsOverlay(
                         },
                         onClick = { onSubtitleBackgroundChange(!subtitleBackground); subtitleMenu = false }
                     )
+                    // How large the cues are drawn - a few fixed choices with a tick on the current
+                    // one, the same shape as the skip-interval menu beside this one.
+                    onSubtitleSizeChange?.let { changeSize ->
+                        HorizontalDivider()
+                        SUBTITLE_SIZES.forEach { (size, _) ->
+                            DropdownMenuItem(
+                                text = { Text(stringResource(subtitleSizeLabel(size))) },
+                                leadingIcon = { if (size == subtitleSize) Icon(Icons.Default.Check, null) },
+                                onClick = { changeSize(size); subtitleMenu = false }
+                            )
+                        }
+                        HorizontalDivider()
+                    }
                     DropdownMenuItem(
                         text = { Text("Load SRT or VTT file") },
                         leadingIcon = { Icon(Icons.Default.NoteAdd, null) },
@@ -1322,6 +1349,14 @@ private fun PlaybackOptionsOverlay(
             }
         }
     }
+}
+
+/** The menu wording for each of [SUBTITLE_SIZES]. */
+private fun subtitleSizeLabel(size: String): Int = when (size) {
+    "small" -> R.string.subtitle_size_small
+    "large" -> R.string.subtitle_size_large
+    "xlarge" -> R.string.subtitle_size_xlarge
+    else -> R.string.subtitle_size_normal
 }
 
 private fun launchExternalPlayer(
@@ -1520,6 +1555,9 @@ internal fun LiveChannelPreview(
     }
     var subtitlesEnabled by remember { mutableStateOf(settings.getBoolean("subtitles_enabled", true)) }
     var subtitleBackground by remember { mutableStateOf(settings.getBoolean("subtitle_background", true)) }
+    // The same stored choice the film player reads, offered and applied on a phone only.
+    val isTv = remember { context.isTvDevice() }
+    var subtitleSize by remember { mutableStateOf(storedSubtitleSize(settings.getString("subtitle_size", null))) }
     var externalSubtitle by remember(channel?.streamUrl) { mutableStateOf<Uri?>(null) }
     var skipSeconds by remember { mutableIntStateOf(settings.getInt("skip_seconds", 10).takeIf { it in listOf(5, 10, 15, 30, 60) } ?: 10) }
     var seekFeedback by remember { mutableStateOf<Pair<Boolean, Long>?>(null) }
@@ -1759,6 +1797,7 @@ internal fun LiveChannelPreview(
                             setShutterBackgroundColor(android.graphics.Color.BLACK)
                             resizeMode = videoResizeMode
                             applySubtitleBackground(this, subtitleBackground)
+                            if (!isTv) applySubtitleSize(this, subtitleSize)
                             this.player = player
                         }
                     },
@@ -1767,6 +1806,7 @@ internal fun LiveChannelPreview(
                         it.resizeMode = videoResizeMode
                         applyRequestedAspectRatio(it, videoMode)
                         applySubtitleBackground(it, subtitleBackground)
+                        if (!isTv) applySubtitleSize(it, subtitleSize)
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -1920,6 +1960,11 @@ internal fun LiveChannelPreview(
                         subtitleBackground = it
                         settings.edit().putBoolean("subtitle_background", it).apply()
                     },
+                    subtitleSize = subtitleSize,
+                    onSubtitleSizeChange = if (isTv) null else { { size: String ->
+                        subtitleSize = size
+                        settings.edit().putString("subtitle_size", size).apply()
+                    } },
                     externalSubtitle = externalSubtitle,
                     onExternalSubtitleChange = { externalSubtitle = it },
                     skipSeconds = skipSeconds,

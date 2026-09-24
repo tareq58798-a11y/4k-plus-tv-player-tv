@@ -124,6 +124,7 @@
     <string name="movies_star_empty">Favorilere eklediğiniz filmler burada görünecek.</string>
     <string name="movies_watch_empty">İzlediğiniz filmler burada görünecek.</string>
     <string name="resume_time">%1$s konumundan devam et</string>
+    <string name="start_over_action">Baştan başlat</string>
     <string name="play_action">Oynat</string>
     <string name="watch_trailer">Fragmanı izle</string>
     <string name="loading_movie_info">Film bilgileri yükleniyor…</string>
@@ -315,6 +316,10 @@
     <string name="landing_open_favorites">Favorilerinizi açın</string>
     <string name="subtitle_background_hide">Altyazı arka planını gizle</string>
     <string name="subtitle_background_show">Altyazı arka planını göster</string>
+    <string name="subtitle_size_small">Küçük altyazı</string>
+    <string name="subtitle_size_normal">Normal altyazı</string>
+    <string name="subtitle_size_large">Büyük altyazı</string>
+    <string name="subtitle_size_xlarge">Çok büyük altyazı</string>
     <string name="check_device_playlist">Oynatma listesi ara</string>
     <string name="check_device_playlist_desc">Bu cihaza bir oynatma listesi atanıp atanmadığını denetle</string>
     <string name="check_device_playlist_checking">Etkinleştirme hizmetine soruluyor…</string>

@@ -8,7 +8,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
@@ -137,6 +136,12 @@ internal fun SeriesScreen(
     val categoryListState = rememberLazyListState()
     var selectedSeries by remember { mutableStateOf<PlaylistItem?>(null) }
     var selectedEpisode by remember { mutableStateOf<SeriesEpisode?>(null) }
+    // On a phone, a tapped episode with a saved position asks first - see ResumeOrStartOverDialog.
+    // episodeChoice is the one being asked about; episodeFromStart is the answer, read by the
+    // player below and cleared by every other way into it.
+    var episodeChoice by remember { mutableStateOf<SeriesEpisode?>(null) }
+    var episodeFromStart by remember { mutableStateOf(false) }
+    val isTvDevice = remember { context.isTvDevice() }
     var details by remember { mutableStateOf<SeriesDetailsInfo?>(null) }
     var detailsLoading by remember { mutableStateOf(false) }
     var detailsError by remember { mutableStateOf<String?>(null) }
@@ -337,6 +342,7 @@ internal fun SeriesScreen(
         loadedDetails.episodes.firstOrNull { it.id == episodeId }?.let { episode ->
             selectedEpisode = episode
             selectedSeason = episode.seasonNumber
+            episodeFromStart = false
             if (request.autoPlay) view = SeriesView.PLAYER
         }
         onResumeHandled()
@@ -384,7 +390,7 @@ internal fun SeriesScreen(
                 }
                 MoviePlayer(
                     movie = episodePlaylistItem(series, episode),
-                    startPosition = progress[episode.id] ?: 0L,
+                    startPosition = if (episodeFromStart) 0L else progress[episode.id] ?: 0L,
                     onProgress = { position, duration ->
                         saveEpisodeProgress(series, episode, position, duration)
                     },
@@ -393,6 +399,8 @@ internal fun SeriesScreen(
                     relatedItems = relatedItems,
                     onRelatedItemChange = { item ->
                         allEpisodes.firstOrNull { it.id == item.channelId }?.let { next ->
+                            // Switching inside the player resumes the next episode, as it always has.
+                            episodeFromStart = false
                             selectedEpisode = next
                             selectedSeason = next.seasonNumber
                             recordRecent(series)
@@ -524,7 +532,8 @@ internal fun SeriesScreen(
                                             shelfMenuFor = title
                                         }},
                                         onFavorite = ::toggleFavorite,
-                                        onSeries = ::openDetails
+                                        onSeries = ::openDetails,
+                                        countLabel = stringResource(R.string.series_count, sectionItems.size)
                                     )
                                 }
                             }
@@ -564,13 +573,34 @@ internal fun SeriesScreen(
                         watchedEpisodeIds = watchedEpisodeIds,
                         onFavorite = { toggleFavorite(series) },
                         onEpisode = { episode ->
-                            selectedEpisode = episode
-                            selectedSeason = episode.seasonNumber
-                            recordRecent(series)
-                            view = SeriesView.PLAYER
+                            if (!isTvDevice && (progress[episode.id] ?: 0L) > 0L) {
+                                episodeChoice = episode
+                            } else {
+                                episodeFromStart = false
+                                selectedEpisode = episode
+                                selectedSeason = episode.seasonNumber
+                                recordRecent(series)
+                                view = SeriesView.PLAYER
+                            }
                         },
                         modifier = Modifier.weight(1f)
                     )
+                    episodeChoice?.let { chosen ->
+                        fun play(fromStart: Boolean) {
+                            episodeFromStart = fromStart
+                            selectedEpisode = chosen
+                            selectedSeason = chosen.seasonNumber
+                            recordRecent(series)
+                            view = SeriesView.PLAYER
+                        }
+                        ResumeOrStartOverDialog(
+                            title = stringResource(R.string.episode_title_format, chosen.episodeNumber, chosen.title),
+                            resumePosition = progress[chosen.id] ?: 0L,
+                            onResume = { play(fromStart = false) },
+                            onStartOver = { play(fromStart = true) },
+                            onDismiss = { episodeChoice = null }
+                        )
+                    }
                 }
                 // Rendered as a full-screen overlay above this BoxWithConstraints instead
                 // (see the early return at the top of it) — see comment there for why.
@@ -622,6 +652,16 @@ private fun LandscapeSeriesBrowser(
     val displayed = if (query.isBlank()) base else seriesItems.filter { it.name.contains(query.trim(), true) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
+    // How many series each category in the column holds, shown on a phone only - see the matching
+    // comment in LandscapeMovieBrowser.
+    val categoryCounts = remember(seriesItems, recent, favorites, continueWatching, isTv) {
+        if (isTv) emptyMap<String, Int>()
+        else seriesItems.groupingBy { it.group }.eachCount() + mapOf(
+            "Continue watching" to continueWatching.size,
+            "Recently watched" to recent.size,
+            "Favorites" to favorites.size
+        )
+    }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
     var reorderingCategory by remember { mutableStateOf<String?>(null) }
     // The category whose long-press menu is open, if any. The gesture opens a menu now rather
@@ -749,6 +789,7 @@ private fun LandscapeSeriesBrowser(
                         ) {
                             Row(Modifier.padding(start = 12.dp, top = 7.dp, bottom = 7.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(localizedSectionTitle(category), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, fontWeight = if (category == selectedCategory) FontWeight.Bold else FontWeight.Normal)
+                                if (!isTv) CategoryCountBadge(categoryCounts[category] ?: 0, MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (isReordering) Icon(Icons.Default.SwapVert, null, tint = Orange, modifier = Modifier.size(18.dp))
                             }
                         }
@@ -851,22 +892,13 @@ private fun SeriesShelf(
      *  views rather than categories, where there is nothing to hide or reorder. */
     onLongPressTitle: (() -> Unit)? = null,
     onFavorite: (PlaylistItem) -> Unit,
-    onSeries: (PlaylistItem) -> Unit
+    onSeries: (PlaylistItem) -> Unit,
+    /** "12 series", under the title. The shelves are the phone's portrait browse view only. */
+    countLabel: String? = null
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                localizedSectionTitle(title),
-                Modifier.weight(1f)
-                    .then(
-                        if (onLongPressTitle == null) Modifier
-                        else Modifier.combinedClickable(onLongClick = onLongPressTitle, onClick = onSeeAll)
-                    )
-                    .padding(vertical = 4.dp),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
+            ShelfTitle(localizedSectionTitle(title), countLabel, onSeeAll, onLongPressTitle, 18.sp, Modifier.weight(1f))
             onHide?.let {
                 AnimatedIconButton(onClick = it, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.VisibilityOff, stringResource(R.string.cd_hide_category, localizedSectionTitle(title)), tint = MaterialTheme.colorScheme.onSurfaceVariant)
