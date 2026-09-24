@@ -142,6 +142,9 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     }, 400);
   }
 
+  /** Each row's focusable boxes, left to right, for wiring Up between rows once all are built. */
+  const rowStops: HTMLElement[][] = [];
+
   rows.forEach((row, rowIndex) => {
     const track = el('div', { class: 'row', 'data-focus-group': row.id });
 
@@ -187,6 +190,8 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
       track.append(card);
     }
 
+    rowStops.push(Array.from(track.querySelectorAll<HTMLElement>('[data-focus]')));
+
     // Empty places, so the row keeps its shape before anything has filled it.
     const placed = row.items.length + (row.tile ? 1 : 0);
     for (let i = placed; i < row.minSlots; i++) {
@@ -197,6 +202,33 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     if (row.hint && row.items.length < row.minSlots) {
       body.append(el('div', { class: 'row-hint' }, row.hint));
     }
+  });
+
+  /*
+   * Up from a row goes to the row above: the box straight above when there is one, and otherwise
+   * the nearest box that row has.
+   *
+   * Left to geometry, Up only looks straight above, and an empty place is not a stop. So Up from
+   * the second box of Favorites, under an empty place in Recently watched, found nothing in that
+   * row and carried on up to whichever tab happened to be over it - Live TV - and a tab opens its
+   * section the moment it is reached. The rows fill from the left, so when the place straight above
+   * is empty the nearest box is the last one the row has. A row above with nothing in it at all is
+   * passed over for the one above that; the first row still goes to its section's tab.
+   */
+  rowStops.forEach((stops, rowIndex) => {
+    const above = rowStops.slice(0, rowIndex).reverse().find((candidates) => candidates.length > 0);
+    if (!above) return;
+    stops.forEach((stop, column) => {
+      const target = above[Math.min(column, above.length - 1)]!;
+      const id = target.getAttribute('data-focus-id');
+      // Scoped to its row: one title can sit in two rows on Home, under the same id.
+      const group = target.closest('[data-focus-group]')?.getAttribute('data-focus-group');
+      if (!id || !group) return;
+      stop.setAttribute(
+        'data-focus-up',
+        `[data-focus-group="${CSS.escape(group)}"] [data-focus-id="${CSS.escape(id)}"]`,
+      );
+    });
   });
 
   // info is not appended here: it is inserted after whichever row holds the highlight, by
