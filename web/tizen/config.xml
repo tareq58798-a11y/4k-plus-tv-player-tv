@@ -49,7 +49,7 @@
 
   <name>4K Plus TV Player</name>
   <description>Live TV, films and series from your own provider.</description>
-  <author email="support@fourkplus.com">4K Plus TV</author>
+  <author email="4kplustv.support@gmail.com">4K Plus TV</author>
 
   <content src="index.html"/>
   <icon src="icon.png"/>

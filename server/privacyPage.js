@@ -9,7 +9,7 @@
  * local storage. If any of that changes, this page has to change with it - a policy that says less
  * than the app does is worse than none.
  */
-const SUPPORT_EMAIL = 'support@fourkplus.com';
+const SUPPORT_EMAIL = '4kplustv.support@gmail.com';
 const UPDATED = '26 September 2026';
 
 function privacyPage() {
