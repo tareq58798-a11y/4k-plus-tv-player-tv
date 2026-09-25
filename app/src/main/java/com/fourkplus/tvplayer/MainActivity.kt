@@ -1845,6 +1845,11 @@ private fun MoviesScreen(
     }
 
     val byId = remember(movies) { movies.associateBy(::channelKey) }
+    // Once per catalogue rather than per recomposition: the landing page's shelves and a category's
+    // grid each used to re-filter every film by group, inline, every frame - on the landing that
+    // was every film once per category, millions of comparisons each time anything recomposed.
+    val byGroup = remember(movies) { movies.groupBy { it.group } }
+    val titleIndex = remember(movies) { TitleIndex(movies) }
     val favorites = remember(movies, favoriteIds) { movies.filter { channelKey(it) in favoriteIds } }
     val recent = remember(byId, recentIds) { recentIds.mapNotNull(byId::get) }
     val continueWatching = remember(movies, progress) {
@@ -1961,6 +1966,8 @@ private fun MoviesScreen(
             if (landscape && view in setOf(MovieView.BROWSE, MovieView.CATEGORY)) {
                 LandscapeMovieBrowser(
                     movies = movies,
+                    byGroup = byGroup,
+                    titleIndex = titleIndex,
                     categories = categories,
                     selectedCategory = selectedCategory,
                     search = search,
@@ -2043,17 +2050,19 @@ private fun MoviesScreen(
                         SearchField(search, { search = it }, stringResource(R.string.search_all_movies))
                         if (search.isNotBlank()) {
                             val query = rememberDebouncedSearch(search)
-                val results = remember(movies, query) { movies.filter { it.name.contains(query.trim(), true) } }
+                            val results = remember(titleIndex, query) { titleIndex.search(query) }
                             MovieGrid(
                                 results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress,
                                 restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
                             )
                         } else {
-                            val sections = buildList {
-                                if (continueWatching.isNotEmpty()) add("Continue watching" to continueWatching)
-                                add("Recently watched" to recent)
-                                add("Favorites" to favorites)
-                                categories.forEach { category -> add(category to movies.filter { it.group == category }) }
+                            val sections = remember(continueWatching, recent, favorites, categories, byGroup) {
+                                buildList {
+                                    if (continueWatching.isNotEmpty()) add("Continue watching" to continueWatching)
+                                    add("Recently watched" to recent)
+                                    add("Favorites" to favorites)
+                                    categories.forEach { category -> add(category to byGroup[category].orEmpty()) }
+                                }
                             }
                             if (sections.isEmpty()) {
                                 MovieEmptyState(stringResource(R.string.no_movies_found))
@@ -2089,14 +2098,16 @@ private fun MoviesScreen(
                     }
                     MovieView.CATEGORY -> {
                         SearchField(search, { search = it }, stringResource(R.string.search_all_movies))
-                        val base = when (selectedCategory) {
-                            "Continue watching" -> continueWatching
-                            "Recently watched" -> recent
-                            "Favorites" -> favorites
-                            else -> movies.filter { it.group == selectedCategory }
+                        val base = remember(selectedCategory, continueWatching, recent, favorites, byGroup) {
+                            when (selectedCategory) {
+                                "Continue watching" -> continueWatching
+                                "Recently watched" -> recent
+                                "Favorites" -> favorites
+                                else -> byGroup[selectedCategory].orEmpty()
+                            }
                         }
                         val query = rememberDebouncedSearch(search)
-    val results = if (query.isBlank()) base else movies.filter { it.name.contains(query.trim(), true) }
+                        val results = remember(base, titleIndex, query) { if (query.isBlank()) base else titleIndex.search(query) }
                         MovieGrid(
                             results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape, progress,
                             restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
@@ -2127,6 +2138,9 @@ private fun MoviesScreen(
 @Composable
 private fun LandscapeMovieBrowser(
     movies: List<PlaylistItem>,
+    /** [movies] by category, and its title index - both built once by MoviesScreen. */
+    byGroup: Map<String, List<PlaylistItem>>,
+    titleIndex: TitleIndex,
     categories: List<String>,
     selectedCategory: String,
     search: String,
@@ -2157,14 +2171,19 @@ private fun LandscapeMovieBrowser(
 ) {
     val special = listOf("Continue watching", "Recently watched", "Favorites")
     val allCategories = special + categories
-    val base = when (selectedCategory) {
-        "Continue watching" -> continueWatching
-        "Recently watched" -> recent
-        "Favorites" -> favorites
-        else -> movies.filter { it.group == selectedCategory }
+    // Each list held until what it depends on changes: these two filters ran over every film on
+    // every recomposition, including each keystroke in the search box - see TitleIndex. The
+    // grouping and the index come from MoviesScreen, built once there rather than twice.
+    val base = remember(selectedCategory, continueWatching, recent, favorites, byGroup) {
+        when (selectedCategory) {
+            "Continue watching" -> continueWatching
+            "Recently watched" -> recent
+            "Favorites" -> favorites
+            else -> byGroup[selectedCategory].orEmpty()
+        }
     }
     val query = rememberDebouncedSearch(search)
-    val displayed = if (query.isBlank()) base else movies.filter { it.name.contains(query.trim(), true) }
+    val displayed = remember(base, titleIndex, query) { if (query.isBlank()) base else titleIndex.search(query) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
@@ -4331,6 +4350,31 @@ private fun NowNextLine(
  *  as internal lookup keys (category-hiding, section filtering) throughout Movies/Series/Live TV,
  *  so those keys stay in English everywhere in the code. This translates ONLY what gets rendered,
  *  at the point it's rendered — a real provider category name falls through [title] unchanged. */
+/**
+ * A catalogue's titles, lower-cased once, for searching by substring.
+ *
+ * Movies and Series searched with `name.contains(query, ignoreCase = true)` over every title, and
+ * did it inline in the composable - so the whole scan, sixty thousand case-insensitive comparisons
+ * on a full account, ran again on every recomposition, and typing a letter recomposes. Lower-casing
+ * each title once when the catalogue arrives makes each search a plain substring scan, and callers
+ * hold the result in `remember` keyed on the settled query so it runs once per query, not per frame.
+ *
+ * Case is folded with Locale.ROOT on both sides, which matches the old ignoreCase for everything a
+ * catalogue title contains; it differs only for the handful of characters whose lower-case form is
+ * two characters long, such as Turkish İ.
+ */
+internal class TitleIndex(private val items: List<PlaylistItem>) {
+    private val names = Array(items.size) { items[it].name.lowercase(java.util.Locale.ROOT) }
+
+    fun search(query: String): List<PlaylistItem> {
+        val needle = query.trim().lowercase(java.util.Locale.ROOT)
+        if (needle.isEmpty()) return items
+        val found = ArrayList<PlaylistItem>()
+        for (i in names.indices) if (names[i].contains(needle)) found += items[i]
+        return found
+    }
+}
+
 /**
  * The search text, but only once the typing has stopped.
  *

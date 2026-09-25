@@ -175,6 +175,9 @@ internal fun SeriesScreen(
     }
 
     val byId = remember(seriesItems) { seriesItems.associateBy(::channelKey) }
+    // Once per catalogue rather than per recomposition - see the same in MoviesScreen and TitleIndex.
+    val byGroup = remember(seriesItems) { seriesItems.groupBy { it.group } }
+    val titleIndex = remember(seriesItems) { TitleIndex(seriesItems) }
     val favorites = remember(seriesItems, favoriteIds) { seriesItems.filter { channelKey(it) in favoriteIds } }
     val recent = remember(byId, recentIds) { recentIds.mapNotNull(byId::get) }
     val continueWatching = remember(seriesItems, continueSeriesIds) {
@@ -405,6 +408,8 @@ internal fun SeriesScreen(
         if (landscape && view in setOf(SeriesView.BROWSE, SeriesView.CATEGORY)) {
             LandscapeSeriesBrowser(
                 seriesItems = seriesItems,
+                byGroup = byGroup,
+                titleIndex = titleIndex,
                 categories = categories,
                 selectedCategory = selectedCategory,
                 search = search,
@@ -484,17 +489,19 @@ internal fun SeriesScreen(
                     SeriesSearch(search, { search = it })
                     if (search.isNotBlank()) {
                         val query = rememberDebouncedSearch(search)
-                        val results = seriesItems.filter { it.name.contains(query.trim(), true) }
+                        val results = remember(titleIndex, query) { titleIndex.search(query) }
                         SeriesGrid(
                             results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape,
                             restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
                         )
                     } else {
-                        val sections = buildList {
-                            if (continueWatching.isNotEmpty()) add("Continue watching" to continueWatching)
-                            add("Recently watched" to recent)
-                            add("Favorites" to favorites)
-                            categories.forEach { category -> add(category to seriesItems.filter { it.group == category }) }
+                        val sections = remember(continueWatching, recent, favorites, categories, byGroup) {
+                            buildList {
+                                if (continueWatching.isNotEmpty()) add("Continue watching" to continueWatching)
+                                add("Recently watched" to recent)
+                                add("Favorites" to favorites)
+                                categories.forEach { category -> add(category to byGroup[category].orEmpty()) }
+                            }
                         }
                         if (sections.isEmpty()) {
                             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -534,14 +541,16 @@ internal fun SeriesScreen(
 
                 SeriesView.CATEGORY -> {
                     SeriesSearch(search, { search = it })
-                    val base = when (selectedCategory) {
-                        "Continue watching" -> continueWatching
-                        "Recently watched" -> recent
-                        "Favorites" -> favorites
-                        else -> seriesItems.filter { it.group == selectedCategory }
+                    val base = remember(selectedCategory, continueWatching, recent, favorites, byGroup) {
+                        when (selectedCategory) {
+                            "Continue watching" -> continueWatching
+                            "Recently watched" -> recent
+                            "Favorites" -> favorites
+                            else -> byGroup[selectedCategory].orEmpty()
+                        }
                     }
                     val query = rememberDebouncedSearch(search)
-                    val results = if (query.isBlank()) base else seriesItems.filter { it.name.contains(query.trim(), true) }
+                    val results = remember(base, titleIndex, query) { if (query.isBlank()) base else titleIndex.search(query) }
                     SeriesGrid(
                         results, favoriteIds, ::toggleFavorite, ::openDetails, Modifier.weight(1f), landscape,
                         restoreFocusKey = restoreFocusKey, onRestoreHandled = { restoreFocusKey = null }
@@ -584,6 +593,9 @@ internal fun SeriesScreen(
 @Composable
 private fun LandscapeSeriesBrowser(
     seriesItems: List<PlaylistItem>,
+    /** [seriesItems] by category, and its title index - both built once by SeriesScreen. */
+    byGroup: Map<String, List<PlaylistItem>>,
+    titleIndex: TitleIndex,
     categories: List<String>,
     selectedCategory: String,
     search: String,
@@ -612,14 +624,17 @@ private fun LandscapeSeriesBrowser(
 ) {
     val special = listOf("Continue watching", "Recently watched", "Favorites")
     val allCategories = special + categories
-    val base = when (selectedCategory) {
-        "Continue watching" -> continueWatching
-        "Recently watched" -> recent
-        "Favorites" -> favorites
-        else -> seriesItems.filter { it.group == selectedCategory }
+    // Held until their inputs change - see LandscapeMovieBrowser.
+    val base = remember(selectedCategory, continueWatching, recent, favorites, byGroup) {
+        when (selectedCategory) {
+            "Continue watching" -> continueWatching
+            "Recently watched" -> recent
+            "Favorites" -> favorites
+            else -> byGroup[selectedCategory].orEmpty()
+        }
     }
     val query = rememberDebouncedSearch(search)
-    val displayed = if (query.isBlank()) base else seriesItems.filter { it.name.contains(query.trim(), true) }
+    val displayed = remember(base, titleIndex, query) { if (query.isBlank()) base else titleIndex.search(query) }
     val context = LocalContext.current
     val isTv = remember { context.isTvDevice() }
     // The category currently being hand-moved after a long-press - Up/Down nudges it, OK drops it.
