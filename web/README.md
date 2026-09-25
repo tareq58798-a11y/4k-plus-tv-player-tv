@@ -211,16 +211,19 @@ stops it being reopened every few months.
 * **Named aspect frames that always change the picture.** See the table above. The television's
   16:9 and 4:3 do nothing to a stream already of a similar shape; here each gives its shape.
   Changed at the owner's request on 2026-09-24; the Android app is unchanged.
-* **(The other way round) a keyboard on the Search screen.** The television uses Android TV's system
-  keyboard there. Here the Search screen draws its own (ui/searchKeyboard.ts) to the left of the
-  results, so they stay in view and narrow with every key: letters and digits, or Arabic letters
-  including ة ى ء أ إ آ ؤ ئ, plus Space, Delete, Clear and a key to switch between the two. It
-  opens in Arabic when the app is in Arabic. The highlight starts on the first key; the text box
-  above is still one press Up away for the set's own keyboard and voice input. Only the Search
-  screen - the browse screens' boxes still use the set's keyboard. The results grid is three
-  columns here instead of five to make room. Space and Delete's spoken names are in
-  strings.local.ts in English only; Clear is the extracted cd_clear. Added at the owner's request
-  on 2026-09-26; the Android app is unchanged.
+* **(The other way round) the app's own keyboard on every search box, and never the set's.** The
+  television uses Android TV's system keyboard. Here every search box - the Search screen, and the
+  category and title boxes on Live TV, Movies and Series - uses the app's own keyboard
+  (ui/searchKeyboard.ts), and those boxes are read-only to the set so its system keyboard and voice
+  input do not open on them at all, at the owner's request. Latin letters, or Arabic letters
+  including ة ى ء أ إ آ ؤ ئ; a separate block of digits under the letters in both; then Space,
+  Delete, Clear and a key to switch layouts. It opens in Arabic when the app is in Arabic. On the
+  Search screen it sits left of the results, which go from five columns to three to make room, and
+  the highlight starts on its first key. On the browse screens, OK on a box opens it as a panel
+  under the box, with a Done key; Back or Done puts it away. Other text boxes (adding a playlist,
+  renaming one) still use the set's keyboard. Space, Delete and Done's words are in strings.local.ts
+  in English only; Clear is the extracted cd_clear. Added at the owner's request on 2026-09-26; the
+  Android app is unchanged.
 
 ## State
 

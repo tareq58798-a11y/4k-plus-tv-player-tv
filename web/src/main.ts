@@ -29,6 +29,7 @@ import { renderNav, trackNavHighlight, type Section } from './ui/nav';
 import { renderSeries } from './ui/series';
 import { renderDetails } from './ui/details';
 import { renderSearch } from './ui/search';
+import { attachKeyboardPanel } from './ui/searchKeyboard';
 import { renderSettings } from './ui/settings';
 import { createEpgLoader, clockTime } from './ui/epg';
 import { askPin } from './ui/pin';
@@ -1612,6 +1613,10 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       renderGrid();
     }, 320);
   });
+  // OK on either box opens the app's own keyboard under it; the set's keyboard never appears
+  // (searchKeyboard.ts, and web/README.md for why this differs from the television).
+  attachKeyboardPanel(categoryField);
+  attachKeyboardPanel(entryField);
   const entryColumn = el('div', { class: live ? 'browse-column live' : 'browse-column' }, entryField, grid);
 
   renderSidebar();

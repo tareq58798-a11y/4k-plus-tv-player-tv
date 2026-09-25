@@ -2295,13 +2295,18 @@ body.playing .backdrop-scrim {
 }
 
 /*
- * The Search screen's own keyboard (searchKeyboard.ts), which the television app does not have -
- * it uses Android TV's system keyboard. So there are no dp to double here: the keys take the search
- * box's 32px type, its glass surface and border, and the page's own gap tokens, so they read as
- * part of the same screen rather than a second design.
+ * The app's own keyboard (searchKeyboard.ts), which the television app does not have - it uses
+ * Android TV's system keyboard. So there are no dp to double here: the keys take the search box's
+ * 32px type, its glass surface and border, and the page's own gap tokens, so they read as part of
+ * the same screen rather than a second design. (A solid, bolder version was tried on 2026-09-26 and
+ * the owner preferred this one.)
  *
- * Keyboard on the left and results on the right, the arrangement a set's own apps use: the results
- * stay in view while a word is typed. That takes the grid from five columns to three.
+ * On the Search screen it sits on the left with the results on the right, the arrangement a set's
+ * own apps use: the results stay in view while a word is typed. That takes the grid from five
+ * columns to three. On the browse screens it is the same keyboard in a panel under the box.
+ *
+ * 70px keys rather than a round number: the Arabic layout - six rows of letters, two of digits and
+ * the action row - has to fit on the Search screen under its box and count.
  */
 .search-body {
   display: flex;
@@ -2325,15 +2330,24 @@ body.playing .backdrop-scrim {
 
 .search-keys {
   display: grid;
-  grid-template-columns: repeat(6, 76px);
+  grid-template-columns: repeat(6, 70px);
   gap: 12px;
 }
 
+/* The digits, apart from the letters: a gap and a line above them, so a number is a block of its
+   own to go to rather than something to hunt for among the letters. */
+.search-key-digits {
+  margin-top: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--tone-glass-border);
+}
+
 .search-key {
-  height: 76px;
+  height: 70px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   padding: 0;
   font: inherit;
   font-size: 32px;
@@ -2348,10 +2362,17 @@ body.playing .backdrop-scrim {
   grid-column: span 2;
 }
 
-/* Clear and the layout switch are words; smaller, so they fit a key without wrapping. */
+/* Clear, the layout switch and Done are words; smaller, so they fit a key without wrapping. */
 .search-key-actions .search-key {
   font-size: 24px;
   color: var(--tone-text-secondary);
+}
+
+.search-key.done {
+  grid-column: span 6;
+  color: #04131f;
+  background: var(--tone-action-gradient);
+  border-color: transparent;
 }
 
 .search-key:focus {
@@ -2363,6 +2384,21 @@ body.playing .backdrop-scrim {
   width: 40px;
   height: 40px;
   fill: currentColor;
+}
+
+/*
+ * The same keyboard as a panel under a browse screen's box. Unlike the Search screen, where it has
+ * the page to itself, here it floats over the category list or the posters, and glass keys over a
+ * busy grid could not be read - so the panel, and only the panel, has a solid backing: the Settings
+ * screen's surface colour (Theme.kt's 0xFF0A1B31, see the note over the settings rules).
+ */
+.keyboard-panel {
+  position: fixed;
+  z-index: 50;
+  background: rgba(10, 27, 49, 0.96);
+  border: 1px solid var(--tone-glass-border);
+  border-radius: 24px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
 /*

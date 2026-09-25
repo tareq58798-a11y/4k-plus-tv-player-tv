@@ -67,13 +67,13 @@ function shown(element: Element): boolean {
  * A zero-sized box is already ruled out by the measurement; the style only matters for the
  * rarer hidden-but-laid-out case, and only for the candidate about to be chosen.
  */
-function nearest(from: HTMLElement, direction: Direction): HTMLElement | null {
+function nearest(from: HTMLElement, direction: Direction, scope: ParentNode = document): HTMLElement | null {
   const fromRect = from.getBoundingClientRect();
   const origin = { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 };
   let best: HTMLElement | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
-  for (const candidate of document.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+  for (const candidate of scope.querySelectorAll<HTMLElement>(FOCUSABLE)) {
     if (candidate === from || candidate.hasAttribute('data-focus-skip')) continue;
     const rect = candidate.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) continue;
@@ -241,6 +241,21 @@ export function move(direction: Direction): boolean {
   if (!target) return false;
   focus(resolveGroupEntry(from, target));
   return true;
+}
+
+/**
+ * The same geometric move, but only among [container]'s own focusable elements - for something
+ * drawn over the page, such as the search keyboard's panel, whose arrows must never reach whatever
+ * happens to sit underneath it. A move with nowhere to go inside simply does not happen.
+ */
+export function moveWithin(container: HTMLElement, direction: Direction): void {
+  const from = focused();
+  if (!from || !container.contains(from)) {
+    focus(container.querySelector<HTMLElement>(FOCUSABLE));
+    return;
+  }
+  const target = nearest(from, direction, container);
+  if (target) focus(target);
 }
 
 export type KeyHandler = (key: RemoteKey) => boolean;

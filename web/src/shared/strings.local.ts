@@ -84,6 +84,8 @@ export const LOCAL_EN = {
   // cd_clear, which the television does have.
   keyboard_space: 'Space',
   keyboard_delete: 'Delete',
+  // The Done key on the panel the same keyboard opens as on the Live TV, Movies and Series boxes.
+  keyboard_done: 'Done',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;

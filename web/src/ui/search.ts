@@ -60,12 +60,14 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
   /** Matches the Android app's pause before a search runs. */
   const SEARCH_DELAY_MS = 320;
 
+  // Shows what has been typed and nothing more: the keyboard beside it does the typing, and it is
+  // not focusable, because a highlight on it would do nothing - the set's own keyboard is kept away
+  // from every search box (searchKeyboard.ts).
   const field = el('input', {
     type: 'text',
     class: 'search-field',
     placeholder: t('search_hint'),
-    'data-focus': '',
-    'data-focus-id': 'search-field',
+    tabindex: '-1',
   });
   const count = el('div', { class: 'search-count' });
   const results = el('div', { class: 'grid', 'data-focus-group': 'search-results' });
@@ -122,8 +124,7 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
     }, SEARCH_DELAY_MS);
   });
   // The app's own keyboard beside the results (searchKeyboard.ts, Samsung only - see the note
-  // there). The highlight starts on its first key rather than in the box, so arriving here does not
-  // throw the set's system keyboard up over the page; the box is still one press Up away.
+  // there), and the highlight starts on its first key.
   const keyboard = createSearchKeyboard(field);
   host.append(
     el('div', { class: 'browser-title' }, t('search_title')),
