@@ -96,8 +96,10 @@ stops it being reopened every few months.
   watched channel's stream (LiveSnapshotCapture.kt) by opening the stream in the background and
   decoding a frame. A Samsung web app cannot: AVPlay draws on a hardware plane the page cannot
   read, drawing a video into a canvas stopped working after Tizen 2, and Samsung's WebAssembly
-  decoder is only on sets newer than this app's Tizen 5.5 floor. Channel cards show the channel's
-  logo. Looked at and left out on 2026-09-24.
+  decoder is only on sets newer than this app's Tizen 5.5 floor. Instead, at the owner's choice,
+  a channel's card has its logo small and sharp in the middle, on a colour taken from the logo
+  (`ui/channelTint.ts`), or from the channel's name where the logo's host will not let its pixels
+  be read. Looked at on 2026-09-24; the logo card decided on 2026-09-25.
 * **Mute.** The television app mutes its own ExoPlayer instance, which affects that stream and
   nothing else. Tizen offers no per-stream volume for AVPlay; the available API,
   `tizen.tvaudiocontrol`, mutes the *television*. An app that silences the whole set from its own

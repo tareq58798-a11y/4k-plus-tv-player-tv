@@ -24,6 +24,7 @@ import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus } from './focus';
 import { lazyImage, posterArtwork } from './images';
+import { channelTint } from './channelTint';
 
 export interface LandingRow {
   id: string;
@@ -248,6 +249,15 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
       // The first screenful straight away; the row shows five.
       lazyImage(art, posterArtwork(item.logoUrl), row.items.indexOf(item) < 6);
       card.append(art);
+      // A channel's card: its logo small and sharp in the middle, on a colour taken from it - the
+      // owner's choice in place of the television's frame from the stream, which a Samsung web app
+      // cannot capture. See channelTint.
+      if (item.kind === 'live') {
+        card.classList.add('channel-card');
+        void channelTint(item.logoUrl, item.name).then((colour) => {
+          card.style.backgroundColor = colour;
+        });
+      }
       // The red LIVE flag the television puts on channel artwork (LiveFlag in Components.kt), so a
       // channel in a row of films reads as a channel.
       if (item.kind === 'live') card.append(el('div', { class: 'live-flag' }, t('home_live_badge')));

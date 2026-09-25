@@ -3351,3 +3351,35 @@ body.playing .backdrop-scrim {
   height: 68px;
   background: rgba(255, 255, 255, 0.14);
 }
+
+/* ------------------------------------------------------------ channel cards
+ *
+ * A channel on a landing row: its logo small and whole in the middle of the card, above the name,
+ * on a colour taken from the logo (ui/channelTint.ts). Filling the card with a logo meant blowing
+ * a small image up to the card's width, which is what made it blurry; at under half the width it
+ * is drawn much nearer its own size. The slate is what shows until the colour is worked out.
+ */
+.card.channel-card {
+  background-color: hsl(215, 20%, 20%);
+  transition: background-color var(--motion-focus-ms) ease;
+}
+
+.card.channel-card .art {
+  position: absolute;
+  top: 14%;
+  left: 28%;
+  width: 44%;
+  height: 50%;
+  object-fit: contain;
+}
+
+/* The shading that keeps the name readable starts under the logo, not across it. */
+.card.channel-card::after {
+  background: linear-gradient(180deg, transparent 0%, transparent 62%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* A channel with no logo, or one that would not load, shows its colour and name only - not the
+   outline a browser draws for a missing image. */
+.card .art:not([src]) {
+  visibility: hidden;
+}
