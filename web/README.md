@@ -211,6 +211,16 @@ stops it being reopened every few months.
 * **Named aspect frames that always change the picture.** See the table above. The television's
   16:9 and 4:3 do nothing to a stream already of a similar shape; here each gives its shape.
   Changed at the owner's request on 2026-09-24; the Android app is unchanged.
+* **(The other way round) a keyboard on the Search screen.** The television uses Android TV's system
+  keyboard there. Here the Search screen draws its own (ui/searchKeyboard.ts) to the left of the
+  results, so they stay in view and narrow with every key: letters and digits, or Arabic letters
+  including ة ى ء أ إ آ ؤ ئ, plus Space, Delete, Clear and a key to switch between the two. It
+  opens in Arabic when the app is in Arabic. The highlight starts on the first key; the text box
+  above is still one press Up away for the set's own keyboard and voice input. Only the Search
+  screen - the browse screens' boxes still use the set's keyboard. The results grid is three
+  columns here instead of five to make room. Space and Delete's spoken names are in
+  strings.local.ts in English only; Clear is the extracted cd_clear. Added at the owner's request
+  on 2026-09-26; the Android app is unchanged.
 
 ## State
 

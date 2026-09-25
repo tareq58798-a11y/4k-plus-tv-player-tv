@@ -2295,6 +2295,77 @@ body.playing .backdrop-scrim {
 }
 
 /*
+ * The Search screen's own keyboard (searchKeyboard.ts), which the television app does not have -
+ * it uses Android TV's system keyboard. So there are no dp to double here: the keys take the search
+ * box's 32px type, its glass surface and border, and the page's own gap tokens, so they read as
+ * part of the same screen rather than a second design.
+ *
+ * Keyboard on the left and results on the right, the arrangement a set's own apps use: the results
+ * stay in view while a word is typed. That takes the grid from five columns to three.
+ */
+.search-body {
+  display: flex;
+  gap: var(--dim-gap-l);
+  align-items: flex-start;
+}
+
+.search-body .grid {
+  flex: 1;
+  grid-template-columns: repeat(3, var(--dim-card-width));
+}
+
+.search-keyboard {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Room for the focus ring, which is drawn outside each key. */
+  padding: var(--dim-card-bleed);
+}
+
+.search-keys {
+  display: grid;
+  grid-template-columns: repeat(6, 76px);
+  gap: 12px;
+}
+
+.search-key {
+  height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font: inherit;
+  font-size: 32px;
+  color: var(--tone-text-primary);
+  background: var(--tone-glass-strong);
+  border: 1px solid var(--tone-glass-border);
+  border-radius: 16px;
+  cursor: pointer;
+}
+
+.search-key.wide {
+  grid-column: span 2;
+}
+
+/* Clear and the layout switch are words; smaller, so they fit a key without wrapping. */
+.search-key-actions .search-key {
+  font-size: 24px;
+  color: var(--tone-text-secondary);
+}
+
+.search-key:focus {
+  color: #04131f;
+  background: var(--tone-category-gradient);
+}
+
+.search-key-icon {
+  width: 40px;
+  height: 40px;
+  fill: currentColor;
+}
+
+/*
  * Settings, drawn as SettingsScreen.kt draws it. Every number is its dp doubled.
  *
  * The colours are ui/theme/Theme.kt's dark scheme, which Tokens.kt does not carry and so the token

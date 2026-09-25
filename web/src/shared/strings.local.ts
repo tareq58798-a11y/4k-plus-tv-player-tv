@@ -78,6 +78,12 @@ export const LOCAL_EN = {
   subtitle_size_medium: 'Medium',
   subtitle_size_large: 'Large',
   subtitle_size_xlarge: 'Extra large',
+  // The Search screen's own keyboard (ui/searchKeyboard.ts). The television uses Android TV's
+  // system keyboard there and so has no labels of its own for these. Both keys are icons on
+  // screen; the words are what a screen reader says for them. Its Clear key uses the extracted
+  // cd_clear, which the television does have.
+  keyboard_space: 'Space',
+  keyboard_delete: 'Delete',
 } as const;
 
 export type LocalStringKey = keyof typeof LOCAL_EN;

@@ -6,7 +6,7 @@
  * and making them guess is the difference between finding it and giving up.
  *
  * Typing on a television is slow - an on-screen keyboard and a remote - so every keystroke has to
- * earn its place. Results update as characters arrive, and matching is by substring rather than
+ * earn its place. On Samsung that keyboard is the app's own, beside the results (searchKeyboard.ts). Results update as characters arrive, and matching is by substring rather than
  * anything cleverer, because a viewer typing three letters wants everything containing them.
  */
 import { t } from '../shared/i18n';
@@ -14,6 +14,7 @@ import type { PlaylistItem } from '../shared/models';
 import { itemKey } from '../shared/models';
 import { focus, pushKeyHandler } from './focus';
 import { lazyImage, posterArtwork } from './images';
+import { createSearchKeyboard } from './searchKeyboard';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -120,12 +121,22 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
       render();
     }, SEARCH_DELAY_MS);
   });
+  // The app's own keyboard beside the results (searchKeyboard.ts, Samsung only - see the note
+  // there). The highlight starts on its first key rather than in the box, so arriving here does not
+  // throw the set's system keyboard up over the page; the box is still one press Up away.
+  const keyboard = createSearchKeyboard(field);
   host.append(
     el('div', { class: 'browser-title' }, t('search_title')),
-    el('div', { class: 'search' }, field, count, results),
+    el(
+      'div',
+      { class: 'search' },
+      field,
+      count,
+      el('div', { class: 'search-body' }, keyboard.element, results),
+    ),
   );
   render();
-  focus(field);
+  focus(keyboard.firstKey());
 
   const release = pushKeyHandler((key) => {
     if (key !== 'back') return false;
