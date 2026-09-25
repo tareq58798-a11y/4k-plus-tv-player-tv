@@ -2997,7 +2997,10 @@ private fun MovieDetails(
                     modifier = Modifier.fillMaxWidth().height(46.dp).focusRequester(playFocusRequester)
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    trailerId?.let { id ->
+                    // TV only. `landscape` is an orientation check, not a device check - a phone
+                    // turned sideways would otherwise still get this button, which is the wrong
+                    // reason for it to appear or disappear.
+                    if (isTv) trailerId?.let { id ->
                         OutlinedButton(onClick = { openTrailer(context, id) }, modifier = Modifier.weight(1f).height(44.dp)) {
                             Icon(Icons.Default.SmartDisplay, null)
                             Spacer(Modifier.width(6.dp))
@@ -3112,7 +3115,9 @@ private fun MovieDetails(
                 )
             }
         }
-        trailerId?.let { id ->
+        // TV only - see the note on the other trailer button above. This is the portrait branch,
+        // which in practice is the phone's, so removing the button here is what took it off phone.
+        if (isTv) trailerId?.let { id ->
             OutlinedButton(
                 onClick = { openTrailer(context, id) },
                 modifier = Modifier.fillMaxWidth()
