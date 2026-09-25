@@ -13,9 +13,9 @@
  * of their own under the letters in both, set apart so a number is not hunted for among letters.
  * It opens in Arabic when the app is in Arabic and in Latin otherwise; one key switches.
  *
- * On the Search screen it sits beside the results. On the browse screens there is no room for it
- * to stay up, so OK on a box opens it as a panel under that box ([attachKeyboardPanel]); it types
- * into the box as it goes, and Done or Back puts it away.
+ * On the Search screen it sits beside the results, six keys wide. On the browse screens there is no
+ * room for it to stay up, so OK on a box opens it as a wide panel along the bottom middle of the
+ * screen ([attachKeyboardPanel]); it types into the box as it goes, and Done or Back puts it away.
  */
 import { isRtl, t } from '../shared/i18n';
 import { focus, moveWithin, pushKeyHandler } from './focus';
@@ -29,6 +29,19 @@ const ARABIC = 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي'.split(
 /* In a keyboard's order, 0 last. Western digits in both layouts, because that is how the
    catalogue writes its years and numbers. */
 const DIGITS = '1234567890'.split('');
+
+/*
+ * The wide panel's rows, in the order a Samsung set's own keyboard and a physical keyboard use:
+ * QWERTY, and the standard Arabic (101) layout, ض on the key where Q is. The Arabic rows end with
+ * ذ and the hamza-carrying alefs, which that layout reaches with Shift and a remote cannot. لا is
+ * one key there and types both letters.
+ */
+const LATIN_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].map((row) => row.split(''));
+const ARABIC_ROWS = [
+  ['ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج', 'د'],
+  ['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط', 'ذ'],
+  ['ئ', 'ء', 'ؤ', 'ر', 'لا', 'ى', 'ة', 'و', 'ز', 'ظ', 'أ', 'إ', 'آ'],
+];
 
 type Layout = 'latin' | 'arabic';
 
@@ -54,26 +67,47 @@ export function takeOverField(field: HTMLInputElement): void {
 /**
  * [field] is the box the keys type into. Keys edit its value and fire its `input` event, so each
  * screen's existing wait-for-typing-to-stop search runs exactly as it did for typed text.
- * [onDone], when given, adds a Done key that calls it.
+ * [onDone], when given, adds a Done key that calls it. [shape] is how the keys are laid out:
+ *
+ *  - `tall`: six keys wide, letters in alphabetical order above a block of digits, then Space,
+ *    Delete, Clear and the layout switch - to stand beside the Search screen's results.
+ *  - `wide`: laid out the way a Samsung set's own keyboard is, as the owner asked - QWERTY (or
+ *    Arabic) rows with the layout switch, Space and Clear under them, a 1-9/0 number pad to their
+ *    right, and Delete and Done beside that. For the browse screens' panel across the bottom.
  */
-export function createSearchKeyboard(field: HTMLInputElement, onDone?: () => void): SearchKeyboard {
+export function createSearchKeyboard(
+  field: HTMLInputElement,
+  onDone?: () => void,
+  shape: 'tall' | 'wide' = 'tall',
+): SearchKeyboard {
   takeOverField(field);
   let layout: Layout = isRtl() ? 'arabic' : 'latin';
 
   const element = document.createElement('div');
-  element.className = 'search-keyboard';
+  element.className = `search-keyboard ${shape}`;
   element.setAttribute('data-focus-group', 'search-keyboard');
   // The keys stay in reading order for their own script whatever the page direction is, the way a
   // real keyboard does not reverse itself.
   element.dir = 'ltr';
 
-  const letters = document.createElement('div');
-  letters.className = 'search-keys';
-  const digits = document.createElement('div');
-  digits.className = 'search-keys search-key-digits';
-  const actions = document.createElement('div');
-  actions.className = 'search-keys search-key-actions';
-  element.append(letters, digits, actions);
+  const wide = shape === 'wide';
+  const div = (className: string): HTMLDivElement => {
+    const node = document.createElement('div');
+    node.className = className;
+    return node;
+  };
+  const letters = div('search-keys search-key-letters');
+  const digits = div('search-keys search-key-digits');
+  const actions = div('search-keys search-key-actions');
+  // Delete and Done, standing beside the number pad in the wide shape.
+  const side = div('search-key-side');
+  if (wide) {
+    const lettersColumn = div('search-key-letter-column');
+    lettersColumn.append(letters, actions);
+    element.append(lettersColumn, digits, side);
+  } else {
+    element.append(letters, digits, actions);
+  }
 
   function edit(next: string): void {
     field.value = next;
@@ -100,7 +134,22 @@ export function createSearchKeyboard(field: HTMLInputElement, onDone?: () => voi
   function drawLetters(): void {
     letters.textContent = '';
     letters.lang = layout === 'arabic' ? 'ar' : 'en';
+    if (wide) {
+      // Row by row, each centred under the one above, as on a real keyboard.
+      let index = 0;
+      for (const row of layout === 'arabic' ? ARABIC_ROWS : LATIN_ROWS) {
+        const line = div('search-key-row');
+        for (const ch of row) line.append(key(ch, `key-${index++}`, type(ch)));
+        letters.append(line);
+      }
+      return;
+    }
     (layout === 'arabic' ? ARABIC : LATIN).forEach((ch, index) => letters.append(key(ch, `key-${index}`, type(ch))));
+  }
+
+  /** The first letter key, wherever the shape has put it. */
+  function firstLetter(): HTMLElement {
+    return letters.querySelector<HTMLElement>('.search-key')!;
   }
 
   DIGITS.forEach((ch) => digits.append(key(ch, `key-digit-${ch}`, type(ch))));
@@ -123,14 +172,21 @@ export function createSearchKeyboard(field: HTMLInputElement, onDone?: () => voi
   function labelSwitch(): void {
     switchKey.textContent = layout === 'arabic' ? 'ABC' : 'عربي';
   }
-  actions.append(spaceKey, deleteKey, clearKey, switchKey);
-
-  if (onDone) {
-    const done = key(iconElement('check', 'search-key-icon'), 'key-done', onDone, 'done');
+  const doneKey = onDone ? key(iconElement('check', 'search-key-icon'), 'key-done', onDone, 'done') : null;
+  if (doneKey) {
     const label = document.createElement('span');
     label.textContent = t('keyboard_done');
-    done.append(label);
-    actions.append(done);
+    doneKey.append(label);
+  }
+
+  if (wide) {
+    // Under the letters, as on the set's keyboard: the language key, a long Space bar, Clear.
+    actions.append(switchKey, spaceKey, clearKey);
+    side.append(deleteKey);
+    if (doneKey) side.append(doneKey);
+  } else {
+    actions.append(spaceKey, deleteKey, clearKey, switchKey);
+    if (doneKey) actions.append(doneKey);
   }
 
   drawLetters();
@@ -138,12 +194,14 @@ export function createSearchKeyboard(field: HTMLInputElement, onDone?: () => voi
 
   return {
     element,
-    firstKey: () => letters.firstElementChild as HTMLElement,
+    firstKey: firstLetter,
   };
 }
 
 /**
- * For the browse screens' boxes: OK on [field] opens the keyboard as a panel just under it.
+ * For the browse screens' boxes: OK on [field] opens the keyboard as a wide panel at the bottom
+ * middle of the screen, where it covers the least of the list the box is narrowing - the box itself
+ * is at the top, and what it finds is in between.
  *
  * While it is up it owns the remote - the arrows walk its keys and never the page beneath, OK
  * presses a key, Back or Done put it away and hand the highlight back to the box - the same rules
@@ -161,18 +219,9 @@ export function attachKeyboardPanel(field: HTMLInputElement): void {
       panel.remove();
       focus(field);
     };
-    const keyboard = createSearchKeyboard(field, close);
+    const keyboard = createSearchKeyboard(field, close, 'wide');
     panel.append(keyboard.element);
     document.body.append(panel);
-
-    // Under the box, and kept on the screen: the category box is near the left edge, and in Arabic
-    // the page is mirrored, so the panel lines up with whichever edge of the box starts the text.
-    const box = field.getBoundingClientRect();
-    const width = panel.offsetWidth;
-    const height = panel.offsetHeight;
-    const wanted = isRtl() ? box.right - width : box.left;
-    panel.style.left = `${Math.max(16, Math.min(wanted, window.innerWidth - width - 16))}px`;
-    panel.style.top = `${Math.max(16, Math.min(box.bottom + 12, window.innerHeight - height - 16))}px`;
 
     const release = pushKeyHandler((key) => {
       if (key === 'back') {

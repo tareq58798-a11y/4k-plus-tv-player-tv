@@ -219,8 +219,11 @@ stops it being reopened every few months.
   including ة ى ء أ إ آ ؤ ئ; a separate block of digits under the letters in both; then Space,
   Delete, Clear and a key to switch layouts. It opens in Arabic when the app is in Arabic. On the
   Search screen it sits left of the results, which go from five columns to three to make room, and
-  the highlight starts on its first key. On the browse screens, OK on a box opens it as a panel
-  under the box, with a Done key; Back or Done puts it away. Other text boxes (adding a playlist,
+  the highlight starts on its first key. On the browse screens, OK on a box opens it as a bar
+  across the bottom of the screen, laid out the way the set's own keyboard is - QWERTY or Arabic
+  rows, a number pad to the right, Delete and Done beside it, grey keys that turn white under the
+  highlight - at the owner's request; Back or Done puts it away. That look is matched by eye, since
+  the set's keyboard is an overlay the inspector cannot capture. Other text boxes (adding a playlist,
   renaming one) still use the set's keyboard. Space, Delete and Done's words are in strings.local.ts
   in English only; Clear is the extracted cd_clear. Added at the owner's request on 2026-09-26; the
   Android app is unchanged.
