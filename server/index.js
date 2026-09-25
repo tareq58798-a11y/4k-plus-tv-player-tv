@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('./db');
 const { renderDevices } = require('./adminPage');
 const { VIDEO_ID, trailerPage } = require('./trailerPage');
-const { privacyPage } = require('./privacyPage');
+const { privacyPage, privacyPageKo } = require('./privacyPage');
 const { homePage } = require('./homePage');
 
 const app = express();
@@ -115,6 +115,13 @@ app.get('/privacy', (req, res) => {
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.set('Cache-Control', 'public, max-age=3600');
   res.send(privacyPage());
+});
+
+// The same policy in Korean - Seller Office requires a Korean URL too.
+app.get('/privacy/ko', (req, res) => {
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(privacyPageKo());
 });
 
 // The app's homepage, which Seller Office requires - see homePage.js. Also the health check.

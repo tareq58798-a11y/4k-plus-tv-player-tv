@@ -29,6 +29,20 @@ const { SUPPORT_EMAIL } = require('../privacyPage');
     assert.ok(/No analytics/.test(body), 'says there is no tracking');
     console.log(`privacy page ok (${body.length} bytes)`);
 
+    // The Korean translation Seller Office also requires, and the links between the two.
+    assert.ok(body.includes('href="/privacy/ko"'), 'English page links the Korean one');
+    const ko = await fetch(`http://127.0.0.1:${port}/privacy/ko`);
+    assert.strictEqual(ko.status, 200);
+    assert.match(ko.headers.get('content-type'), /charset=utf-8/);
+    const koBody = await ko.text();
+    assert.ok(koBody.includes('<html lang="ko">'), 'Korean page is marked Korean');
+    assert.ok(koBody.includes('개인정보 처리방침'), 'Korean title arrives intact as UTF-8');
+    assert.ok(koBody.includes(`mailto:${SUPPORT_EMAIL}`), 'Korean page has the same contact address');
+    assert.ok(koBody.includes('href="/privacy"'), 'Korean page links back to English');
+    // The same sections, in the same order, as the English page.
+    assert.strictEqual((koBody.match(/<h2>/g) || []).length, (body.match(/<h2>/g) || []).length, 'same number of sections');
+    console.log(`korean privacy page ok (${koBody.length} chars)`);
+
     // The homepage Seller Office links to, which is also Render's health check.
     const home = await fetch(`http://127.0.0.1:${port}/`);
     assert.strictEqual(home.status, 200);
