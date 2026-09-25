@@ -23,6 +23,7 @@
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"
         android:label="4K Plus TV Player"
+        android:largeHeap="true"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"

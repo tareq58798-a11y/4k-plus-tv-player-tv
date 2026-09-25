@@ -10,6 +10,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -71,21 +73,31 @@ internal class XtreamProviderClient {
                     }
                     // Capture each catalogue failure so one failed response cannot cancel
                     // the sibling request or the already usable live list.
+                    //
+                    // The two downloads still overlap, but the parses take turns: org.json holds
+                    // the whole response as a tree several times the size of its text, and a
+                    // full catalogue's films and series parsed at once can exhaust the heap on a
+                    // low-memory television box - reported as a crash while loading the playlist.
+                    // OutOfMemoryError is an Error, not an Exception, so it is caught by name and
+                    // turned into an ordinary failure; the live list already published survives.
+                    val parseTurn = Mutex()
                     val movies = async {
                         try {
                             val movieGroups = progressiveCategories(apiUrl(server, input, "get_vod_categories"))
                             val data = PlaylistTiming.measure("movies_download") { download(apiUrl(server, input, "get_vod_streams")) }
-                            Result.success(PlaylistTiming.measure("movies_parse") { movieItems(JSONArray(data), movieGroups, server, input) })
+                            Result.success(parseTurn.withLock { PlaylistTiming.measure("movies_parse") { movieItems(JSONArray(data), movieGroups, server, input) } })
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (e: Exception) { Result.failure<List<PlaylistItem>>(e) }
+                        catch (e: OutOfMemoryError) { Result.failure<List<PlaylistItem>>(outOfMemory(e)) }
                     }
                     val series = async {
                         try {
                             val seriesGroups = progressiveCategories(apiUrl(server, input, "get_series_categories"))
                             val data = PlaylistTiming.measure("series_download") { download(apiUrl(server, input, "get_series")) }
-                            Result.success(PlaylistTiming.measure("series_parse") { seriesItems(JSONArray(data), seriesGroups) })
+                            Result.success(parseTurn.withLock { PlaylistTiming.measure("series_parse") { seriesItems(JSONArray(data), seriesGroups) } })
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (e: Exception) { Result.failure<List<PlaylistItem>>(e) }
+                        catch (e: OutOfMemoryError) { Result.failure<List<PlaylistItem>>(outOfMemory(e)) }
                     }
                     val movieResult = movies.await()
                     val withMovies = live + movieResult.getOrDefault(emptyList())
@@ -112,6 +124,9 @@ internal class XtreamProviderClient {
         }
         throw lastError ?: IllegalArgumentException("The provider could not be reached.")
     }
+
+    private fun outOfMemory(cause: OutOfMemoryError): Exception =
+        IllegalStateException("This device does not have enough memory to load the whole playlist.", cause)
 
     private fun progressiveCategories(url: String): Map<String, String> = try {
         categories(url)
@@ -299,14 +314,17 @@ internal class XtreamProviderClient {
         val liveCategoriesDeferred = async { runCatching { categories(apiUrl(server, input, "get_live_categories")) }.getOrDefault(emptyMap()) }
         val movieCategoriesDeferred = async { runCatching { categories(apiUrl(server, input, "get_vod_categories")) }.getOrDefault(emptyMap()) }
         val seriesCategoriesDeferred = async { runCatching { categories(apiUrl(server, input, "get_series_categories")) }.getOrDefault(emptyMap()) }
-        val liveStreamsDeferred = async { JSONArray(download(apiUrl(server, input, "get_live_streams"))) }
-        val movieStreamsDeferred = async { JSONArray(download(apiUrl(server, input, "get_vod_streams"))) }
-        val seriesDeferred = async { JSONArray(download(apiUrl(server, input, "get_series"))) }
+        // Only the downloads run together. Each response is parsed as it is used, one at a time,
+        // so at most one org.json tree is alive at once rather than all three held to the end -
+        // the difference between loading and running out of memory on a low-memory box.
+        val liveStreamsDeferred = async { download(apiUrl(server, input, "get_live_streams")) }
+        val movieStreamsDeferred = async { download(apiUrl(server, input, "get_vod_streams")) }
+        val seriesDeferred = async { download(apiUrl(server, input, "get_series")) }
 
         val items = buildList {
-            addAll(liveItems(liveStreamsDeferred.await(), liveCategoriesDeferred.await(), server, input))
-            addAll(movieItems(movieStreamsDeferred.await(), movieCategoriesDeferred.await(), server, input))
-            addAll(seriesItems(seriesDeferred.await(), seriesCategoriesDeferred.await()))
+            addAll(liveItems(JSONArray(liveStreamsDeferred.await()), liveCategoriesDeferred.await(), server, input))
+            addAll(movieItems(JSONArray(movieStreamsDeferred.await()), movieCategoriesDeferred.await(), server, input))
+            addAll(seriesItems(JSONArray(seriesDeferred.await()), seriesCategoriesDeferred.await()))
         }
         require(items.isNotEmpty()) { "The account connected successfully but contains no available content." }
         val expiry = userInfo.optString("exp_date").toLongOrNull()?.takeIf { it > 0L }

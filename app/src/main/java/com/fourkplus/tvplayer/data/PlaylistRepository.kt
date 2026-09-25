@@ -73,6 +73,11 @@ class PlaylistRepository(context: Context) {
             Result.success(playlist)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { Result.failure(friendlyError(e)) }
+        // An Error, so the line above lets it through and it used to take the whole app down
+        // mid-load. load() already survives it via runCatching; this path now does too.
+        catch (e: OutOfMemoryError) {
+            Result.failure(IllegalStateException("This device does not have enough memory to load the whole playlist.", e))
+        }
     }
 
     fun savedSources(): List<PlaylistInput> = sourceStore.savedSources()

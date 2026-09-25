@@ -23,12 +23,27 @@
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://fourkplus.com/tvplayer"
-        version="10.21.0"
+        version="10.24.0"
         viewmodes="maximized">
 
   <tizen:application id="4KPlusTVXX.FourKPlusTVPlayer"
                      package="4KPlusTVXX"
                      required_version="5.5"/>
+
+  <!-- Samsung's Seller Office pre-test rejects a package with no screen-size feature declared.
+       Five hand-authored guesses at this all failed identically - tizen:feature/screen.size.all
+       in two positions, with required="false" added, and a tizen:metadata guess at the key -
+       each confirmed present in the actual uploaded bytes by extracting and reading them back,
+       and each rejected with the same message, which meant guessing further was not going to
+       work. What actually fixed it was reading Samsung's own bundled Tizen Studio templates
+       (C:\tizen-studio\platforms\tizen-10.0\tv-samsung\samples\Template\Web\...\config.xml,
+       present in two separate templates with identical values): the element is <feature>, in
+       the base widget namespace with no tizen: prefix - not the Tizen extension element I had
+       been using, which is a real, valid element but the wrong one for this check - and the
+       value is a specific resolution, not .all. The metadata key was also wrong; the templates'
+       own is app_ui_type/base_screen_resolution. -->
+  <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+  <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
 
   <tizen:profile name="tv-samsung"/>
 
