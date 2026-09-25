@@ -220,20 +220,39 @@ interface AvTrack {
 /** The user agent PlayerEngine.kt fetches every stream with. */
 const PLAYBACK_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
 
-/** Whether the panel is UHD, from productinfo. False when it cannot say, which only costs 4K. */
 /** HLS or DASH: a stream offering several renditions, which is all ADAPTIVE_INFO applies to. */
 function isAdaptive(url: string): boolean {
   return /\.(m3u8|mpd)(\?|#|$)/i.test(url) || /[?&](type|output|format)=(m3u8|hls|mpd|dash)\b/i.test(url);
 }
 
-function isUhdPanel(): boolean {
+interface ProductInfo {
+  isUdPanelSupported?(): boolean;
+  is8KPanelSupported?(): boolean;
+}
+
+/**
+ * The largest picture this panel can show, as AVPlay's FIXED_MAX_RESOLUTION wants it, or null for
+ * a 1080p panel where a ceiling could only ever lower something.
+ *
+ * 8K is asked about first because an 8K panel answers yes to isUdPanelSupported too - and treating
+ * it as 4K was exactly the bug: the QN800C this was measured on reports is8KPanelSupported true,
+ * and was being told to stop at 3840x2160. AVPlay 7.0 on that set accepts 7680X4320 and plays
+ * with it (checked with setStreamingProperty returning cleanly and the stream reaching PLAYING).
+ * Each probe is guarded, because a set too old to know the question must still play.
+ */
+function panelCeiling(): string | null {
+  const info = (window as unknown as { webapis?: { productinfo?: ProductInfo } }).webapis?.productinfo;
   try {
-    const info = (window as unknown as { webapis?: { productinfo?: { isUdPanelSupported?(): boolean } } }).webapis
-      ?.productinfo;
-    return info?.isUdPanelSupported?.() === true;
+    if (info?.is8KPanelSupported?.() === true) return '7680X4320';
   } catch {
-    return false;
+    // Not an 8K-aware firmware. Fall through to the 4K question.
   }
+  try {
+    if (info?.isUdPanelSupported?.() === true) return '3840x2160';
+  } catch {
+    // Cannot say. No ceiling, which costs 4K on a 4K panel and nothing anywhere else.
+  }
+  return null;
 }
 
 /** A box of [width] by [height] centred on [box]; larger than it where the caller wants cropping. */
@@ -318,10 +337,11 @@ class TizenPlayer implements MediaPlayer {
    *     connection-mode setting, so it is always in what Android calls FAST, its default. Without
    *     it AVPlay opens an HLS or DASH stream at a low rendition and climbs, which is the soft
    *     first few seconds. No BITRATES range is given, so nothing is capped from below.
-   *   - FIXED_MAX_RESOLUTION=3840x2160 on a UHD panel, so a 4K rendition can be chosen at all -
-   *     the counterpart of Android's clearViewportSizeConstraints. This replaced SET_MODE_4K,
-   *     which Samsung deprecated from Tizen 5.0 (this app's floor is 5.5) and names this as its
-   *     replacement. Left unset on a 1080p panel, where it could only add a limit.
+   *   - FIXED_MAX_RESOLUTION at the panel's own ceiling - 7680X4320 on an 8K set, 3840x2160 on a
+   *     4K one - so the top rendition can be chosen at all; see panelCeiling. The counterpart of
+   *     Android's clearViewportSizeConstraints. This replaced SET_MODE_4K, which Samsung
+   *     deprecated from Tizen 5.0 (this app's floor is 5.5) and names this as its replacement.
+   *     Left unset on a 1080p panel, where it could only add a limit.
    *
    * Why adaptive streams only. The two were being set on every stream, and a direct .ts channel
    * or an .mp4/.mkv film has one rendition, so they could do nothing for it - and one other
@@ -343,7 +363,8 @@ class TizenPlayer implements MediaPlayer {
     set('USER_AGENT', PLAYBACK_USER_AGENT);
     if (!isAdaptive(url)) return;
     const adaptive = ['STARTBITRATE=HIGHEST'];
-    if (isUhdPanel()) adaptive.push('FIXED_MAX_RESOLUTION=3840x2160');
+    const ceiling = panelCeiling();
+    if (ceiling) adaptive.push(`FIXED_MAX_RESOLUTION=${ceiling}`);
     set('ADAPTIVE_INFO', adaptive.join('|'));
   }
 
