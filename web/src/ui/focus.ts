@@ -254,8 +254,41 @@ export function moveWithin(container: HTMLElement, direction: Direction): void {
     focus(container.querySelector<HTMLElement>(FOCUSABLE));
     return;
   }
-  const target = nearest(from, direction, container);
+  const target = nearest(from, direction, container) ?? nearestRow(from, direction, container);
   if (target) focus(target);
+}
+
+/**
+ * The fallback for a keyboard whose rows are not the same width.
+ *
+ * `nearest` only moves Up or Down to something overlapping the current key's column, which is right
+ * for a grid and wrong for a keyboard: its rows are centred and of different lengths, so the end of
+ * a long row has nothing directly above or below it, and Down from ئ, the first key of the widest
+ * Arabic row, simply did not move. Here the next row in that direction wins, and within it the key
+ * closest sideways. Only used inside moveWithin, so the page's own grids keep the stricter rule.
+ */
+function nearestRow(from: HTMLElement, direction: Direction, scope: ParentNode): HTMLElement | null {
+  if (direction !== 'up' && direction !== 'down') return null;
+  const fromRect = from.getBoundingClientRect();
+  const cx = fromRect.left + fromRect.width / 2;
+  const cy = fromRect.top + fromRect.height / 2;
+  let best: HTMLElement | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of scope.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+    if (candidate === from) continue;
+    const rect = candidate.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    const dy = rect.top + rect.height / 2 - cy;
+    if (direction === 'down' ? dy <= 1 : dy >= -1) continue;
+    // Row first - ten times the vertical distance outweighs any sideways offset on one keyboard -
+    // then whichever key in that row is closest across.
+    const score = Math.abs(dy) * 10 + Math.abs(rect.left + rect.width / 2 - cx);
+    if (score < bestScore && shown(candidate)) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
 }
 
 export type KeyHandler = (key: RemoteKey) => boolean;

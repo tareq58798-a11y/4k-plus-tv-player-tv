@@ -9,12 +9,13 @@
  * [takeOverField]), which is what keeps the system keyboard away: it only opens for a box it could
  * type into. Recorded in web/README.md.
  *
- * Two layouts, because the catalogue is two scripts: Latin letters, and Arabic. Digits are a block
- * of their own under the letters in both, set apart so a number is not hunted for among letters.
- * It opens in Arabic when the app is in Arabic and in Latin otherwise; one key switches.
+ * Two layouts, because the catalogue is two scripts: Latin letters, and Arabic. Digits are set
+ * apart from the letters in both - a block under them on the Search screen, a row across the top of
+ * the browse screens' panel. It opens in Arabic when the app is in Arabic and in Latin otherwise;
+ * one key switches. The panel also has a !#1 page of punctuation and symbols.
  *
  * On the Search screen it sits beside the results, six keys wide. On the browse screens there is no
- * room for it to stay up, so OK on a box opens it as a wide panel along the bottom middle of the
+ * room for it to stay up, so OK on a box opens it as a compact panel at the bottom middle of the
  * screen ([attachKeyboardPanel]); it types into the box as it goes, and Done or Back puts it away.
  */
 import { isRtl, t } from '../shared/i18n';
@@ -41,6 +42,16 @@ const ARABIC_ROWS = [
   ['ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج', 'د'],
   ['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط', 'ذ'],
   ['ئ', 'ء', 'ؤ', 'ر', 'لا', 'ى', 'ة', 'و', 'ز', 'ظ', 'أ', 'إ', 'آ'],
+];
+/*
+ * What the !#1 key puts in place of the letters. Chosen for what titles are spelled with -
+ * "Spider-Man", "Mission: Impossible", "Ocean's Eleven", "Fast & Furious", "What If...?",
+ * "(2023)", "9+1", "M*A*S*H" - rather than to mirror any one keyboard's symbol page.
+ */
+const SYMBOL_ROWS = [
+  ['-', '_', ':', ';', "'", '"', '&', '@', '#', '!'],
+  ['?', '.', ',', '(', ')', '+', '=', '/', '*', '%'],
+  ['$', '€', '£', '[', ']', '<', '>', '|', '~'],
 ];
 
 type Layout = 'latin' | 'arabic';
@@ -71,9 +82,10 @@ export function takeOverField(field: HTMLInputElement): void {
  *
  *  - `tall`: six keys wide, letters in alphabetical order above a block of digits, then Space,
  *    Delete, Clear and the layout switch - to stand beside the Search screen's results.
- *  - `wide`: laid out the way a Samsung set's own keyboard is, as the owner asked - QWERTY (or
- *    Arabic) rows with the layout switch, Space and Clear under them, a 1-9/0 number pad to their
- *    right, and Delete and Done beside that. For the browse screens' panel across the bottom.
+ *  - `wide`: a compact keyboard in a physical keyboard's arrangement, as the owner asked - the
+ *    numbers along the top with Delete at the end of them, QWERTY (or Arabic) rows beneath, and
+ *    along the bottom a !#1 key that swaps the letters for punctuation and symbols, the language
+ *    key, Space, Clear and Done. For the browse screens' panel.
  */
 export function createSearchKeyboard(
   field: HTMLInputElement,
@@ -97,17 +109,16 @@ export function createSearchKeyboard(
     return node;
   };
   const letters = div('search-keys search-key-letters');
-  const digits = div('search-keys search-key-digits');
-  const actions = div('search-keys search-key-actions');
-  // Delete and Done, standing beside the number pad in the wide shape.
-  const side = div('search-key-side');
+  // In the wide shape the digits are a row across the top, as on a physical keyboard.
+  const digits = div(wide ? 'search-key-row search-key-number-row' : 'search-keys search-key-digits');
+  const actions = div(wide ? 'search-key-row search-key-actions' : 'search-keys search-key-actions');
   if (wide) {
-    const lettersColumn = div('search-key-letter-column');
-    lettersColumn.append(letters, actions);
-    element.append(lettersColumn, digits, side);
+    element.append(digits, letters, actions);
   } else {
     element.append(letters, digits, actions);
   }
+  /** Wide shape only: whether the !#1 page is showing in place of the letters. */
+  let symbols = false;
 
   function edit(next: string): void {
     field.value = next;
@@ -137,7 +148,9 @@ export function createSearchKeyboard(
     if (wide) {
       // Row by row, each centred under the one above, as on a real keyboard.
       let index = 0;
-      for (const row of layout === 'arabic' ? ARABIC_ROWS : LATIN_ROWS) {
+      const rows = symbols ? SYMBOL_ROWS : layout === 'arabic' ? ARABIC_ROWS : LATIN_ROWS;
+      if (symbols) letters.lang = 'en';
+      for (const row of rows) {
         const line = div('search-key-row');
         for (const ch of row) line.append(key(ch, `key-${index++}`, type(ch)));
         letters.append(line);
@@ -152,7 +165,7 @@ export function createSearchKeyboard(
     return letters.querySelector<HTMLElement>('.search-key')!;
   }
 
-  DIGITS.forEach((ch) => digits.append(key(ch, `key-digit-${ch}`, type(ch))));
+  DIGITS.forEach((ch) => digits.append(key(ch, `key-digit-${ch}`, type(ch), 'digit')));
 
   const spaceKey = key(iconElement('spaceBar', 'search-key-icon'), 'key-space', () => {
     // A leading or doubled space never helps a substring match, and on a remote it is almost
@@ -163,14 +176,24 @@ export function createSearchKeyboard(
   const deleteKey = key(iconElement('backspace', 'search-key-icon'), 'key-delete', () => edit(field.value.slice(0, -1)));
   deleteKey.setAttribute('aria-label', t('keyboard_delete'));
   const clearKey = key(t('cd_clear'), 'key-clear', () => edit(''), 'wide');
-  // Names the layout it switches *to*, like a phone's keyboard does.
+  // Names the layout it switches *to*, like a phone's keyboard does. From the symbol page it
+  // switches the language and brings that language's letters back.
   const switchKey = key('', 'key-layout', () => {
     layout = layout === 'arabic' ? 'latin' : 'arabic';
+    symbols = false;
+    drawLetters();
+    labelSwitch();
+  });
+  // Wide shape only: letters <-> punctuation and symbols.
+  const symbolsKey = key('', 'key-symbols', () => {
+    symbols = !symbols;
     drawLetters();
     labelSwitch();
   });
   function labelSwitch(): void {
     switchKey.textContent = layout === 'arabic' ? 'ABC' : 'عربي';
+    // "!#1" to reach the symbols; the current language's letters to come back.
+    symbolsKey.textContent = symbols ? (layout === 'arabic' ? 'أبت' : 'ABC') : '!#1';
   }
   const doneKey = onDone ? key(iconElement('check', 'search-key-icon'), 'key-done', onDone, 'done') : null;
   if (doneKey) {
@@ -180,10 +203,11 @@ export function createSearchKeyboard(
   }
 
   if (wide) {
-    // Under the letters, as on the set's keyboard: the language key, a long Space bar, Clear.
-    actions.append(switchKey, spaceKey, clearKey);
-    side.append(deleteKey);
-    if (doneKey) side.append(doneKey);
+    // Delete at the end of the number row, where Backspace sits on a physical keyboard; the rest
+    // along the bottom.
+    digits.append(deleteKey);
+    actions.append(symbolsKey, switchKey, spaceKey, clearKey);
+    if (doneKey) actions.append(doneKey);
   } else {
     actions.append(spaceKey, deleteKey, clearKey, switchKey);
     if (doneKey) actions.append(doneKey);

@@ -2388,119 +2388,83 @@ body.playing .backdrop-scrim {
 }
 
 /*
- * The browse screens' panel: the same keyboard in its `wide` shape, drawn after a Samsung set's own
- * keyboard at the owner's request - a dark bar across the whole bottom of the screen, flat grey keys
- * with light characters, the key under the highlight turned white, QWERTY rows with the language
- * key, Space and Clear beneath them, a number pad to the right and Delete and Done beside it.
+ * The browse screens' panel: the same keyboard in its `wide` shape, at the owner's request a compact
+ * one - numbers along the top with Delete at their end, QWERTY or Arabic rows (or the !#1 symbols)
+ * beneath, and !#1, the language key, Space, Clear and Done along the bottom. Flat grey keys that
+ * turn white under the highlight, on a dark backing that wraps the keys and nothing more, at the
+ * bottom middle of the screen so the list the box is narrowing stays in view above it.
  *
- * Nothing here is measured from the set's keyboard: it is an overlay the page cannot see, so the
- * inspector cannot capture it. The layout follows how that keyboard is arranged; the colours and
- * sizes are chosen to match it by eye, and are the numbers to change if they do not.
+ * Nothing here is measured from the set's own keyboard, which is an overlay the inspector cannot
+ * capture; the sizes were chosen to be compact and still readable across a room, and are the
+ * numbers to change if they are not.
  */
 .keyboard-panel {
   position: fixed;
   z-index: 50;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  justify-content: center;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
   background: rgba(22, 22, 24, 0.97);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 .search-keyboard.wide {
-  flex-direction: row;
-  align-items: stretch;
-  gap: 24px;
-  padding: 28px 32px 32px;
-}
-
-.search-keyboard.wide .search-key-letter-column {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 18px;
 }
 
 .search-keyboard.wide .search-key-letters {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .search-key-row {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .search-keyboard.wide .search-key {
-  width: 76px;
-  height: 64px;
-  font-size: 30px;
+  width: 54px;
+  height: 48px;
+  gap: 6px;
+  font-size: 22px;
   color: #f2f2f2;
   background: #3a3b3f;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
-.search-keyboard.wide .search-key-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 0;
+/* The number row a shade apart from the letters beneath it. */
+.search-keyboard.wide .search-key-number-row .search-key {
+  background: #313236;
+}
+
+.search-keyboard.wide .search-key-number-row [data-focus-id='key-delete'] {
+  width: 90px;
+  margin-inline-start: 8px;
 }
 
 .search-keyboard.wide .search-key-actions .search-key {
   width: auto;
-  min-width: 140px;
-  padding: 0 28px;
-  font-size: 24px;
-  color: #f2f2f2;
+  min-width: 80px;
+  padding: 0 16px;
+  font-size: 18px;
   background: #2c2d30;
 }
 
 .search-keyboard.wide .search-key[data-focus-id='key-space'] {
-  width: 420px;
+  width: 240px;
 }
 
-/* The number pad: 1-9 in threes, 0 under 8, set apart from the letters by a line. */
-.search-keyboard.wide .search-key-digits {
-  grid-template-columns: repeat(3, 76px);
-  align-content: start;
-  margin-top: 0;
-  padding: 0 0 0 24px;
-  border-top: none;
-  border-left: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.search-keyboard.wide .search-key-digits .search-key:last-child {
-  grid-column: 2;
-}
-
-.search-key-side {
-  display: none;
-}
-
-.search-keyboard.wide .search-key-side {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.search-keyboard.wide .search-key-side .search-key {
-  width: 150px;
-  height: auto;
-  flex: 1;
-  font-size: 24px;
-  background: #2c2d30;
-}
-
-.search-keyboard.wide .search-key.done {
-  color: #f2f2f2;
-  background: #2c2d30;
+.search-keyboard.wide .search-key-icon {
+  width: 26px;
+  height: 26px;
 }
 
 .search-keyboard.wide .search-key:focus {
