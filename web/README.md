@@ -131,6 +131,11 @@ stops it being reopened every few months.
   on Live TV, beside "Search channels". Here all three sections have both boxes - categories at
   the top of the category column, titles at the top of the posters or channels - at the owner's
   request. Decided on 2026-09-24.
+* **The background is never a poster.** The television falls back to a title's poster when it has
+  no background picture, and uses the poster in its browse grids until the details arrive. Here
+  the background is only ever the provider's background picture (`backdrop_path`), fetched from
+  the title's details, and the app's own artwork when there is none - at the owner's request. See
+  `followBackdrop` in `main.ts`. Decided on 2026-09-25.
 * **Background artwork is shown whole.** The television crops a title's artwork to fill the
   screen. Here it is fitted inside the screen with dark space either side, at the owner's request,
   so a poster used as a background shows all of itself rather than a slice of its middle. A

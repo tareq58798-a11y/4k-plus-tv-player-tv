@@ -60,7 +60,10 @@ export interface DetailsOptions {
 
 export function renderDetails(host: HTMLElement, options: DetailsOptions): HTMLElement {
   const { movie, details, loading, backdrop } = options;
-  backdrop.show(details?.backdropUrl ?? details?.posterUrl ?? movie.logoUrl);
+  // The provider's background picture, never the poster; the app's own artwork when there is none.
+  // Left alone while the details are still loading, so the page does not flash the default first.
+  if (details?.backdropUrl) backdrop.show(details.backdropUrl);
+  else if (!loading) backdrop.reset();
 
   // The catalogue's value wins where it has one and the lookup fills the gaps, which is the rule
   // the television app follows. Neither invents anything: a field both leave empty is left out of

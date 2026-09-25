@@ -12,7 +12,6 @@
 import { t } from '../shared/i18n';
 import type { PlaylistItem } from '../shared/models';
 import { itemKey } from '../shared/models';
-import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
 import { lazyImage, posterArtwork } from './images';
 
@@ -46,7 +45,8 @@ function fold(value: string): string {
 
 export interface SearchOptions {
   items: PlaylistItem[];
-  backdrop: Backdrop;
+  /** A result took the highlight - the caller puts its background up. */
+  onFocusItem: (item: PlaylistItem) => void;
   onOpen: (item: PlaylistItem) => void;
   onBack: () => void;
 }
@@ -89,7 +89,7 @@ export function renderSearch(host: HTMLElement, options: SearchOptions): void {
       lazyImage(art, posterArtwork(item.logoUrl), index < 12);
       card.append(art, el('div', { class: 'card-foot' }, el('div', { class: 'label' }, item.name)));
       card.addEventListener('focus', () => {
-        if (item.kind !== 'live') options.backdrop.show(item.logoUrl);
+        options.onFocusItem(item);
       });
       card.addEventListener('click', () => options.onOpen(item));
       results.append(card);

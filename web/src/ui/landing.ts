@@ -176,10 +176,14 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
   function onCardFocus(item: PlaylistItem, card: HTMLElement, rowIndex: number, column: number): void {
     viewerHasMoved = true;
     describe(item, card);
-    // The poster now, the title's proper landscape artwork when the details arrive. Asking for
-    // the better picture up front is what makes this one transition rather than a poster that is
-    // replaced a moment later.
-    if (item.kind !== 'live') backdrop.show(details.get(itemKey(item))?.backdropUrl ?? item.logoUrl);
+    // The title's own background picture - never its poster - straight away when its details are
+    // already known, which for a card beside the last one they usually are (see the neighbours
+    // below); otherwise when they arrive. No picture means the app's own artwork.
+    const known = details.get(itemKey(item));
+    if (item.kind !== 'live' && known) {
+      if (known.backdropUrl) backdrop.show(known.backdropUrl);
+      else backdrop.reset();
+    }
 
     if (pending !== null) window.clearTimeout(pending);
     pending = window.setTimeout(() => {
@@ -191,7 +195,10 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
           // Only if the viewer is still here - they may have moved on while this was in flight.
           if (document.activeElement?.getAttribute('data-focus-id') !== itemKey(item)) return;
           describe(item, card);
-          if (viewerHasMoved && loaded.backdropUrl) backdrop.show(loaded.backdropUrl);
+          if (viewerHasMoved) {
+            if (loaded.backdropUrl) backdrop.show(loaded.backdropUrl);
+            else backdrop.reset();
+          }
         });
       }
       /*
@@ -199,13 +206,13 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
        * in - Landing.kt fetches the neighbours' details in parallel and hands PreloadBackdrops each
        * one's real backdrop, or its poster until that arrives. So stepping to the next card finds
        * its details known and its picture decoded, instead of starting both round trips then.
-       * Behind the same 400ms wait as the focused title, so a held key fetches nothing it passes.
+       * Behind the same short wait as the focused title, so a held key fetches nothing it passes.
        */
       const around = neighboursOf(rowIndex, column);
-      const warm = () => backdrop.preload(around.map((entry) => details.get(itemKey(entry))?.backdropUrl ?? entry.logoUrl));
+      const warm = () => backdrop.preload(around.map((entry) => details.get(itemKey(entry))?.backdropUrl));
       warm();
       void Promise.all(around.map(fetchDetails)).then(warm);
-    }, 400);
+    }, 250);
   }
 
   /** Each row's focusable boxes, left to right, for wiring Up between rows once all are built. */

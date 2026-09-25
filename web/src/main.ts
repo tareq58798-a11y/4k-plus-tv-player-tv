@@ -510,6 +510,48 @@ async function refreshInBackground(saved: ProviderLogin, key: string): Promise<v
 
 /* --------------------------------------------------------------- sections */
 
+/**
+ * The background for a film or a series that has the highlight: the provider's own background
+ * picture for it (backdrop_path, from its details), and never its poster.
+ *
+ * The owner asked for this: a portrait poster stretched or fitted across a landscape screen is not
+ * the picture the provider made for the purpose, and it was what the libraries and search showed,
+ * since the listing only carries the poster. The details carry the real one and are cached for the
+ * session (xtream.ts), so after the first look it is immediate. A title with no background picture
+ * puts the app's own artwork back rather than leaving the last title's picture behind it. The
+ * television falls back to the poster (BackdropFollowsFocus); recorded in web/README.md.
+ *
+ * [around] are the titles the viewer is likely to step to next; their pictures are fetched ahead.
+ */
+let backdropFor: string | null = null;
+let backdropTimer: number | null = null;
+
+function followBackdrop(item: PlaylistItem, around: (PlaylistItem | undefined)[] = []): void {
+  if (item.kind === 'live') return;
+  const key = itemKey(item);
+  backdropFor = key;
+  if (backdropTimer !== null) window.clearTimeout(backdropTimer);
+  // A short settle, so a held key does not ask the provider about every title it passes.
+  backdropTimer = window.setTimeout(() => {
+    backdropTimer = null;
+    void detailsLoader(item)
+      .catch(() => null)
+      .then((found) => {
+        if (backdropFor !== key) return;
+        if (found?.backdropUrl) backdrop.show(found.backdropUrl);
+        else backdrop.reset();
+      });
+    for (const next of around) {
+      if (!next || next.kind === 'live') continue;
+      void detailsLoader(next)
+        .catch(() => null)
+        .then((found) => {
+          if (found?.backdropUrl) backdrop.preload([found.backdropUrl]);
+        });
+    }
+  }, 150);
+}
+
 function detailsLoader(item: PlaylistItem) {
   if (!login || !item.channelId) return Promise.resolve(null);
   if (item.kind === 'movie') {
@@ -728,7 +770,7 @@ function searchScreen(): void {
   clear();
   renderSearch(app, {
     items: catalogue.items,
-    backdrop,
+    onFocusItem: (item) => followBackdrop(item),
     onOpen: (item) => playScreen(item),
     onBack: goHome,
   });
@@ -1301,12 +1343,10 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         // The next two rows' artwork, so it is there by the time the highlight is.
         prefetchAfter(card, live ? 8 : 14);
         if (item.kind !== 'live') {
-          backdrop.show(item.logoUrl);
-          // And the backgrounds of the posters either side and above and below, so the next step
-          // in any direction finds its picture already fetched and decoded - the grid's version of
-          // what the landing rows warm (PreloadBackdrops). Seven to a row.
+          // Its background picture, not its poster - see followBackdrop - with the posters either
+          // side warmed, so the next step finds its picture already there.
           const at = entries.indexOf(item);
-          backdrop.preloadWhenSettled([at + 1, at - 1, at + 7, at - 7].map((i) => entries[i]?.logoUrl));
+          followBackdrop(item, [entries[at + 1], entries[at - 1]]);
         }
         focusedChannelId = item.channelId;
         if (item.kind === 'live') {

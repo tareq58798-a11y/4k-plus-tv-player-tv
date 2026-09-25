@@ -50,7 +50,9 @@ export interface SeriesOptions {
 
 export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
   const { series, details, backdrop } = options;
-  backdrop.show(details.backdropUrl ?? details.posterUrl ?? series.logoUrl);
+  // The provider's background picture, never the poster; the app's own artwork when there is none.
+  if (details.backdropUrl) backdrop.show(details.backdropUrl);
+  else backdrop.reset();
 
   const seasons = [...new Set(details.episodes.map((episode) => episode.seasonNumber))].sort((a, b) => a - b);
   let season = seasons[0] ?? 1;
