@@ -222,8 +222,8 @@ stops it being reopened every few months.
   the highlight starts on its first key. On the browse screens, OK on a box opens it as a compact
   panel at the bottom middle of the screen, backed only behind the keys: numbers along the top with
   Delete at their end, QWERTY or Arabic rows beneath, and !#1 (punctuation and symbols), the
-  language key, Space, Clear and Done along the bottom; grey keys that turn white under the
-  highlight. Back or Done puts it away. Shaped by the owner's requests rather than measured from
+  language key, Space, Clear and Done along the bottom; dark blue keys, coloured from the app's
+  astronaut backdrop, that turn white under the highlight. Back or Done puts it away. Shaped by the owner's requests rather than measured from
   the set's own keyboard, which is an overlay the inspector cannot capture. Other text boxes (adding a playlist,
   renaming one) still use the set's keyboard. Space, Delete and Done's words are in strings.local.ts
   in English only; Clear is the extracted cd_clear. Added at the owner's request on 2026-09-26; the

@@ -2390,9 +2390,12 @@ body.playing .backdrop-scrim {
 /*
  * The browse screens' panel: the same keyboard in its `wide` shape, at the owner's request a compact
  * one - numbers along the top with Delete at their end, QWERTY or Arabic rows (or the !#1 symbols)
- * beneath, and !#1, the language key, Space, Clear and Done along the bottom. Flat grey keys that
- * turn white under the highlight, on a dark backing that wraps the keys and nothing more, at the
- * bottom middle of the screen so the list the box is narrowing stays in view above it.
+ * beneath, and !#1, the language key, Space, Clear and Done along the bottom. Dark blue, at the
+ * owner's request, taken from the app's own default backdrop (bg_app_default.png, the astronaut):
+ * the panel is its night sky (#020d19 to #032237), the keys a step lighter like its mountains
+ * (#0c2334), the border its lit horizon (#46778d); the key under the highlight turns white. The
+ * backing wraps the keys and nothing more, at the bottom middle of the screen so the list the box
+ * is narrowing stays in view above it.
  *
  * Nothing here is measured from the set's own keyboard, which is an overlay the inspector cannot
  * capture; the sizes were chosen to be compact and still readable across a room, and are the
@@ -2404,8 +2407,8 @@ body.playing .backdrop-scrim {
   left: 50%;
   bottom: 32px;
   transform: translateX(-50%);
-  background: rgba(22, 22, 24, 0.97);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(3, 26, 44, 0.96);
+  border: 1px solid rgba(70, 119, 141, 0.45);
   border-radius: 20px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
@@ -2434,15 +2437,15 @@ body.playing .backdrop-scrim {
   height: 48px;
   gap: 6px;
   font-size: 22px;
-  color: #f2f2f2;
-  background: #3a3b3f;
+  color: #eef6fb;
+  background: #0f3350;
   border: none;
   border-radius: 8px;
 }
 
 /* The number row a shade apart from the letters beneath it. */
 .search-keyboard.wide .search-key-number-row .search-key {
-  background: #313236;
+  background: #0c2a43;
 }
 
 .search-keyboard.wide .search-key-number-row [data-focus-id='key-delete'] {
@@ -2455,7 +2458,7 @@ body.playing .backdrop-scrim {
   min-width: 80px;
   padding: 0 16px;
   font-size: 18px;
-  background: #2c2d30;
+  background: #0a2438;
 }
 
 .search-keyboard.wide .search-key[data-focus-id='key-space'] {
@@ -2468,7 +2471,7 @@ body.playing .backdrop-scrim {
 }
 
 .search-keyboard.wide .search-key:focus {
-  color: #111111;
+  color: #031a2c;
   background: #ffffff;
   box-shadow: none;
 }
