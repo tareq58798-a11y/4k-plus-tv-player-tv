@@ -140,6 +140,10 @@
     <string name="series_star_empty">Отмеченные избранным сериалы появятся здесь.</string>
     <string name="series_watch_empty">Просмотренные сериалы появятся здесь.</string>
     <string name="trailer_label">Трейлер</string>
+    <string name="trailer_loading">Загрузка трейлера…</string>
+    <string name="trailer_failed_here">Этот трейлер нельзя воспроизвести здесь.</string>
+    <string name="trailer_open_youtube_ok">Нажмите OK, чтобы открыть его в YouTube.</string>
+    <string name="trailer_open_youtube_tap">Нажмите, чтобы открыть его в YouTube.</string>
     <string name="loading_seasons_episodes">Загрузка сезонов и серий…</string>
     <string name="no_series_details">Подробная информация об этом сериале не предоставлена.</string>
     <string name="seasons_label">Сезоны</string>

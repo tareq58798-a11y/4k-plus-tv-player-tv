@@ -140,6 +140,10 @@
     <string name="series_star_empty">آپ کی پسندیدہ سیریز یہاں ظاہر ہوں گی۔</string>
     <string name="series_watch_empty">آپ کی دیکھی گئی سیریز یہاں ظاہر ہوں گی۔</string>
     <string name="trailer_label">ٹریلر</string>
+    <string name="trailer_loading">ٹریلر لوڈ ہو رہا ہے…</string>
+    <string name="trailer_failed_here">یہ ٹریلر یہاں نہیں چل سکتا۔</string>
+    <string name="trailer_open_youtube_ok">YouTube میں کھولنے کے لیے OK دبائیں۔</string>
+    <string name="trailer_open_youtube_tap">YouTube میں کھولنے کے لیے ٹیپ کریں۔</string>
     <string name="loading_seasons_episodes">سیزنز اور اقساط لوڈ ہو رہی ہیں…</string>
     <string name="no_series_details">اس سیریز کے لیے تفصیلی معلومات فراہم نہیں کی گئیں۔</string>
     <string name="seasons_label">سیزنز</string>

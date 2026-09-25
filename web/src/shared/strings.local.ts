@@ -21,10 +21,6 @@ export const LOCAL_EN = {
   expiry_expired: '{1} (expired)',
   // When the YouTube app will not open a trailer. The television falls back to a browser, which a
   // set does not have from inside an app, so it needs a sentence the television never shows.
-  // The in-app trailer player (ui/trailerPlayer.ts), which the television does not have: it hands
-  // trailers to the YouTube app.
-  trailer_loading: 'Loading trailer…',
-  trailer_failed_here: 'This trailer cannot play here. Press OK to open it in YouTube, or Back to return.',
   connect: 'Connect',
   enter_all_fields: 'Fill in the address, username and password.',
   server_address_label: 'Server address',

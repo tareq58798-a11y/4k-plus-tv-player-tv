@@ -147,6 +147,10 @@
     <string name="series_star_empty">Series you star will appear here.</string>
     <string name="series_watch_empty">Series you watch will appear here.</string>
     <string name="trailer_label">Trailer</string>
+    <string name="trailer_loading">Loading trailer…</string>
+    <string name="trailer_failed_here">This trailer can\'t play here.</string>
+    <string name="trailer_open_youtube_ok">Press OK to open it in YouTube.</string>
+    <string name="trailer_open_youtube_tap">Tap to open it in YouTube.</string>
     <string name="loading_seasons_episodes">Loading seasons and episodes…</string>
     <string name="no_series_details">Detailed information was not supplied for this series.</string>
     <string name="seasons_label">Seasons</string>

@@ -8,9 +8,11 @@
  * in a frame and this page holds the player: it has an address, and it is ours.
  *
  * It is given nothing but the video id, which the provider supplied as the title's trailer. No
- * login, no stream, nothing about the viewer. It tells the app what the player is doing by
- * postMessage, and takes play, pause and seek from it the same way, because the app has to keep
- * the remote's keys for itself - a frame holding the keys could not be left with Back.
+ * login, no stream, nothing about the viewer. It tells the app what the player is doing, and takes
+ * play, pause and seek from it, because the app has to keep the remote's keys for itself - a frame
+ * holding the keys could not be left with Back. The Samsung app frames it and talks by postMessage;
+ * the Android app (TrailerActivity.kt) opens it in a WebView and hears it through the
+ * FourKPlusTrailer bridge, sending its commands as postMessage to the page itself.
  */
 const VIDEO_ID = /^[\w-]{11}$/;
 
@@ -34,7 +36,13 @@ function trailerPage(videoId) {
 <script>
   var player = null;
   function tell(message) {
-    try { window.parent.postMessage(Object.assign({ source: 'fourkplus-trailer' }, message), '*'); } catch (e) {}
+    var full = Object.assign({ source: 'fourkplus-trailer' }, message);
+    // Framed by the Samsung app, which listens for postMessage.
+    if (window.parent !== window) {
+      try { window.parent.postMessage(full, '*'); } catch (e) {}
+    }
+    // Opened directly by the Android app, which gives the page this bridge instead.
+    try { if (window.FourKPlusTrailer) window.FourKPlusTrailer.post(JSON.stringify(full)); } catch (e) {}
   }
   function onYouTubeIframeAPIReady() {
     player = new YT.Player('player', {

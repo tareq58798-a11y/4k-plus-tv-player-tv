@@ -3206,10 +3206,19 @@ private val youtubeVideoIdPattern = Regex("(?:v=|youtu\\.be/|/embed/)([\\w-]{11}
 internal fun trailerVideoId(trailerUrl: String?): String? =
     trailerUrl?.let(youtubeVideoIdPattern::find)?.groupValues?.get(1)?.takeIf(String::isNotBlank)
 
+/** Plays [videoId] inside the app, in TrailerActivity, so one Back returns to the page it was
+ *  opened from. The YouTube app is its fallback when the trailer cannot play there. */
+internal fun openTrailer(context: android.content.Context, videoId: String) {
+    context.startActivity(
+        Intent(context, TrailerActivity::class.java).putExtra(TrailerActivity.EXTRA_VIDEO_ID, videoId)
+    )
+}
+
 /** Plays [videoId] in the YouTube app if it is installed, otherwise its web player. Opened with
  *  FLAG_ACTIVITY_NO_HISTORY so a single Back press returns straight here rather than stepping back
- *  through YouTube's own navigation first. */
-internal fun openTrailer(context: android.content.Context, videoId: String) {
+ *  through YouTube's own navigation first - though inside YouTube, Back is YouTube's. Now only
+ *  TrailerActivity's fallback. */
+internal fun openTrailerInYouTube(context: android.content.Context, videoId: String) {
     val opened = runCatching {
         context.startActivity(
             Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)

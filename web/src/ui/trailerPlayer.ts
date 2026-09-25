@@ -61,7 +61,7 @@ export function playTrailer(videoId: string, title: string): void {
   function fail(): void {
     if (started) return;
     failed = true;
-    status.textContent = t('trailer_failed_here');
+    status.textContent = `${t('trailer_failed_here')} ${t('trailer_open_youtube_ok')}`;
     status.classList.add('visible');
   }
 

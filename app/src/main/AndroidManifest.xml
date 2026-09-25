@@ -43,5 +43,13 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Trailers play here, inside the app, so one Back returns to the film or series page.
+             Landscape on both builds, as the rest of the app is. See TrailerActivity.kt. -->
+        <activity
+            android:name=".TrailerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboard|keyboardHidden|navigation"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
     </application>
 </manifest>

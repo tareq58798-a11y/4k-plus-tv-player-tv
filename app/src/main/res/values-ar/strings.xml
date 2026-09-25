@@ -145,6 +145,10 @@
     <string name="series_star_empty">ستظهر هنا المسلسلات التي تفضّلها.</string>
     <string name="series_watch_empty">ستظهر هنا المسلسلات التي تشاهدها.</string>
     <string name="trailer_label">الإعلان</string>
+    <string name="trailer_loading">جارٍ تحميل الإعلان…</string>
+    <string name="trailer_failed_here">لا يمكن تشغيل هذا الإعلان هنا.</string>
+    <string name="trailer_open_youtube_ok">اضغط موافق لفتحه في YouTube.</string>
+    <string name="trailer_open_youtube_tap">انقر لفتحه في YouTube.</string>
     <string name="loading_seasons_episodes">جارٍ تحميل المواسم والحلقات…</string>
     <string name="no_series_details">لم يتم توفير معلومات تفصيلية لهذا المسلسل.</string>
     <string name="seasons_label">المواسم</string>

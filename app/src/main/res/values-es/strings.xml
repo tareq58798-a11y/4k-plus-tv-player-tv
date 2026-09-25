@@ -140,6 +140,10 @@
     <string name="series_star_empty">Las series que marques como favoritas aparecerán aquí.</string>
     <string name="series_watch_empty">Las series que veas aparecerán aquí.</string>
     <string name="trailer_label">Tráiler</string>
+    <string name="trailer_loading">Cargando tráiler…</string>
+    <string name="trailer_failed_here">Este tráiler no se puede reproducir aquí.</string>
+    <string name="trailer_open_youtube_ok">Pulsa OK para abrirlo en YouTube.</string>
+    <string name="trailer_open_youtube_tap">Toca para abrirlo en YouTube.</string>
     <string name="loading_seasons_episodes">Cargando temporadas y episodios…</string>
     <string name="no_series_details">No se proporcionó información detallada para esta serie.</string>
     <string name="seasons_label">Temporadas</string>
