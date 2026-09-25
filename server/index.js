@@ -3,6 +3,7 @@ const db = require('./db');
 const { renderDevices } = require('./adminPage');
 const { VIDEO_ID, trailerPage } = require('./trailerPage');
 const { privacyPage } = require('./privacyPage');
+const { homePage } = require('./homePage');
 
 const app = express();
 app.use(express.json());
@@ -116,7 +117,12 @@ app.get('/privacy', (req, res) => {
   res.send(privacyPage());
 });
 
-app.get('/', (req, res) => res.send('4K Plus TV activation server is running.'));
+// The app's homepage, which Seller Office requires - see homePage.js. Also the health check.
+app.get('/', (req, res) => {
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(homePage());
+});
 
 // Started only when this file is run directly, so the test can require the app and listen on a
 // port of its own instead of racing the real one.
