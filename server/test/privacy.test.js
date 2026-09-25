@@ -1,0 +1,34 @@
+// The privacy policy route that Samsung's Seller Office links to. Run with: node test/privacy.test.js
+//
+// db.js needs a real DATABASE_URL the moment it is required, so it is swapped for an empty stand-in
+// exactly as dashboard.test.js does; this route never touches it.
+const assert = require('assert');
+const Module = require('module');
+
+const originalLoad = Module._load;
+Module._load = function (request) {
+  if (request === './db') return {};
+  return originalLoad.apply(this, arguments);
+};
+
+const app = require('../index.js');
+const { SUPPORT_EMAIL } = require('../privacyPage');
+
+(async () => {
+  const server = app.listen(0);
+  const { port } = server.address();
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/privacy`);
+    assert.strictEqual(res.status, 200);
+    assert.match(res.headers.get('content-type'), /text\/html/);
+    const body = await res.text();
+    assert.ok(body.includes('<title>4K Plus TV Player - Privacy Policy</title>'), 'has its title');
+    assert.ok(body.includes(`mailto:${SUPPORT_EMAIL}`), 'names a contact address');
+    // The things the policy promises must be the things the code does - spot-check the key ones.
+    assert.ok(body.includes('device code') && body.includes('device key'), 'says what is sent');
+    assert.ok(/No analytics/.test(body), 'says there is no tracking');
+    console.log(`privacy page ok (${body.length} bytes)`);
+  } finally {
+    server.close();
+  }
+})().catch((err) => { console.error(err); process.exit(1); });

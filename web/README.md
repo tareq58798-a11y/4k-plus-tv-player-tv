@@ -441,10 +441,12 @@ The way in that needs no typing: the set shows its MAC and a device key, the res
 playlist to that pair in their dashboard, and the app collects it. Ported from
 `DeviceActivationClient.kt` - same endpoint, same request shape, same pending/assigned states.
 
-**This build uses the set's real MAC.** `webapis.network.getMac()` gives the number printed in the
-television's own network settings, so a customer can read it out without the app being open.
-Android cannot do that - it has no access to the hardware address - so the television build
-synthesises one from `ANDROID_ID` instead. The device key is derived identically in both (SHA-256,
+**This build derives its code from the set's DUID**, not its network MAC: SHA-256 of the DUID, six
+bytes formatted as a MAC with the locally-administered bit set, exactly as the television build
+does from `ANDROID_ID` (see `src/platform/identity.ts` for why not the MAC - a set has more than
+one interface, and moving from wi-fi to cable would change it). `webapis.network.getMac()` is only
+the fallback when a set will not give a DUID. This is what the privacy policy at
+`/privacy` (server/privacyPage.js) says the app sends; keep the two in step. The device key is derived identically in both (SHA-256,
 first four bytes big-endian, modulo a million, padded to six digits), so one activation service
 answers both.
 

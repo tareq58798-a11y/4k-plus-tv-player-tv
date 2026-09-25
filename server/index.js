@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('./db');
 const { renderDevices } = require('./adminPage');
 const { VIDEO_ID, trailerPage } = require('./trailerPage');
+const { privacyPage } = require('./privacyPage');
 
 const app = express();
 app.use(express.json());
@@ -106,6 +107,13 @@ app.get('/trailer', (req, res) => {
   // Framed by the app, which has no web origin of its own to list, so no frame-ancestors limit.
   res.set('Cache-Control', 'public, max-age=3600');
   res.send(trailerPage(videoId));
+});
+
+// The privacy policy Samsung's Seller Office links to - see privacyPage.js.
+app.get('/privacy', (req, res) => {
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(privacyPage());
 });
 
 app.get('/', (req, res) => res.send('4K Plus TV activation server is running.'));
