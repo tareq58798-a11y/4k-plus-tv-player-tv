@@ -115,7 +115,7 @@ export function renderDetails(host: HTMLElement, options: DetailsOptions): HTMLE
   left.append(poster, play, favourite);
   // Trailer, when the provider sent one - see platform/youtube.ts. Absent otherwise, as on the
   // television, so it never leads anywhere but to the title's own trailer.
-  const trailer = trailerButton('details-trailer', details?.trailerUrl);
+  const trailer = trailerButton('details-trailer', details?.trailerUrl, title);
   if (trailer) left.append(trailer);
 
   const pills = el('div', { class: 'pills' });

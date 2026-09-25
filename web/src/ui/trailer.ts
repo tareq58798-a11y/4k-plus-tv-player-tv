@@ -3,11 +3,12 @@
  * the SmartDisplay icon and "Trailer", shown only when the provider supplied a trailer.
  */
 import { t } from '../shared/i18n';
-import { openTrailer, trailerVideoId } from '../platform/youtube';
+import { trailerVideoId } from '../platform/youtube';
+import { playTrailer } from './trailerPlayer';
 import { iconElement } from './icons';
 
 /** Null when there is no trailer, so the caller adds nothing. */
-export function trailerButton(id: string, trailerUrl: string | null | undefined): HTMLElement | null {
+export function trailerButton(id: string, trailerUrl: string | null | undefined, title: string): HTMLElement | null {
   const videoId = trailerVideoId(trailerUrl);
   if (!videoId) return null;
   const button = document.createElement('div');
@@ -22,15 +23,7 @@ export function trailerButton(id: string, trailerUrl: string | null | undefined)
     button.append(iconElement('smartDisplay', 'details-trailer-icon'), text);
   };
   draw(t('trailer_label'));
-  let restore: number | null = null;
-  button.addEventListener('click', () => {
-    void openTrailer(videoId).then((opened) => {
-      if (opened) return;
-      // Said on the button itself for a few seconds, where the viewer is looking, then put back.
-      draw(t('trailer_could_not_open'));
-      if (restore !== null) window.clearTimeout(restore);
-      restore = window.setTimeout(() => draw(t('trailer_label')), 4000);
-    });
-  });
+  // Played in the app, over this page - see trailerPlayer.ts. The YouTube app is its fallback.
+  button.addEventListener('click', () => playTrailer(videoId, title));
   return button;
 }

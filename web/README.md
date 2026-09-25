@@ -146,10 +146,14 @@ stops it being reopened every few months.
   (`-u-nu-latn`, see `latinDigits` in `shared/i18n.ts`), so Arabic shows 11:08 rather than ١١:٠٨,
   at the owner's request. Month and day names stay in the viewer's language. Decided on
   2026-09-24.
-* **A Trailer button on a series' page.** The television reads a series' `youtube_trailer` but
-  only shows the button on a film's page. Here both have it, at the owner's request - still only
-  when the provider supplied a trailer, and it opens that video in the YouTube app, never a
-  search. Decided on 2026-09-24.
+* **Trailers, and where they play.** The television reads a series' `youtube_trailer` but only
+  shows the button on a film's page, and hands the trailer to the YouTube app. Here both pages
+  have it (2026-09-24), and the trailer plays inside the app, in YouTube's embedded player, so one
+  Back returns to the page (2026-09-25) - at the owner's request, and still only when the provider
+  supplied a trailer. The player lives on a page the activation server serves
+  (`server/trailerPage.js`, `/trailer?v=<id>`), because YouTube's player will not play in a page
+  with no web address of its own, which is what a Samsung app's page is; that page is given the
+  video id and nothing else. If it cannot play there, OK opens the YouTube app as before.
 * **Home's Continue Watching is ordered by time.** The television's row mixes films, series and
   channels but, keeping no times, orders them as the last title touched, then films, series,
   channels. Here each is timestamped when watched and the row is simply most recent first.

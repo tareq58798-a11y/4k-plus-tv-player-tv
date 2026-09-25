@@ -3383,3 +3383,63 @@ body.playing .backdrop-scrim {
 .card .art:not([src]) {
   visibility: hidden;
 }
+
+/* ------------------------------------------------------------ trailer player
+ *
+ * The trailer fills the screen over the page it was opened from. The frame never takes the
+ * highlight - the layer holds it, so the remote stays with the app - and the title and any message
+ * sit over the top of the picture.
+ */
+.trailer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: #000;
+}
+
+.trailer-layer:focus {
+  outline: none;
+}
+
+.trailer-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+
+.trailer-title {
+  position: absolute;
+  top: 48px;
+  inset-inline-start: 80px;
+  font-size: 36px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  transition: opacity 600ms ease 2s;
+}
+
+/* Once the trailer is playing the title steps out of the way, after a moment to read it. */
+.trailer-title.fading {
+  opacity: 0;
+}
+
+.trailer-status {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 1200px;
+  font-size: 34px;
+  text-align: center;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+}
+
+.trailer-status.visible {
+  padding: 32px 48px;
+  border-radius: 24px;
+  background: rgba(0, 0, 0, 0.75);
+}

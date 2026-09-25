@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('./db');
 const { renderDevices } = require('./adminPage');
+const { VIDEO_ID, trailerPage } = require('./trailerPage');
 
 const app = express();
 app.use(express.json());
@@ -95,6 +96,16 @@ app.post('/admin/devices/:mac/delete', requireAdmin, async (req, res) => {
   if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
   await db.deleteDevice(mac);
   res.redirect('/admin');
+});
+
+// A trailer, inside the television app - see trailerPage.js. Only a YouTube video id is accepted.
+app.get('/trailer', (req, res) => {
+  const videoId = String(req.query.v || '');
+  if (!VIDEO_ID.test(videoId)) return res.status(400).send('Invalid video.');
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  // Framed by the app, which has no web origin of its own to list, so no frame-ancestors limit.
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(trailerPage(videoId));
 });
 
 app.get('/', (req, res) => res.send('4K Plus TV activation server is running.'));
