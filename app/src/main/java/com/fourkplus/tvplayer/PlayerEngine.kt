@@ -103,7 +103,30 @@ internal fun buildFourKPlusExoPlayer(context: android.content.Context, skipSecon
         .setSeekBackIncrementMs(skipSeconds * 1_000L)
         .setSeekForwardIncrementMs(skipSeconds * 1_000L)
         .build()
-        .apply { volume = if (muted) 0f else 1f }
+        .apply {
+            volume = if (muted) 0f else 1f
+            // Debug builds only: media3's own log of every track chosen and why, each state change
+            // and each decoder started. It is how a stream that stops without an error is told
+            // apart from one still waiting on something - which nothing else in the log shows.
+            if (BuildConfig.DEBUG) {
+                addAnalyticsListener(androidx.media3.exoplayer.util.EventLogger("FourKPlusPlayer"))
+                // And where playback actually is, every two seconds: EventLogger reports changes,
+                // so a player that says it is playing while its position stands still logs nothing.
+                val handler = android.os.Handler(applicationLooper)
+                val player = this
+                handler.post(object : Runnable {
+                    override fun run() {
+                        android.util.Log.d(
+                            "FourKPlusPlayer",
+                            "tick state=${player.playbackState} playing=${player.isPlaying} " +
+                                "pos=${player.currentPosition} buffered=${player.bufferedPosition} " +
+                                "ahead=${player.totalBufferedDuration}ms loading=${player.isLoading}"
+                        )
+                        handler.postDelayed(this, 2_000)
+                    }
+                })
+            }
+        }
 }
 
 /**
