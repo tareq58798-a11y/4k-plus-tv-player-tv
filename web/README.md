@@ -211,6 +211,13 @@ stops it being reopened every few months.
 * **Named aspect frames that always change the picture.** See the table above. The television's
   16:9 and 4:3 do nothing to a stream already of a similar shape; here each gives its shape.
   Changed at the owner's request on 2026-09-24; the Android app is unchanged.
+* **(The other way round) where each episode was left.** On a series' page each episode's thumbnail
+  carries a YouTube-style strip - grey for its length, red for the part watched, full once it was
+  seen to the end - and its line reads the exact time reached, "Resume 23:41", or "Watched". The
+  television draws a bare progress line and no time. Finished episodes are remembered in their own
+  store ('finished', library.ts), since the resume point is dropped in an episode's last minute.
+  Both labels are the extracted resume_time and watched_label. Added at the owner's request on
+  2026-09-26; the Android app is unchanged.
 * **(The other way round) the app's own keyboard on every search box, and never the set's.** The
   television uses Android TV's system keyboard. Here every search box - the Search screen, and the
   category and title boxes on Live TV, Movies and Series - uses the app's own keyboard

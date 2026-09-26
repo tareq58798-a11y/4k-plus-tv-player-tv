@@ -2218,11 +2218,36 @@ body.playing .backdrop-scrim {
 }
 
 .episode-thumb {
+  position: relative;
   flex: 0 0 200px;
   height: 112px;
   border-radius: 8px;
   overflow: hidden;
   background: #000;
+}
+
+/*
+ * Where an episode was left, drawn the way YouTube marks a video: a strip along the foot of the
+ * thumbnail, grey for the whole length and red for the part watched, full when it was seen to the
+ * end. The red is the one the app already uses for progress on posters (.progress-fill).
+ */
+.episode-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.episode-progress-fill {
+  height: 100%;
+  background: #e50914;
+}
+
+/* The time reached - "Resume 23:41" or "Watched" - brighter than the length it sits beside. */
+.episode-meta.watched {
+  color: var(--tone-text-secondary);
 }
 
 .episode-thumb img {

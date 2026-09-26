@@ -12,7 +12,7 @@
  */
 import { t } from '../shared/i18n';
 import type { PlaylistItem, SeriesDetails, SeriesEpisode } from '../shared/models';
-import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
+import { isFavorite, toggleFavorite, watchState } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
 import { lazyImage } from './images';
@@ -38,6 +38,16 @@ function readableDuration(raw: string | null): string | null {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** "23:41", or "1:02:03" once there are hours - the same shape the player's clocks use. */
+function clock(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
 export interface SeriesOptions {
@@ -136,17 +146,33 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
         thumb.append(image);
       }
       const duration = readableDuration(episode.duration);
+      /*
+       * Where this episode was left, as YouTube marks a video: a red strip along the foot of the
+       * thumbnail as long as the part watched, and the exact time reached beside the length -
+       * "Resume 23:41" - or "Watched" once it was seen to the end. Asked for by the owner; the
+       * television shows a bare progress line and no time. Both labels are the Android app's own
+       * translated strings. The episode's resume point is keyed by the episode, as the player
+       * saves it (onEpisode in main.ts).
+       */
+      const state = watchState({ ...series, channelId: episode.id });
+      const meta: string[] = [];
+      if (duration) meta.push(duration);
+      if (state?.kind === 'partial') meta.push(t('resume_time', clock(state.positionMs)));
+      if (state?.kind === 'finished') meta.push(t('watched_label'));
       const text = el(
         'div',
         { class: 'episode-text' },
         el('div', { class: 'episode-title' }, `E${episode.episodeNumber} • ${episode.title}`),
-        el('div', { class: 'episode-meta' }, duration ?? ''),
+        el('div', { class: `episode-meta${state ? ' watched' : ''}` }, meta.join('  •  ')),
       );
-      row.append(thumb, text);
-      const watched = progressOf({ ...series, channelId: episode.id });
-      if (watched !== null) {
-        row.append(el('div', { class: 'progress' }, el('div', { class: 'progress-fill', style: `width:${watched * 100}%` })));
+      if (state) {
+        const fraction = state.kind === 'finished' ? 1 : Math.min(1, state.positionMs / state.durationMs);
+        thumb.append(
+          el('div', { class: 'episode-progress' }, el('div', { class: 'episode-progress-fill', style: `width:${(fraction * 100).toFixed(1)}%` })),
+        );
+        if (state.kind === 'finished') row.classList.add('finished');
       }
+      row.append(thumb, text);
       row.addEventListener('click', () => options.onEpisode(episode));
       list.append(row);
     }
@@ -167,6 +193,9 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
     // Moving along the chips changes the list at once, the same way moving down the category
     // list in the browser does.
     chip.addEventListener('focus', () => {
+      // Coming back up onto the season already showing must not rebuild its list - that threw the
+      // viewer's place away for nothing.
+      if (number === season && list.childElementCount) return;
       season = number;
       for (const other of chips.children) {
         other.setAttribute('aria-selected', String(other.getAttribute('data-focus-id') === `season-${number}`));
@@ -183,10 +212,51 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
   // walk past the synopsis to reach it.
   focus(list.querySelector<HTMLElement>('[data-focus]') ?? chips.querySelector<HTMLElement>('[data-focus]'));
 
+  /*
+   * Up and Down in the episode list go to the episode before and after, by position in the list -
+   * never by what happens to be nearest on screen.
+   *
+   * The page's geometric focus search did this, and it broke at the top edge of the list: once the
+   * list had scrolled, the episode above was hidden above the list's visible area, and the season
+   * chips were physically closer. Up jumped to a chip, and focusing a chip switches season - so the
+   * list was replaced with another season's, and every Up and Down after that bounced between that
+   * chip and its first episode. Measured on the set: Down ep1 to ep16 fine, Up ep16 to ep14 fine,
+   * then "season-3" and back, indefinitely.
+   *
+   * Up from the first episode goes to the chip of the season being shown, and Down from any chip
+   * to that season's first episode.
+   */
   const release = pushKeyHandler((key) => {
-    if (key !== 'back') return false;
-    release();
-    options.onBack();
-    return true;
+    if (key === 'back') {
+      release();
+      options.onBack();
+      return true;
+    }
+    if (key !== 'up' && key !== 'down') return false;
+    const active = document.activeElement as HTMLElement | null;
+    if (!active) return false;
+    if (list.contains(active)) {
+      const rows = [...list.querySelectorAll<HTMLElement>('.episode')];
+      const at = rows.indexOf(active);
+      if (key === 'down') {
+        if (rows[at + 1]) focus(rows[at + 1]!);
+        return true;
+      }
+      if (at > 0) {
+        focus(rows[at - 1]!);
+        return true;
+      }
+      const current = chips.querySelector<HTMLElement>(`[data-focus-id="season-${season}"]`);
+      if (current) focus(current);
+      return true;
+    }
+    if (chips.contains(active) && key === 'down') {
+      const first = list.querySelector<HTMLElement>('.episode');
+      if (first) {
+        focus(first);
+        return true;
+      }
+    }
+    return false;
   });
 }

@@ -16,6 +16,8 @@ const RECENT_CHANNELS = 'recent_channels';
 const RECENT_SERIES = 'recent_series';
 /** When each channel or series was last watched, so Home can put them in order with films. */
 const WATCHED_AT = 'watched_at';
+/** Titles watched through to the end - see rememberPosition and watchState. */
+const FINISHED = 'finished';
 
 export type ResumeMap = Record<string, { positionMs: number; durationMs: number; at: number }>;
 
@@ -48,6 +50,18 @@ function resumeStore(): ResumeMap {
 function saveResume(map: ResumeMap): void {
   resumeMap = map;
   writeJson(RESUME, map);
+}
+
+let finishedKeys: Set<string> | null = null;
+
+function finishedStore(): Set<string> {
+  if (!finishedKeys) finishedKeys = new Set(readJson<string[]>(FINISHED, []));
+  return finishedKeys;
+}
+
+function saveFinished(set: Set<string>): void {
+  finishedKeys = set;
+  writeJson(FINISHED, [...set]);
 }
 
 /** A copy, so a caller changing it cannot change what is stored. */
@@ -107,6 +121,13 @@ export function clearActivity(items: PlaylistItem[]): void {
     }
   }
   if (touchedResume) saveResume(resume);
+
+  const finished = new Set(finishedStore());
+  let touchedFinished = false;
+  for (const key of keys) {
+    if (finished.delete(key)) touchedFinished = true;
+  }
+  if (touchedFinished) saveFinished(finished);
 
   for (const store of [RECENT_CHANNELS, RECENT_SERIES]) {
     const recent = readJson<string[]>(store, []);
@@ -226,6 +247,32 @@ export function rememberPosition(item: PlaylistItem, positionMs: number, duratio
     map[key] = { positionMs, durationMs, at: Date.now() };
   }
   saveResume(map);
+  // Reaching the last minute is what "watched" means, and it is remembered on its own: the resume
+  // point is dropped there (see above), which would otherwise leave no trace that it was seen.
+  if (nearEnd && !finishedStore().has(key)) {
+    const finished = new Set(finishedStore());
+    finished.add(key);
+    saveFinished(finished);
+  }
+}
+
+/**
+ * How far the viewer got with [item], for marking it where it is listed: part way (with the exact
+ * position and length), watched to the end, or not started. A title being watched again after it
+ * was finished reads as part way, since that is where it now stands.
+ */
+export type WatchState =
+  | { kind: 'partial'; positionMs: number; durationMs: number }
+  | { kind: 'finished' }
+  | null;
+
+export function watchState(item: PlaylistItem): WatchState {
+  const key = itemKey(item);
+  const entry = resumeStore()[key];
+  if (entry && entry.durationMs > 0 && entry.positionMs > 0) {
+    return { kind: 'partial', positionMs: entry.positionMs, durationMs: entry.durationMs };
+  }
+  return finishedStore().has(key) ? { kind: 'finished' } : null;
 }
 
 /** Where [item] was left, or null when there is nothing to go back to. */
