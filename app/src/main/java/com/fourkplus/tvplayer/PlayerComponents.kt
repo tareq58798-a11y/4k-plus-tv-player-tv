@@ -21,6 +21,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -266,8 +268,33 @@ private fun RelatedItemsStrip(
     onCollapse: () -> Unit = {}
 ) {
     if (items.size <= 1) return
+    // Opens already scrolled to what is playing. A lazy row composes only what is on screen, so
+    // opened at the start while episode 13 was playing, the item that asks for focus below did not
+    // exist: focus stayed on the player behind, and Left, Right and Up did nothing at all - found on
+    // the owner's Xiaomi box, where the strip worked from episode 1 and was dead from episode 13.
+    // One item before it stays in view, so there is something to step back to.
+    val activeIndex = remember(items, currentKey) { items.indexOfFirst { channelKey(it) == currentKey } }
+    val rowState = rememberLazyListState(initialFirstVisibleItemIndex = (activeIndex - 1).coerceAtLeast(0))
+    // Left and Right by position in the row, not by focus search, which stopped dead at the edge of
+    // the screen because the next episode was not composed yet - see DpadListStepper. The row runs
+    // the other way in a right-to-left language, and so do the keys.
+    val steps = rememberDpadListStepper(rowState)
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // Once per opening. The playing item's request below runs whenever that item is composed, and
+    // a lazy row composes it again every time it scrolls back into view - so walking back past it
+    // snatched the ring back onto it: ten presses from E1 landed on E13, not E11.
+    var openingFocusDone by remember { mutableStateOf(false) }
     LazyRow(
-        modifier = modifier.onKeyEvent { keyEvent ->
+        state = rowState,
+        modifier = modifier
+            .onPreviewKeyEvent {
+                steps.onKey(
+                    it, items.size,
+                    nextKey = if (rtl) Key.DirectionLeft else Key.DirectionRight,
+                    previousKey = if (rtl) Key.DirectionRight else Key.DirectionLeft
+                )
+            }
+            .onKeyEvent { keyEvent ->
             // Up is the strip's own "close" gesture, mirroring the swipe-down that collapses it
             // on touch - without this, D-pad up while an item here is focused does nothing at
             // all, since there's no focusable sibling above the strip for focus to land on.
@@ -279,20 +306,24 @@ private fun RelatedItemsStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        items(items, key = { channelKey(it) }) { related ->
+        itemsIndexed(items, key = { _, item -> channelKey(item) }) { index, related ->
             val active = channelKey(related) == currentKey
             val focusRequester = remember { FocusRequester() }
             // The strip only mounts while expanded, so this fires fresh each time it opens —
             // landing the remote's focus on the currently-playing item so D-pad left/right
             // works immediately instead of requiring the user to navigate to the strip first.
-            if (active) {
-                LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+            // Retried over a few frames: the first request can land before the row has placed it.
+            if (active && !openingFocusDone) {
+                LaunchedEffect(Unit) {
+                    requestFocusWithRetry(focusRequester)
+                    openingFocusDone = true
+                }
             }
             Column(
                 // Wide enough for the thumbnail to read as a still from the episode rather than a
                 // stamp. At 88dp these were about the size of a postage stamp on a television
                 // across a room, and the title under them had space for three or four words.
-                Modifier.width(158.dp).focusRequester(focusRequester)
+                Modifier.width(158.dp).then(steps.row(index)).focusRequester(focusRequester)
                     .focusableClickable(cornerRadius = 8.dp) { if (!active) onSelect(related) },
                 horizontalAlignment = Alignment.Start
             ) {
@@ -561,6 +592,12 @@ internal fun MoviePlayer(
                     .then(
                         if (isTv) {
                             Modifier.focusRequester(rootFocusRequester).focusable().onKeyEvent { keyEvent ->
+                                // Up closes the strip even if focus never made it into the strip -
+                                // Up must never leave the viewer stuck with it on screen.
+                                if (keyEvent.isInitialKeyDown && relatedStripExpanded && keyEvent.key == Key.DirectionUp) {
+                                    relatedStripExpanded = false
+                                    return@onKeyEvent true
+                                }
                                 if (!keyEvent.isInitialKeyDown || controllerVisible || relatedStripExpanded) return@onKeyEvent false
                                 when (keyEvent.key) {
                                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { playerViewRef?.showController(); true }

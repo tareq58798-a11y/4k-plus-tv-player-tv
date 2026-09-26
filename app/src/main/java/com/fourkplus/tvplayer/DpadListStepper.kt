@@ -68,12 +68,22 @@ internal class DpadListStepper(private val state: LazyListState, private val sco
         }
     }
 
-    /** One key. True when it was used. [count] is the number of rows in the list. */
-    fun onKey(event: KeyEvent, count: Int, onUpFromFirst: (() -> Boolean)? = null): Boolean {
+    /**
+     * One key. True when it was used. [count] is the number of rows in the list. [nextKey] and
+     * [previousKey] are Down and Up for a column; a row passes Right and Left, swapped in a
+     * right-to-left language, where the row runs the other way.
+     */
+    fun onKey(
+        event: KeyEvent,
+        count: Int,
+        onUpFromFirst: (() -> Boolean)? = null,
+        nextKey: Key = Key.DirectionDown,
+        previousKey: Key = Key.DirectionUp
+    ): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
         val step = when (event.key) {
-            Key.DirectionDown -> 1
-            Key.DirectionUp -> -1
+            nextKey -> 1
+            previousKey -> -1
             else -> return false
         }
         val from = if (pending?.isActive == true) pendingTarget else focusedIndex
@@ -89,8 +99,8 @@ internal class DpadListStepper(private val state: LazyListState, private val sco
         }
         pendingTarget = target
         pending = scope.launch {
-            // One row's height, so the list creeps along with the ring instead of jumping the
-            // target to the top of the viewport the way scrollToItem would.
+            // One row's height (or one item's width, in a row), so the list creeps along with the
+            // ring instead of jumping the target to the start the way scrollToItem would.
             val rowHeight = visible.firstOrNull()?.size?.plus(state.layoutInfo.mainAxisItemSpacing)
             if (rowHeight != null) runCatching { state.scrollBy((rowHeight * step).toFloat()) }
             withFrameNanos { }

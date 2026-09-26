@@ -33,6 +33,7 @@ import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Scale
 import com.fourkplus.tvplayer.R
+import com.fourkplus.tvplayer.backdropSizePx
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -126,18 +127,14 @@ fun CinematicBackdrop(
     val settledFade = remember { Animatable(1f) }
 
     val context = LocalContext.current
-    // Backdrops are decoded at up to 4K rather than at the size of the view they land in. Coil
-    // sizes a request to its composable by default, which on a 1080p panel throws away every pixel
-    // beyond 1920 wide before the image is ever drawn - so a 4K still and a 1080p one ended up
-    // identical on screen, and identical again on a 4K panel where the difference would show.
-    //
-    // It never invents detail: this is a ceiling, not a target. A source smaller than 4K is decoded
-    // whole, at its own resolution, because that is all there is to decode.
+    // Decoded at the screen's own size - see backdropSizePx, which also says why this is no longer
+    // a 4K ceiling. It never invents detail: a smaller source is decoded whole, at its own size.
     val incomingRequest = remember(incomingModel) {
         incomingModel?.let {
+            val (width, height) = backdropSizePx(context)
             ImageRequest.Builder(context)
                 .data(it)
-                .size(BackdropWidthPx, BackdropHeightPx)
+                .size(width, height)
                 .scale(Scale.FILL)
                 .precision(Precision.INEXACT)
                 .build()
@@ -256,10 +253,6 @@ fun CinematicBackdrop(
     }
 }
 
-/** The ceiling a backdrop is decoded at. Sources below it are decoded whole; nothing is upscaled. */
-private const val BackdropWidthPx = 3840
-private const val BackdropHeightPx = 2160
-
 /**
  * Warms Coil's cache with artwork the viewer is about to reach, so a deliberate move along a row
  * shows its background immediately instead of after a round trip. Fire-and-forget: failures are
@@ -272,12 +265,13 @@ private const val BackdropHeightPx = 2160
 fun PreloadBackdrops(urls: List<String>) {
     val context = LocalContext.current
     LaunchedEffect(urls) {
+        val (width, height) = backdropSizePx(context)
         urls.filter { it.isNotBlank() }.take(12).forEach { url ->
             runCatching {
                 context.imageLoader.enqueue(
                     ImageRequest.Builder(context)
                         .data(url)
-                        .size(BackdropWidthPx, BackdropHeightPx)
+                        .size(width, height)
                         .scale(Scale.FILL)
                         .precision(Precision.INEXACT)
                         .build()
