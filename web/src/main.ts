@@ -1241,6 +1241,33 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   /** An entry that must be on the page as soon as the grid is drawn - see the return below. */
   let reveal: string | null = null;
 
+  /*
+   * The grid follows the category the highlight is on - but only once the highlight stops.
+   *
+   * Every step onto a category used to clear the grid and build that category's first screenful
+   * at once, starting a download for each of its posters. Held Down through twenty Movies
+   * categories on the set, that was 250 image requests for categories only passed through, each
+   * step blocking the page for about 100 ms - twenty presses sent 70 ms apart took 3.4 s to be
+   * handled, with eleven frames over 100 ms. The highlight now moves at once and the grid is built
+   * when it has been still for GRID_SETTLE_MS; any key other than Up and Down, and OK on a row,
+   * builds a waiting grid straight away, so stepping into it never finds it empty.
+   */
+  const GRID_SETTLE_MS = 150;
+  let gridTimer: number | null = null;
+  function scheduleGrid(): void {
+    if (gridTimer !== null) window.clearTimeout(gridTimer);
+    gridTimer = window.setTimeout(() => {
+      gridTimer = null;
+      renderGrid();
+    }, GRID_SETTLE_MS);
+  }
+  function flushGrid(): void {
+    if (gridTimer === null) return;
+    window.clearTimeout(gridTimer);
+    gridTimer = null;
+    renderGrid();
+  }
+
   function renderGrid(): void {
     if (filling !== null) {
       window.cancelAnimationFrame(filling);
@@ -1462,10 +1489,13 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         search = '';
         entryField.value = '';
       }
-      for (const other of sidebar.querySelectorAll('.category')) {
-        other.setAttribute('aria-selected', String(other.getAttribute('data-focus-id') === group));
+      // Only the row losing the mark and the row gaining it - not every row in a list of hundreds,
+      // which is what each step used to rewrite.
+      for (const other of sidebar.querySelectorAll('.category[aria-selected="true"]')) {
+        if (other !== row) other.setAttribute('aria-selected', 'false');
       }
-      renderGrid();
+      row.setAttribute('aria-selected', 'true');
+      scheduleGrid();
     });
     // A held OK opens the menu - CategoryActionsDialog, on the television's long press. Continue
     // watching, Recently watched and Favorites are not the provider's categories: there is
@@ -1489,6 +1519,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
         return;
       }
       if (selected !== group) return;
+      // OK on these rows arrives through holdOk, not the key handler, so the grid may still be
+      // waiting to be built.
+      flushGrid();
       focus(grid.querySelector<HTMLElement>('[data-focus]'));
     });
     if (!special) holdOk(row, () => {
@@ -1551,6 +1584,8 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   leaveScreen = () => {
     if (filling !== null) window.cancelAnimationFrame(filling);
     filling = null;
+    if (gridTimer !== null) window.clearTimeout(gridTimer);
+    gridTimer = null;
     stopPreview();
   };
   // Belt and braces: the page is only transparent while something is deliberately playing full
@@ -1669,6 +1704,7 @@ function browseScreen(current: Section, favoritesOnly = false): void {
     // down a category that is otherwise drawn a batch at a time, so the grid is told to include it.
     reveal = returning!.focusKey;
     focus(category);
+    flushGrid();
     const poster = grid.querySelector<HTMLElement>(`[data-focus-id="${cssEscape(returning!.focusKey)}"]`);
     if (poster) focus(poster);
   } else {
@@ -1683,6 +1719,8 @@ function browseScreen(current: Section, favoritesOnly = false): void {
       sidebar.querySelector<HTMLElement>(`.category[data-focus-id="${cssEscape(selected)}"]`)
         ?? sidebar.querySelector<HTMLElement>('.category[data-focus]'),
     );
+    // Arriving is not moving through: draw the category now rather than after the settle wait.
+    flushGrid();
   }
 
   /*
@@ -1726,6 +1764,10 @@ function browseScreen(current: Section, favoritesOnly = false): void {
   }
 
   const release = pushKeyHandler((key: RemoteKey) => {
+    // A key that is not stepping along the category list may be about to step into the grid (Right,
+    // or Left in Arabic) or act on it, so a grid still waiting for the highlight to settle is built
+    // now - before the move is worked out against what is on screen. See scheduleGrid.
+    if (key !== 'up' && key !== 'down') flushGrid();
     // Hand-moving takes over Up and Down entirely: while a row is being carried, those keys move
     // the row rather than the highlight, and OK or Back puts it down. Without the takeover the
     // highlight would walk away from the row it is supposed to be moving.
