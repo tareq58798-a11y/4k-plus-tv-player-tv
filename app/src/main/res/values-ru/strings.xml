@@ -140,6 +140,8 @@
     <string name="series_star_empty">Отмеченные избранным сериалы появятся здесь.</string>
     <string name="series_watch_empty">Просмотренные сериалы появятся здесь.</string>
     <string name="trailer_label">Трейлер</string>
+    <string name="trailer_loading">Загрузка трейлера…</string>
+    <string name="trailer_failed_here">Этот трейлер нельзя воспроизвести здесь. Нажмите OK, чтобы открыть его в YouTube, или «Назад», чтобы вернуться.</string>
     <string name="loading_seasons_episodes">Загрузка сезонов и серий…</string>
     <string name="no_series_details">Подробная информация об этом сериале не предоставлена.</string>
     <string name="seasons_label">Сезоны</string>
@@ -155,7 +157,7 @@
     <string name="settings_playlists">Плейлисты</string>
     <string name="settings_app_info">Информация о приложении и плейлисте</string>
     <string name="settings_playback">Воспроизведение</string>
-    <string name="settings_appearance">Оформление</string>
+    <string name="settings_appearance">Оформление</string>
     <string name="background_mode">Фон</string>
     <string name="background_modern">Современный</string>
     <string name="background_classic">Классический</string>

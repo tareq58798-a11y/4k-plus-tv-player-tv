@@ -147,6 +147,9 @@
     <string name="series_star_empty">Series you star will appear here.</string>
     <string name="series_watch_empty">Series you watch will appear here.</string>
     <string name="trailer_label">Trailer</string>
+    <!-- The in-app trailer player: while it starts, and when YouTube will not play it inside the app. -->
+    <string name="trailer_loading">Loading trailer…</string>
+    <string name="trailer_failed_here">This trailer cannot play here. Press OK to open it in YouTube, or Back to return.</string>
     <string name="loading_seasons_episodes">Loading seasons and episodes…</string>
     <string name="no_series_details">Detailed information was not supplied for this series.</string>
     <string name="seasons_label">Seasons</string>
@@ -162,7 +165,7 @@
     <string name="settings_playlists">Playlists</string>
     <string name="settings_app_info">App &amp; playlist information</string>
     <string name="settings_playback">Playback</string>
-    <string name="settings_appearance">Appearance</string>
+    <string name="settings_appearance">Appearance</string>
     <string name="background_mode">Background</string>
     <string name="background_modern">Modern</string>
     <string name="background_classic">Classic</string>

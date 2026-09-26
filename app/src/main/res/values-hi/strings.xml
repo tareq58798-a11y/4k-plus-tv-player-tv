@@ -140,6 +140,8 @@
     <string name="series_star_empty">आपकी पसंदीदा सीरीज़ यहाँ दिखाई देंगी।</string>
     <string name="series_watch_empty">आपकी देखी गई सीरीज़ यहाँ दिखाई देंगी।</string>
     <string name="trailer_label">ट्रेलर</string>
+    <string name="trailer_loading">ट्रेलर लोड हो रहा है…</string>
+    <string name="trailer_failed_here">यह ट्रेलर यहाँ नहीं चल सकता। YouTube में खोलने के लिए OK दबाएँ, या वापस जाने के लिए Back दबाएँ।</string>
     <string name="loading_seasons_episodes">सीज़न और एपिसोड लोड हो रहे हैं…</string>
     <string name="no_series_details">इस सीरीज़ के लिए विस्तृत जानकारी उपलब्ध नहीं कराई गई।</string>
     <string name="seasons_label">सीज़न</string>
@@ -155,7 +157,7 @@
     <string name="settings_playlists">प्लेलिस्ट</string>
     <string name="settings_app_info">ऐप और प्लेलिस्ट जानकारी</string>
     <string name="settings_playback">प्लेबैक</string>
-    <string name="settings_appearance">रूप-रंग</string>
+    <string name="settings_appearance">रूप-रंग</string>
     <string name="background_mode">पृष्ठभूमि</string>
     <string name="background_modern">आधुनिक</string>
     <string name="background_classic">क्लासिक</string>

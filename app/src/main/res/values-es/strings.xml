@@ -140,6 +140,8 @@
     <string name="series_star_empty">Las series que marques como favoritas aparecerán aquí.</string>
     <string name="series_watch_empty">Las series que veas aparecerán aquí.</string>
     <string name="trailer_label">Tráiler</string>
+    <string name="trailer_loading">Cargando tráiler…</string>
+    <string name="trailer_failed_here">Este tráiler no se puede reproducir aquí. Pulsa OK para abrirlo en YouTube o Atrás para volver.</string>
     <string name="loading_seasons_episodes">Cargando temporadas y episodios…</string>
     <string name="no_series_details">No se proporcionó información detallada para esta serie.</string>
     <string name="seasons_label">Temporadas</string>
@@ -155,7 +157,7 @@
     <string name="settings_playlists">Listas de reproducción</string>
     <string name="settings_app_info">Información de la app y la lista</string>
     <string name="settings_playback">Reproducción</string>
-    <string name="settings_appearance">Apariencia</string>
+    <string name="settings_appearance">Apariencia</string>
     <string name="background_mode">Fondo</string>
     <string name="background_modern">Moderno</string>
     <string name="background_classic">Clásico</string>

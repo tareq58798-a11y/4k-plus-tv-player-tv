@@ -473,15 +473,8 @@ internal fun SeriesScreen(
                         Text(stringResource(R.string.action_hide))
                     }
                 }
-                if (view == SeriesView.DETAILS && selectedSeries != null) {
-                    AnimatedIconButton(onClick = { toggleFavorite(selectedSeries!!) }) {
-                        Icon(
-                            if (channelKey(selectedSeries!!) in favoriteIds) Icons.Default.Star else Icons.Default.StarBorder,
-                            if (channelKey(selectedSeries!!) in favoriteIds) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add),
-                            tint = if (channelKey(selectedSeries!!) in favoriteIds) Orange else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                // No favourite star up here on the details page - see the matching note in
+                // MoviesScreen. The page has its own beside the poster.
             }
 
             when (view) {
@@ -1109,6 +1102,9 @@ private fun SeriesDetails(
     LaunchedEffect(series, episodes.firstOrNull()?.id, isTv) {
         if (isTv && episodes.isNotEmpty()) runCatching { firstEpisodeFocusRequester.requestFocus() }
     }
+    // The trailer playing over this page, if any - see TrailerPlayer.
+    var playingTrailer by remember(series) { mutableStateOf<String?>(null) }
+    playingTrailer?.let { id -> TrailerPlayer(id, displayTitle) { playingTrailer = null } }
 
     @Composable
     fun SeasonsAndEpisodes() {
@@ -1163,7 +1159,7 @@ private fun SeriesDetails(
                     // turned sideways would otherwise still get this button, which is the wrong
                     // reason for it to appear or disappear.
                     if (isTv) trailerId?.let { id ->
-                        OutlinedButton(onClick = { openTrailer(context, id) }, modifier = Modifier.weight(1f).height(44.dp)) {
+                        OutlinedButton(onClick = { playingTrailer = id }, modifier = Modifier.weight(1f).height(44.dp)) {
                             Icon(Icons.Default.SmartDisplay, null)
                             Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
@@ -1397,7 +1393,7 @@ private fun SeriesDetails(
             // it off phone.
             if (isTv) trailerId?.let { id ->
                 OutlinedButton(
-                    onClick = { openTrailer(context, id) },
+                    onClick = { playingTrailer = id },
                     modifier = Modifier.weight(1f).height(52.dp)
                 ) {
                     Icon(Icons.Default.SmartDisplay, null)

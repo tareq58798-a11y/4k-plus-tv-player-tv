@@ -2034,15 +2034,8 @@ private fun MoviesScreen(
                             Text(stringResource(R.string.action_hide))
                         }
                     }
-                    if (view == MovieView.DETAILS && selectedMovie != null) {
-                        AnimatedIconButton(onClick = { toggleFavorite(selectedMovie!!) }) {
-                            Icon(
-                                if (channelKey(selectedMovie!!) in favoriteIds) Icons.Default.Star else Icons.Default.StarBorder,
-                                if (channelKey(selectedMovie!!) in favoriteIds) stringResource(R.string.cd_favorite_remove) else stringResource(R.string.cd_favorite_add),
-                                tint = if (channelKey(selectedMovie!!) in favoriteIds) Orange else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    // No favourite star up here on the details page. The page has its own, beside
+                    // the poster, and the second one in the corner was the same button twice.
                 }
 
                 when (view) {
@@ -3009,6 +3002,9 @@ private fun MovieDetails(
     LaunchedEffect(movie, isTv) {
         if (isTv) runCatching { playFocusRequester.requestFocus() }
     }
+    // The trailer playing over this page, if any - see TrailerPlayer.
+    var playingTrailer by remember(movie) { mutableStateOf<String?>(null) }
+    playingTrailer?.let { id -> TrailerPlayer(id, displayTitle) { playingTrailer = null } }
 
     if (landscape) {
         // TV has the full screen width to work with, so poster/actions/pills sit in a fixed-width
@@ -3035,7 +3031,7 @@ private fun MovieDetails(
                     // turned sideways would otherwise still get this button, which is the wrong
                     // reason for it to appear or disappear.
                     if (isTv) trailerId?.let { id ->
-                        OutlinedButton(onClick = { openTrailer(context, id) }, modifier = Modifier.weight(1f).height(44.dp)) {
+                        OutlinedButton(onClick = { playingTrailer = id }, modifier = Modifier.weight(1f).height(44.dp)) {
                             Icon(Icons.Default.SmartDisplay, null)
                             Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.trailer_label), fontSize = 13.sp)
@@ -3153,7 +3149,7 @@ private fun MovieDetails(
         // which in practice is the phone's, so removing the button here is what took it off phone.
         if (isTv) trailerId?.let { id ->
             OutlinedButton(
-                onClick = { openTrailer(context, id) },
+                onClick = { playingTrailer = id },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.SmartDisplay, null)
@@ -3247,7 +3243,8 @@ internal fun trailerVideoId(trailerUrl: String?): String? =
 
 /** Plays [videoId] in the YouTube app if it is installed, otherwise its web player. Opened with
  *  FLAG_ACTIVITY_NO_HISTORY so a single Back press returns straight here rather than stepping back
- *  through YouTube's own navigation first. */
+ *  through YouTube's own navigation first. Trailers now play inside the app (TrailerPlayer); this
+ *  is what it falls back to when YouTube will not play one there. */
 internal fun openTrailer(context: android.content.Context, videoId: String) {
     val opened = runCatching {
         context.startActivity(
