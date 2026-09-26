@@ -38,6 +38,7 @@ private fun buildPlaybackClient(timeoutSeconds: Long) = OkHttpClient.Builder()
     .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
     .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
     .retryOnConnectionFailure(true)
+    .trustModernRoots()
     .build()
 
 private val fastPlaybackClient: OkHttpClient by lazy { buildPlaybackClient(8) }

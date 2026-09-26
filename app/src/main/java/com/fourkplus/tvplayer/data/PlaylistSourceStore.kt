@@ -157,6 +157,11 @@ internal class PlaylistSourceStore(context: Context) {
          * no key store to reach for at all. An app that cannot be opened protects nothing.
          */
         fun openStore(context: Context): SharedPreferences {
+            // The keystore keys androidx.security needs arrived in Android 6.0. On 5.x there is
+            // nothing to try: the store is plain, as below when encryption cannot be had at all.
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+                return context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            }
             fun create(): SharedPreferences = EncryptedSharedPreferences.create(
                 context, FILE,
                 MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
@@ -170,7 +175,15 @@ internal class PlaylistSourceStore(context: Context) {
 
             // Both halves, because either can be the broken one: the key in the keystore, or the
             // file it was used to encrypt. Leaving one behind leaves the same mismatch.
-            runCatching { context.deleteSharedPreferences(FILE) }
+            runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    context.deleteSharedPreferences(FILE)
+                } else {
+                    // deleteSharedPreferences is Android 7.0; before it, emptying the file is the
+                    // same fresh start as far as the store is concerned.
+                    context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().clear().commit()
+                }
+            }
             runCatching {
                 KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
                     .deleteEntry(MASTER_KEY_ALIAS)

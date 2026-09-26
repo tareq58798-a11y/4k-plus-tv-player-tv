@@ -11,6 +11,11 @@
     <!-- Marks this as a proper TV app (shows in the Leanback launcher's app row, gets listed
          under "Android TV" on the Play Store) rather than a phone app side-loaded onto a TV. -->
     <uses-feature android:name="android.software.leanback" android:required="true" />
+    <!-- screenOrientation="landscape" below makes a store assume this is required, and a store
+         filters out any device that does not report it - some boxes do not, being landscape by
+         nature rather than by a sensor. Declared optional so that assumption cannot cost the app
+         a device; the orientation itself is unchanged. -->
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
 
     <application>
         <!-- A television is fixed landscape. Declaring it keeps the TV build behaving exactly as

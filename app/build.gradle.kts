@@ -1,4 +1,4 @@
-﻿import java.util.Properties
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -34,7 +34,13 @@ android {
     defaultConfig {
         applicationId = "com.fourkplus.tvplayer.tv"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
-        minSdk = 26
+        // Android 5.0, the oldest version Jetpack Compose and media3 run on, so the app reaches as
+        // many televisions as it can. It was 26 (8.0), which shut out every Fire TV on Fire OS 6
+        // (Android 7.1) and the older Android TV boxes still in use. What the older versions lack
+        // is covered in three places: java.time and java.util.Base64 by core library desugaring
+        // below, the certificates they do not trust by LegacyTls, and the rest by version checks
+        // where the call is made. Lint's NewApi check, run at 21, is what found those.
+        minSdk = 21
         targetSdk = 35
         // versionName is what people see and must match the GitHub release tag and the APK
         // filename exactly, so there is only ever one number to reason about. It is also what
@@ -50,8 +56,8 @@ android {
         // already installed, with a bare "App not installed" and no reason given, so this skips
         // past it rather than reusing 129 for different bytes. 7.8 is deliberately never reused
         // as a name either: one number, one build, always.
-        versionCode = 187
-        versionName = "10.36"
+        versionCode = 188
+        versionName = "10.37"
     }
 
     // Two builds from one source tree, and never one build pretending to be both. They carry
@@ -120,6 +126,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time (dates, the clock, playlist expiry) and java.util.Base64 (EPG titles) are
+        // Android 8.0 APIs; this bundles them for the older versions minSdk now reaches.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     packaging {
@@ -128,6 +137,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")

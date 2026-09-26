@@ -311,8 +311,8 @@ fun ClockLabel(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val locale = remember(configuration) {
-        @Suppress("DEPRECATION")
-        configuration.locales[0] ?: Locale.getDefault()
+        // ConfigurationCompat: Configuration.locales is Android 7.0, and the app runs from 5.0.
+        androidx.core.os.ConfigurationCompat.getLocales(configuration)[0] ?: Locale.getDefault()
     }
     val pattern = remember(locale) {
         if (android.text.format.DateFormat.is24HourFormat(context)) "EEE, d MMM • HH:mm"

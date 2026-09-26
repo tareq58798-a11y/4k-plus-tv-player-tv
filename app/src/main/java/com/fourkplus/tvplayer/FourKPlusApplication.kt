@@ -11,6 +11,12 @@ import okhttp3.OkHttpClient
  *  grid all loading at once - fades in once it arrives instead of popping in abruptly. Without
  *  this a slow-loading image looks identical to a missing one until the exact frame it finishes. */
 class FourKPlusApplication : Application(), ImageLoaderFactory {
+    override fun onCreate() {
+        super.onCreate()
+        // Before any HTTP client exists - see LegacyTls.
+        LegacyTls.install(this)
+    }
+
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .crossfade(true)
@@ -25,6 +31,7 @@ class FourKPlusApplication : Application(), ImageLoaderFactory {
                         maxRequests = 32
                         maxRequestsPerHost = 12
                     })
+                    .trustModernRoots()
                     .build()
             }
             .apply { if (BuildConfig.DEBUG) eventListenerFactory { ImageTimingLogger() } }

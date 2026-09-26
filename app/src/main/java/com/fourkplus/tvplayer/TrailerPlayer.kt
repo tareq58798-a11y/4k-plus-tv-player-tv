@@ -173,7 +173,13 @@ internal fun TrailerPlayer(videoId: String, title: String, onClose: () -> Unit) 
         ) {
             AndroidView(
                 factory = { ctx ->
-                    WebView(ctx).apply {
+                    // Some boxes ship without a working WebView at all, and constructing one then
+                    // throws. That is a trailer that cannot play here, not a crash: an empty view
+                    // stands in, the status says so, and OK offers the YouTube app.
+                    runCatching { WebView(ctx) }.getOrElse {
+                        failed = true
+                        return@AndroidView android.view.View(ctx)
+                    }.apply {
                         isFocusable = false
                         isFocusableInTouchMode = false
                         setBackgroundColor(AndroidColor.BLACK)

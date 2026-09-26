@@ -1477,7 +1477,9 @@ private fun HomeDateTime(
     }
     // The app's own language setting, not the device's: LocaleHelper rewrites the Activity's
     // configuration, so a user reading the app in Arabic must not get an English date beside it.
-    val locale = LocalConfiguration.current.locales[0]
+    // ConfigurationCompat, because Configuration.locales is Android 7.0 and the app runs from 5.0.
+    val locale = androidx.core.os.ConfigurationCompat.getLocales(LocalConfiguration.current)[0]
+        ?: java.util.Locale.getDefault()
     val formatter = remember(locale) {
         java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM • h:mm a", locale)
     }

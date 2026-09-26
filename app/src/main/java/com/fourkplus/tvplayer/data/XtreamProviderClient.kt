@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import com.fourkplus.tvplayer.trustModernRoots
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -504,6 +505,7 @@ internal class XtreamProviderClient {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)
+            .trustModernRoots()
             .build()
     }
 }

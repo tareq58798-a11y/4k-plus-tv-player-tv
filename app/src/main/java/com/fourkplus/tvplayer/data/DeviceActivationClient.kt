@@ -3,6 +3,7 @@ package com.fourkplus.tvplayer.data
 import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import com.fourkplus.tvplayer.trustModernRoots
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -21,6 +22,7 @@ internal object DeviceActivationClient {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(75, TimeUnit.SECONDS)
         .callTimeout(90, TimeUnit.SECONDS)
+        .trustModernRoots()
         .build()
 
     /** [input] carries the MAC in [PlaylistInput.username] and the device key in

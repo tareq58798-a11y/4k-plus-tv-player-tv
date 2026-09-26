@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.FourKPlus" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <!-- Android 6.0 and later. Earlier versions ignore it, and their status-bar icons are
+             always light, which is what false asks for anyway. -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
         <item name="android:statusBarColor">#071226</item>
         <item name="android:navigationBarColor">#071226</item>
     </style>
