@@ -41,11 +41,15 @@ cpSync(dist, staging, { recursive: true, filter: (from) => !from.endsWith('.map'
  * config.xml goes into the widget without its comments.
  *
  * The source file is heavily commented - why the screen-size feature is what it is, why the prefix
- * is a placeholder - and those notes stay in the repository where they are read. Samsung's Seller
- * Office pre-test is not a real XML parser: it failed a release with "<name>Samsung</name> differs
- * from the app title" when the package's only <name> said "4K Plus TV Player", and the first comment
- * in the file opens with "The Samsung widget manifest". A widget's manifest is read by machines, so
- * it ships as plain XML with nothing in it for a naive reader to trip on.
+ * is a placeholder - and those notes stay in the repository where they are read. A widget's
+ * manifest is read by machines, so it ships as plain XML.
+ *
+ * This was first added on a wrong theory, and the record should say so: a Seller Office pre-test
+ * failure quoting "<name>Samsung</name>" was taken for the checker misreading these comments. It
+ * was not. That "Related Tag" column is Samsung's fixed example text - an earlier failure quoted a
+ * <feature> element our file never contained - and the real fault was the Seller Office title
+ * ("4KPlus TV Player") not matching <name> ("4K Plus TV Player"). Stripping comments is kept
+ * because it does no harm, not because it fixed anything.
  */
 writeFileSync(
   join(staging, 'config.xml'),
