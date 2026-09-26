@@ -20,6 +20,8 @@ import com.fourkplus.tvplayer.BuildConfig
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -199,7 +201,22 @@ fun CinematicBackdrop(
         fade.snapTo(0f)
     }
 
-    Box(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Tone.PageTop, Tone.PageBottom)))) {
+    Box(modifier.fillMaxSize()) {
+    // Everything behind the page, drawn into one offscreen layer that the renderer keeps between
+    // frames and only repaints when something in it changes - a new picture, or a fade.
+    //
+    // Without it, every frame the page drew - one focus ring moving one row down a category list -
+    // also redrew all five of these full-screen layers: the gradient, the default artwork, the
+    // backdrop (decoded at up to 4K and scaled down to the panel each time), and two scrims. On the
+    // owner's Xiaomi box (MiTV-AFKR0, 32-bit ARM, 2 GB) gfxinfo framestats put the GPU at a median
+    // of 19 ms a frame for that, against about 1 ms of layout and drawing on the UI thread, and 97%
+    // of frames late while moving through the Series categories. The layer turns the five into one
+    // copy of a finished picture.
+    Box(
+        Modifier.fillMaxSize()
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .background(Brush.verticalGradient(listOf(Tone.PageTop, Tone.PageBottom)))
+    ) {
         // Always present underneath, so the screen is never empty even before any artwork loads.
         //
         // The artwork is 16:9, which is a television exactly and nothing like a phone held
@@ -234,6 +251,7 @@ fun CinematicBackdrop(
         }
         Box(Modifier.fillMaxSize().background(Tone.sideScrim()))
         Box(Modifier.fillMaxSize().background(scrim))
+    }
         content()
     }
 }

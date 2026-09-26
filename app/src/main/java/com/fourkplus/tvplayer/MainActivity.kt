@@ -4776,7 +4776,11 @@ internal fun Modifier.focusableClickable(
     // threshold, consuming the key-up so a plain onClick doesn't also fire right after.
     var keyDownAt by remember { mutableLongStateOf(0L) }
     return this
-        .graphicsLayer(scaleX = scale, scaleY = scale)
+        // The scale is read inside the layer block, not passed in as a value. Passed in, it is read
+        // during composition, so every frame of the 150 ms grow recomposed the row - and moving
+        // through a list is two rows animating at once, on every press. Read here it only updates
+        // the layer.
+        .graphicsLayer { scaleX = scale; scaleY = scale }
         .drawWithContent {
             drawContent()
             drawContrastRoundRect(focusAlpha, cornerRadius)
@@ -4850,7 +4854,8 @@ private fun pressFeedback(onClick: () -> Unit, cornerRadius: Dp = 16.dp): Modifi
     val focusAlpha by animateFloatAsState(if (focused) 1f else 0f, tween(150), label = "cardFocus")
     val haptic = LocalHapticFeedback.current
     return Modifier
-        .graphicsLayer(scaleX = scale, scaleY = scale)
+        // Read in the layer block rather than in composition - see focusableClickable.
+        .graphicsLayer { scaleX = scale; scaleY = scale }
         .drawWithContent {
             drawContent()
             drawContrastRoundRect(focusAlpha, cornerRadius)
