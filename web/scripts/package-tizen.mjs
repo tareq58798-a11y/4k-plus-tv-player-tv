@@ -13,7 +13,7 @@
  *   node scripts/package-tizen.mjs --sign NAME   stage, then package and sign with that profile
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +37,24 @@ mkdirSync(staging, { recursive: true });
 // a set over the remote inspector, but they are 2.5 MB of the package and a television only ever
 // reads them with devtools open.
 cpSync(dist, staging, { recursive: true, filter: (from) => !from.endsWith('.map') });
-cpSync(join(root, 'tizen', 'config.xml'), join(staging, 'config.xml'));
+/*
+ * config.xml goes into the widget without its comments.
+ *
+ * The source file is heavily commented - why the screen-size feature is what it is, why the prefix
+ * is a placeholder - and those notes stay in the repository where they are read. Samsung's Seller
+ * Office pre-test is not a real XML parser: it failed a release with "<name>Samsung</name> differs
+ * from the app title" when the package's only <name> said "4K Plus TV Player", and the first comment
+ * in the file opens with "The Samsung widget manifest". A widget's manifest is read by machines, so
+ * it ships as plain XML with nothing in it for a naive reader to trip on.
+ */
+writeFileSync(
+  join(staging, 'config.xml'),
+  readFileSync(join(root, 'tizen', 'config.xml'), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n[ \t]*(?=\n)/g, '\n')   // lines the comments leave holding only indentation
+    .replace(/\n{3,}/g, '\n\n'),
+);
 cpSync(join(root, 'tizen', 'icon.png'), join(staging, 'icon.png'));
 
 // The placeholder prefix would produce a widget that installs nowhere, so it is worth saying so
