@@ -407,10 +407,6 @@ internal fun MoviePlayer(
     }
     var controllerVisible by remember { mutableStateOf(true) }
     var relatedStripExpanded by remember { mutableStateOf(false) }
-    // Read from inside the PlayerView's key handling, which is built once. A plain capture of
-    // relatedItems there would freeze at whatever the episode list was when the view was created,
-    // so switching episodes could leave Down opening a strip that no longer has anything in it.
-    val relatedItemCount by rememberUpdatedState(relatedItems.size)
     // Portrait boxes the video to 16:9 with the episode switcher below it instead of overlaid on
     // top of it (see the dispatch at the end of this function) — skipped while in a
     // picture-in-picture window, which is always shown as a plain edge-to-edge rectangle.
@@ -588,38 +584,25 @@ internal fun MoviePlayer(
                     // child or the system's default back handling ever sees it.
                     object : PlayerView(it) {
                         override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-                            // Down walks the controls from top to bottom in the order they are
-                            // drawn: the timeline, then the settings gear beneath it, then the
-                            // episode strip below that. Handled here for the same reason Back is -
-                            // once the controller is up one of media3's own buttons holds Android
-                            // focus, so a listener on this view alone would never fire.
+                            // Handled here for the same reason Back is - once the controller is up
+                            // one of media3's own buttons holds Android focus, so a listener on
+                            // this view alone would never fire.
+                            //
+                            // With the controls up, Down walks them - the timeline, then the
+                            // settings gear - and never opens the episode strip. The strip is for
+                            // the bare picture: Down there opens it (the root's onKeyEvent) and
+                            // Up closes it (RelatedItemsStrip). It used to open from the controls
+                            // too, at the owner's earlier request, skipping the timeline for a
+                            // series; the owner has since asked for Down on the controls to go to
+                            // the timeline and for the strip to come only from full screen.
                             if (isTv && event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN &&
                                 event.action == android.view.KeyEvent.ACTION_DOWN &&
                                 event.repeatCount == 0 && controllerVisible && !relatedStripExpanded
                             ) {
-                                var openedStrip = false
-                                if (advanceDownThroughControls(this, relatedItemCount > 1) {
-                                        relatedStripExpanded = true
-                                        openedStrip = true
-                                    }
-                                ) {
-                                    if (openedStrip) {
-                                        // The strip replaces the controls rather than joining
-                                        // them. Leaving the controller up put two things on
-                                        // screen for one press, and the cost was not only
-                                        // visual: media3's own buttons are real focusable views,
-                                        // so they kept Android focus and the strip's Up-to-close
-                                        // never fired - its key handler sits on the strip and
-                                        // only runs while focus is inside it. Hiding the
-                                        // controller here is what lets the strip hold focus, and
-                                        // so what makes Up close it again.
-                                        hideController()
-                                    } else {
-                                        // Each step counts as interaction, or the controls time
-                                        // out halfway down and the next press starts over from
-                                        // nothing.
-                                        showController()
-                                    }
+                                if (advanceDownThroughControls(this)) {
+                                    // Each step counts as interaction, or the controls time out
+                                    // halfway down and the next press starts over from nothing.
+                                    showController()
                                     return true
                                 }
                             }
@@ -767,7 +750,10 @@ internal fun MoviePlayer(
             }
             // In portrait the equivalent hint/strip is shown below the boxed video instead (see
             // the render dispatch at the end of this function), not overlaid on top of it.
-            if (controllerVisible && !relatedStripExpanded && relatedItems.size > 1 && !PictureInPictureCoordinator.active && !portraitLayout) {
+            // Not on a television: it points at a swipe, and with the controls up the remote's Down
+            // now goes to the timeline rather than to the strip, so the arrow would promise a
+            // gesture the remote does not make.
+            if (!isTv && controllerVisible && !relatedStripExpanded && relatedItems.size > 1 && !PictureInPictureCoordinator.active && !portraitLayout) {
                 Icon(
                     Icons.Default.KeyboardArrowUp,
                     "Swipe up for other episodes",
@@ -999,24 +985,16 @@ private const val TimeBarRestingScrubber = 0xFFFFFFFF.toInt()
 /**
  * Moves focus one step down through the player's controls, and says whether it did.
  *
- * Three stops, in the order they appear on screen: the timeline, the settings gear under it, then
- * the episode strip below that. [hasStrip] is false for a film, which has no other episodes to go
- * to - the third press then simply does nothing rather than opening an empty drawer.
+ * Two stops, in the order they appear on screen: the timeline, then the settings gear under it. A
+ * third press does nothing. The episode strip is not one of them - it opens from the bare picture,
+ * not from the controls (see the Down handling in dispatchKeyEvent).
  *
  * Derived from where focus actually is rather than from a counter of presses. A counter drifts the
  * moment anything else moves focus - the options row hands off to play/pause, the controller hides
  * and comes back - and then Down starts doing the wrong thing with no way for the viewer to get it
  * back in step.
  */
-private fun advanceDownThroughControls(view: PlayerView, hasStrip: Boolean, onOpenStrip: () -> Unit): Boolean {
-    // An episode goes straight there. Walking the timeline and the settings gear first is the
-    // right order for a film, where there is nothing below them worth reaching; for a series the
-    // thing under the controls is the rest of the season, and making somebody press three times to
-    // see it turns the commonest thing they want into the furthest one away.
-    if (hasStrip) {
-        onOpenStrip()
-        return true
-    }
+private fun advanceDownThroughControls(view: PlayerView): Boolean {
     val timeBar = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)
     val settings = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)
     return when (view.findFocus()) {

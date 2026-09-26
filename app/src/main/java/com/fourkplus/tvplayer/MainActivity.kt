@@ -2294,11 +2294,19 @@ private fun LandscapeMovieBrowser(
                     Text(stringResource(R.string.nav_movies), fontSize = Type.PaneHeading, fontWeight = FontWeight.Black)
                 }
                 SearchField(search, onSearch, stringResource(R.string.search_movies))
-                LazyColumn(Modifier.weight(1f), state = categoryListState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    items(allCategories, key = { it }) { category ->
+                // Up/Down by row index rather than by focus search - see DpadListStepper. Off while
+                // a category is being hand-moved, when the same keys move it instead.
+                val categorySteps = rememberDpadListStepper(categoryListState)
+                LazyColumn(
+                    Modifier.weight(1f).dpadListSteps(categorySteps, allCategories.size, enabled = isTv && reorderingCategory == null),
+                    state = categoryListState,
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    itemsIndexed(allCategories, key = { _, category -> category }) { index, category ->
                         val isReordering = category == reorderingCategory
                         Surface(
                             modifier = Modifier.fillMaxWidth()
+                                .then(categorySteps.row(index))
                                 .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
                                 .then(if (category == selectedCategory) Modifier.focusRequester(selectedCategoryFocusRequester) else Modifier)
                                 .then(if (category == followCategory) Modifier.focusRequester(movedCategoryFocusRequester) else Modifier)
@@ -2536,11 +2544,18 @@ private fun LandscapeLiveBrowser(
                         placeholder = stringResource(R.string.search_categories),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
                     )
-                    LazyColumn(Modifier.weight(1f), state = categoryListState, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        items(searchedCategories, key = { it }) { category ->
+                    // Up/Down by row index rather than by focus search - see DpadListStepper.
+                    val categorySteps = rememberDpadListStepper(categoryListState)
+                    LazyColumn(
+                        Modifier.weight(1f).dpadListSteps(categorySteps, searchedCategories.size, enabled = isTv && reorderingCategory == null),
+                        state = categoryListState,
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        itemsIndexed(searchedCategories, key = { _, category -> category }) { index, category ->
                             val isReordering = category == reorderingCategory
                             Surface(
                                 modifier = Modifier.fillMaxWidth()
+                                    .then(categorySteps.row(index))
                                     .then(if (category == "Recently watched") Modifier.focusRequester(recentCategoryFocusRequester) else Modifier)
                                     .then(if (category == selectedCategory) Modifier.focusRequester(selectedCategoryFocusRequester) else Modifier)
                                     .then(if (category == followCategory) Modifier.focusRequester(movedCategoryFocusRequester) else Modifier)

@@ -738,11 +738,18 @@ private fun LandscapeSeriesBrowser(
                     Text(stringResource(R.string.nav_series), fontSize = 19.sp, fontWeight = FontWeight.Black)
                 }
                 SeriesSearch(search, onSearch)
-                LazyColumn(Modifier.weight(1f), state = categoryListState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    items(allCategories, key = { it }) { category ->
+                // Up/Down by row index rather than by focus search - see DpadListStepper.
+                val categorySteps = rememberDpadListStepper(categoryListState)
+                LazyColumn(
+                    Modifier.weight(1f).dpadListSteps(categorySteps, allCategories.size, enabled = isTv && reorderingCategory == null),
+                    state = categoryListState,
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    itemsIndexed(allCategories, key = { _, category -> category }) { index, category ->
                         val isReordering = category == reorderingCategory
                         Surface(
                             modifier = Modifier.fillMaxWidth()
+                                .then(categorySteps.row(index))
                                 .then(if (category == "Continue watching") Modifier.focusRequester(continueWatchingFocusRequester) else Modifier)
                                 .then(if (category == selectedCategory) Modifier.focusRequester(selectedCategoryFocusRequester) else Modifier)
                                 .then(if (category == followCategory) Modifier.focusRequester(movedCategoryFocusRequester) else Modifier)
@@ -1270,25 +1277,53 @@ private fun SeriesDetails(
                     details?.cast?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.Groups, stringResource(R.string.cast_label), it) }
                     details?.director?.takeIf(String::isNotBlank)?.let { SeriesCredit(Icons.Default.MovieCreation, stringResource(R.string.director_label), it) }
                     if (seasons.isNotEmpty()) {
+                        // Up and Down stay inside the season being shown. Up from its first
+                        // episode goes to that season's own chip - not to whichever chip happens
+                        // to sit nearest on screen - and Down from the chips goes back to the
+                        // first episode. The steps between episodes are by index (see
+                        // DpadListStepper), which is what stops a held key throwing focus out
+                        // of the list partway down.
+                        val episodeListState = rememberLazyListState()
+                        val episodeSteps = rememberDpadListStepper(episodeListState)
+                        val seasonChipFocusRequester = remember { FocusRequester() }
+                        // Each season opens at its top: one list serves every season and would
+                        // otherwise keep the scroll position of the last one.
+                        LaunchedEffect(selectedSeason) { runCatching { episodeListState.scrollToItem(0) } }
                         Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp),
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp)
+                                .then(
+                                    if (isTv && episodes.isNotEmpty()) Modifier.onPreviewKeyEvent { event ->
+                                        if (event.isInitialKeyDown && event.key == Key.DirectionDown) {
+                                            episodeSteps.focus(0); true
+                                        } else false
+                                    } else Modifier
+                                ),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             seasons.forEach { season ->
                                 FilterChip(
                                     selected = selectedSeason == season,
                                     onClick = { onSeason(season) },
-                                    label = { Text(stringResource(R.string.season_number, season), fontSize = 12.sp) }
+                                    label = { Text(stringResource(R.string.season_number, season), fontSize = 12.sp) },
+                                    modifier = if (season == selectedSeason) Modifier.focusRequester(seasonChipFocusRequester) else Modifier
                                 )
                             }
                         }
-                        LazyColumn(Modifier.weight(1f).padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LazyColumn(
+                            Modifier.weight(1f).padding(top = 2.dp)
+                                .dpadListSteps(episodeSteps, episodes.size, enabled = isTv) {
+                                    runCatching { seasonChipFocusRequester.requestFocus() }.isSuccess
+                                },
+                            state = episodeListState,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             itemsIndexed(episodes, key = { _, episode -> episode.id }) { index, episode ->
                                 EpisodeRow(
                                     episode = episode,
                                     progress = progress[episode.id] ?: 0L,
                                     watched = episode.id in watchedEpisodeIds,
                                     focusRequester = if (index == 0) firstEpisodeFocusRequester else null,
+                                    modifier = episodeSteps.row(index),
                                     onClick = { onEpisode(episode) }
                                 )
                             }
@@ -1395,14 +1430,14 @@ private fun SeriesDetails(
 }
 
 @Composable
-private fun EpisodeRow(episode: SeriesEpisode, progress: Long, watched: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
+private fun EpisodeRow(episode: SeriesEpisode, progress: Long, watched: Boolean, focusRequester: FocusRequester? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val durationMs = remember(episode.duration) { parseDurationToMillis(episode.duration) }
     val watchedFraction = if (progress > 0L && durationMs != null && durationMs > 0L) {
         (progress.toFloat() / durationMs).coerceIn(0f, 1f)
     } else null
     ElevatedCard(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+        modifier = Modifier.fillMaxWidth().then(modifier).then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
         shape = RoundedCornerShape(11.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f))
     ) {
