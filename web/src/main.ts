@@ -2163,6 +2163,7 @@ function playScreen(
   /** When the picture last moved on - what the stall watch below measures from. */
   let lastAdvanceAt = Date.now();
   let lastSeenAt = -1;
+  let lastBufferPercent = -1;
   const reconnect = (reason: string): void => {
     if (!active) return;
     const exhausted = retries >= RECONNECT_DELAYS_MS.length;
@@ -2223,6 +2224,11 @@ function playScreen(
 
   player.on((event) => {
     if (event.type === 'error') reconnect(event.message);
+    // Refilling its buffer is the player recovering by itself; while that is moving, it is alive.
+    if (event.type === 'buffering' && event.percent !== lastBufferPercent) {
+      lastBufferPercent = event.percent;
+      lastAdvanceAt = Date.now();
+    }
     if (event.type === 'ready') {
       durationMs = event.durationMs;
       // Already there: the player went to the saved point before its first frame.
@@ -2323,11 +2329,19 @@ function playScreen(
   };
 }
 
-/** The waits before each attempt to reopen a stream that dropped - about a minute in all. */
-const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000, 5000, 8000, 10000, 15000];
+/**
+ * The waits before each attempt to reopen a stream that dropped - about a minute in all. The first
+ * is immediate: a provider closing a channel's connection is the common case, and every moment
+ * spent waiting is a moment of black.
+ */
+const RECONNECT_DELAYS_MS = [0, 1000, 2000, 3000, 5000, 8000, 10000, 15000];
 
-/** How long a playing stream may show no progress before it is opened again. */
-const STALL_MS = 15_000;
+/**
+ * How long a playing stream may show no progress before it is opened again. Generous, and only
+ * counted while the player is not refilling its buffer (see 'buffering'): the player rides out most
+ * hiccups on its own, and reopening in the middle of that turned a pause into a cut to black.
+ */
+const STALL_MS = 20_000;
 
 /** Shown while a channel keeps trying after its first minute of attempts. */
 const STOPPED_MESSAGE = 'The channel stopped sending a picture. Trying again…';
