@@ -13,7 +13,8 @@
 import type { PlatformName } from './keys';
 
 export type PlayerEvent =
-  | { type: 'ready'; durationMs: number }
+  /** positionMs is set when the player has already gone to the start it was asked for. */
+  | { type: 'ready'; durationMs: number; positionMs?: number }
   | { type: 'playing' }
   | { type: 'paused' }
   | { type: 'buffering'; percent: number }
@@ -58,8 +59,12 @@ export interface AudioTrack {
 }
 
 export interface MediaPlayer {
-  /** Begins [url]. The rectangle is in CSS pixels of the page, converted internally if it must be. */
-  play(url: string, rect: DOMRect): Promise<void>;
+  /**
+   * Begins [url]. The rectangle is in CSS pixels of the page, converted internally if it must be.
+   * [startMs], for a film or episode being resumed, is where to begin; a player that can go there
+   * before the first frame says so on 'ready', and the caller seeks otherwise.
+   */
+  play(url: string, rect: DOMRect, startMs?: number): Promise<void>;
   pause(): void;
   resume(): void;
   seekBy(deltaMs: number): void;
@@ -201,7 +206,17 @@ interface AvPlay {
   setSilentSubtitle?(silent: boolean): void;
   /** Only between open() and prepareAsync(), while the player is IDLE; ignored or thrown after. */
   setStreamingProperty?(type: string, value: string): void;
+  /** How much is buffered before playing starts, or restarts after a stall. IDLE only. */
+  setBufferingParam?(option: string, unit: string, amount: number): void;
 }
+
+/**
+ * Seconds of a film or episode buffered before the first frame. AVPlay's own default waits for
+ * considerably more, which is most of the pause between pressing Play and seeing a picture. A
+ * stall mid-film still refills to the larger RESUME amount, so the picture holds once it is going.
+ */
+const VOD_START_BUFFER_S = 3;
+const VOD_RESUME_BUFFER_S = 8;
 
 /**
  * A track as AVPlay describes it.
@@ -223,6 +238,11 @@ const PLAYBACK_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
 /** HLS or DASH: a stream offering several renditions, which is all ADAPTIVE_INFO applies to. */
 function isAdaptive(url: string): boolean {
   return /\.(m3u8|mpd)(\?|#|$)/i.test(url) || /[?&](type|output|format)=(m3u8|hls|mpd|dash)\b/i.test(url);
+}
+
+/** An Xtream film or episode, as the provider clients build their addresses. */
+function isOnDemand(url: string): boolean {
+  return /\/(movie|series)\//i.test(url);
 }
 
 interface ProductInfo {
@@ -368,10 +388,20 @@ class TizenPlayer implements MediaPlayer {
     set('ADAPTIVE_INFO', adaptive.join('|'));
   }
 
-  async play(url: string, rect: DOMRect): Promise<void> {
+  async play(url: string, rect: DOMRect, startMs = 0): Promise<void> {
     this.stop();
     this.av.open(url);
     this.tuneForQuality(url);
+    // Films and episodes only: a live channel keeps the set's default, which rides out the
+    // provider's jitter better than a shallow buffer would.
+    if (isOnDemand(url)) {
+      try {
+        this.av.setBufferingParam?.('PLAYER_BUFFER_FOR_PLAY', 'PLAYER_BUFFER_SIZE_IN_SECOND', VOD_START_BUFFER_S);
+        this.av.setBufferingParam?.('PLAYER_BUFFER_FOR_RESUME', 'PLAYER_BUFFER_SIZE_IN_SECOND', VOD_RESUME_BUFFER_S);
+      } catch {
+        // Not on this firmware. The default buffer only costs a slower start.
+      }
+    }
     // Remembered, not applied: AVPlay ignores a display rectangle on a stream it has not prepared
     // yet, and ignores it silently. Setting it here left every stream at the default, which is the
     // whole panel - so the Live TV preview played full screen behind the page instead of in its
@@ -414,7 +444,32 @@ class TizenPlayer implements MediaPlayer {
     // ready is honoured now instead of being flattened back to letter-box; the caller applies the
     // viewer's own choice on this same 'ready' event either way.
     this.applyDisplay();
-    this.emit({ type: 'ready', durationMs: this.av.getDuration() });
+    /*
+     * A resumed title goes to its place before the first frame, not after. Playing from the start
+     * and then seeking showed the opening seconds, then threw that buffer away and filled a second
+     * one at the saved point - two waits where one will do. AVPlay seeks in the prepared state.
+     */
+    const durationMs = this.av.getDuration();
+    let startedAt: number | undefined;
+    if (startMs > 0 && (durationMs <= 0 || startMs < durationMs)) {
+      const generation = this.seekGeneration;
+      const reached = await new Promise<boolean>((resolve) => {
+        const watchdog = window.setTimeout(() => resolve(false), SEEK_TIMEOUT_MS);
+        const done = (ok: boolean) => () => {
+          window.clearTimeout(watchdog);
+          resolve(ok);
+        };
+        try {
+          this.av.seekTo(Math.round(startMs), done(true), done(false));
+        } catch {
+          done(false)();
+        }
+      });
+      // Stopped, or another title started, while this was seeking.
+      if (generation !== this.seekGeneration) return;
+      if (reached) startedAt = startMs;
+    }
+    this.emit({ type: 'ready', durationMs, positionMs: startedAt });
     this.av.play();
     this.emit({ type: 'playing' });
     this.ticker = window.setInterval(() => {

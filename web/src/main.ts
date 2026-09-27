@@ -539,8 +539,8 @@ function followBackdrop(item: PlaylistItem, around: (PlaylistItem | undefined)[]
       .catch(() => null)
       .then((found) => {
         if (backdropFor !== key) return;
+        // A title with no picture of its own keeps the last one rather than the astronaut.
         if (found?.backdropUrl) backdrop.show(found.backdropUrl);
-        else backdrop.reset();
       });
     for (const next of around) {
       if (!next || next.kind === 'live') continue;
@@ -692,8 +692,9 @@ function showSection(next: Section): void {
   // they wash out against the ordinary background, which is the same reason the Android app
   // darkens this section.
   document.body.classList.toggle('section-live', next === 'live');
-  // Home starts over on the app's own artwork rather than whichever title was last looked at.
-  if (next === 'home' || classic) backdrop.reset();
+  // Home keeps the last film or series picture (owner's request), and a fresh launch puts it back.
+  if (classic) backdrop.reset();
+  else backdrop.restoreLast();
 
   const bar = renderNav(app, {
     current: next,
@@ -2120,10 +2121,67 @@ function playScreen(
   /** When the position was last written during playback - see the progress handler. */
   let savedAt = Date.now();
 
+  /*
+   * A dropped connection is picked up again, not reported.
+   *
+   * Providers close long-running connections, a home network blips, and AVPlay answers either with
+   * a "connection failed" error that used to end playback there and then. Now the same stream is
+   * opened again - a film or episode at the point it had reached - after a short, growing wait, and
+   * the error is shown only once every attempt has failed. The count starts over after a minute of
+   * clean playback, so a stream that drops once an hour is reconnected every time. Owner's request.
+   */
+  let active = true;
+  let retries = 0;
+  let playingSince = 0;
+  let retryTimer: number | null = null;
+  const reconnect = (reason: string): void => {
+    if (!active) return;
+    if (retries >= RECONNECT_DELAYS_MS.length) {
+      overlay.setMessage(reason);
+      return;
+    }
+    const wait = RECONNECT_DELAYS_MS[retries++]!;
+    playingSince = 0;
+    overlay.setMessage('');
+    if (item.kind !== 'live' && positionMs > 0) pendingStart = positionMs;
+    if (retryTimer !== null) window.clearTimeout(retryTimer);
+    retryTimer = window.setTimeout(() => {
+      retryTimer = null;
+      if (!active) return;
+      void player.play(item.streamUrl, full, pendingStart).catch((error: unknown) => {
+        reconnect(error instanceof Error ? error.message : String(error));
+      });
+    }, wait);
+  };
+
+  /*
+   * The set going to another app, the Home screen or standby takes the decoder away, and the stream
+   * that was open is dead when the viewer comes back. Stopped cleanly on the way out, with the
+   * position kept, and opened again on the way back in.
+   */
+  const onVisibility = (): void => {
+    if (!active) return;
+    if (document.hidden) {
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      retryTimer = null;
+      if (item.kind !== 'live') rememberPosition(item, positionMs, durationMs);
+      player.stop();
+    } else {
+      retries = 0;
+      reconnect('');
+    }
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+
   player.on((event) => {
-    if (event.type === 'error') overlay.setMessage(event.message);
+    if (event.type === 'error') reconnect(event.message);
     if (event.type === 'ready') {
       durationMs = event.durationMs;
+      // Already there: the player went to the saved point before its first frame.
+      if (event.positionMs !== undefined) {
+        positionMs = event.positionMs;
+        pendingStart = 0;
+      }
       // A stream can be seeked once it is prepared, and 'ready' is that moment on both players.
       if (pendingStart > 0 && (durationMs <= 0 || pendingStart < durationMs)) {
         player.seekTo(pendingStart);
@@ -2137,6 +2195,10 @@ function playScreen(
       player.setScaling(videoScaling());
     }
     if (event.type === 'progress') {
+      if (playingSince === 0) playingSince = Date.now();
+      else if (retries > 0 && Date.now() - playingSince > 60_000) retries = 0;
+      // A clock that reads 0 while a resume seek lands must not become the point to reconnect at.
+      if (event.positionMs <= 0 && positionMs > 0 && item.kind !== 'live') return;
       positionMs = event.positionMs;
       overlay.setPosition(positionMs, durationMs);
       /*
@@ -2173,18 +2235,29 @@ function playScreen(
   } else {
     // The Settings shape from the first frame, not whatever the previous title was left in.
     player.setScaling(videoScaling());
-    void player.play(item.streamUrl, full).catch((error: unknown) => {
-      overlay.setMessage(error instanceof Error ? error.message : String(error));
+    void player.play(item.streamUrl, full, pendingStart).catch((error: unknown) => {
+      reconnect(error instanceof Error ? error.message : String(error));
     });
   }
 
   // Every key goes to the overlay, and nothing falls through to the page underneath. An arrow key
   // reaching the page would move a highlight the viewer cannot see, on a screen that is not there.
-  const release = pushKeyHandler((key: RemoteKey) => {
+  const releaseKeys = pushKeyHandler((key: RemoteKey) => {
     overlay.handleKey(key);
     return true;
   });
+  // Leaving this screen, by any route, also ends reconnecting and the watch on the app's visibility.
+  const release = (): void => {
+    active = false;
+    if (retryTimer !== null) window.clearTimeout(retryTimer);
+    retryTimer = null;
+    document.removeEventListener('visibilitychange', onVisibility);
+    releaseKeys();
+  };
 }
+
+/** The waits before each attempt to reopen a stream that dropped - about a minute in all. */
+const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000, 5000, 8000, 10000, 15000];
 
 /* ------------------------------------------------------------------- boot */
 

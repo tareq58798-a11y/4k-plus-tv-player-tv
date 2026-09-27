@@ -181,10 +181,8 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
     // already known, which for a card beside the last one they usually are (see the neighbours
     // below); otherwise when they arrive. No picture means the app's own artwork.
     const known = details.get(itemKey(item));
-    if (item.kind !== 'live' && known) {
-      if (known.backdropUrl) backdrop.show(known.backdropUrl);
-      else backdrop.reset();
-    }
+    // No picture keeps the last title's, not the app's own artwork.
+    if (item.kind !== 'live' && known?.backdropUrl) backdrop.show(known.backdropUrl);
 
     if (pending !== null) window.clearTimeout(pending);
     pending = window.setTimeout(() => {
@@ -196,10 +194,7 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
           // Only if the viewer is still here - they may have moved on while this was in flight.
           if (document.activeElement?.getAttribute('data-focus-id') !== itemKey(item)) return;
           describe(item, card);
-          if (viewerHasMoved) {
-            if (loaded.backdropUrl) backdrop.show(loaded.backdropUrl);
-            else backdrop.reset();
-          }
+          if (viewerHasMoved && loaded.backdropUrl) backdrop.show(loaded.backdropUrl);
         });
       }
       /*

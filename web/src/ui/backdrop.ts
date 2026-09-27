@@ -16,10 +16,14 @@
  *    rather than a slideshow.
  *  - Requests are debounced. Holding the D-pad down through twenty posters should cost one image
  *    request, not twenty.
- *  - Home shows the app's own artwork until the viewer actually moves onto something, so opening
- *    the app does not immediately replace it with a title nobody chose.
+ *  - Home keeps the last film or series picture, across launches too (owner's request); the app's
+ *    own artwork shows only before any title has been looked at, and in Classic.
  */
 import { Motion } from '../shared/tokens.generated';
+import { readJson, writeJson } from '../platform/storage';
+
+/** The last film or series picture shown, so Home and the next launch open on it. */
+const LAST_KEY = 'last_backdrop';
 
 /**
  * How long the highlight has to rest on a title before the background becomes it.
@@ -88,6 +92,16 @@ export class Backdrop {
   /** Back to the app's own artwork, fading rather than cutting. */
   reset(): void {
     this.schedule(null);
+  }
+
+  /**
+   * Puts back the last film or series picture when nothing is up - at launch, and on Home. The
+   * owner asked for Home to keep the last title's picture rather than return to the astronaut.
+   */
+  restoreLast(): void {
+    if (!this.followsFocus || this.settledUrl || this.incomingUrl) return;
+    const last = readJson<string | null>(LAST_KEY, null);
+    if (typeof last === 'string' && last) this.show(last);
   }
 
   /**
@@ -174,6 +188,7 @@ export class Backdrop {
         this.settled.src = url;
         this.settled.style.opacity = '1';
         this.settledUrl = url;
+        writeJson(LAST_KEY, url);
         this.incoming.style.opacity = '0';
         this.incomingUrl = null;
       }, Motion.BackdropMs);
