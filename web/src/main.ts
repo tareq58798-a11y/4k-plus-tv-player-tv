@@ -1201,14 +1201,29 @@ function browseScreen(current: Section, favoritesOnly = false): void {
            * Twelve seconds, then give up.
            */
           let looks = 0;
+          let played = false;
+          let downFor = 0;
           const watch = window.setInterval(() => {
             // Somebody has moved on, or the screen has gone. Whoever did that owns the class now.
-            if (previewing !== item.streamUrl) {
+            if (previewing !== item.streamUrl || !document.body.contains(grid)) {
               window.clearInterval(watch);
               return;
             }
+            /*
+             * Kept watching once it plays, not only until then. A channel the provider stops
+             * sending after a while left the preview black for good; ten seconds without a picture
+             * now opens it again, as full screen does (see reconnect in playScreen).
+             */
             if (player.isPlaying()) {
+              played = true;
+              downFor = 0;
+              return;
+            }
+            if (played) {
+              if (++downFor < 5) return;
               window.clearInterval(watch);
+              previewing = null;
+              schedulePreview(item);
               return;
             }
             if (++looks < 6) return;
@@ -2144,25 +2159,48 @@ function playScreen(
   let retries = 0;
   let playingSince = 0;
   let retryTimer: number | null = null;
+  let paused = false;
+  /** When the picture last moved on - what the stall watch below measures from. */
+  let lastAdvanceAt = Date.now();
+  let lastSeenAt = -1;
   const reconnect = (reason: string): void => {
     if (!active) return;
-    if (retries >= RECONNECT_DELAYS_MS.length) {
+    const exhausted = retries >= RECONNECT_DELAYS_MS.length;
+    // A film gives up in the end and says why. A channel never does: it keeps trying every few
+    // seconds with the reason on screen, so a provider that comes back brings the picture with it.
+    if (exhausted && item.kind !== 'live') {
       overlay.setMessage(reason);
       return;
     }
-    const wait = RECONNECT_DELAYS_MS[retries++]!;
+    const wait = RECONNECT_DELAYS_MS[Math.min(retries, RECONNECT_DELAYS_MS.length - 1)]!;
+    retries++;
     playingSince = 0;
-    overlay.setMessage('');
+    lastAdvanceAt = Date.now();
+    overlay.setMessage(exhausted ? reason : '');
     if (item.kind !== 'live' && positionMs > 0) pendingStart = positionMs;
     if (retryTimer !== null) window.clearTimeout(retryTimer);
     retryTimer = window.setTimeout(() => {
       retryTimer = null;
       if (!active) return;
+      lastAdvanceAt = Date.now();
       void player.play(item.streamUrl, full, pendingStart).catch((error: unknown) => {
         reconnect(error instanceof Error ? error.message : String(error));
       });
     }, wait);
   };
+
+  /*
+   * A channel that stops without saying so.
+   *
+   * A provider can simply stop sending: no error, the player sits on its last frame or on black,
+   * and nothing above ever hears about it. So the clock is watched - a stream that is meant to be
+   * playing and has not moved on for STALL_MS is opened again, as if it had reported the drop.
+   */
+  const stallWatch = window.setInterval(() => {
+    if (!active || paused || retryTimer !== null || document.hidden) return;
+    if (Date.now() - lastAdvanceAt < STALL_MS) return;
+    reconnect(STOPPED_MESSAGE);
+  }, 3000);
 
   /*
    * The set going to another app, the Home screen or standby takes the decoder away, and the stream
@@ -2204,9 +2242,20 @@ function playScreen(
       // appears to have been forgotten between one title and the next.
       player.setScaling(videoScaling());
     }
+    // A live stream that ends has not finished - the provider closed it. Opened again.
+    // A film that has finished is not stalled either.
+    if (event.type === 'ended') {
+      if (item.kind === 'live') reconnect(STOPPED_MESSAGE);
+      else paused = true;
+    }
     if (event.type === 'progress') {
-      if (playingSince === 0) playingSince = Date.now();
-      else if (retries > 0 && Date.now() - playingSince > 60_000) retries = 0;
+      // Only a clock that moves counts as playing; a stuck one is what the stall watch is for.
+      if (event.positionMs !== lastSeenAt) {
+        lastSeenAt = event.positionMs;
+        lastAdvanceAt = Date.now();
+        if (playingSince === 0) playingSince = Date.now();
+        else if (retries > 0 && Date.now() - playingSince > 60_000) retries = 0;
+      }
       // A clock that reads 0 while a resume seek lands must not become the point to reconnect at.
       if (event.positionMs <= 0 && positionMs > 0 && item.kind !== 'live') return;
       positionMs = event.positionMs;
@@ -2223,8 +2272,15 @@ function playScreen(
         rememberPosition(item, positionMs, durationMs);
       }
     }
-    if (event.type === 'playing') overlay.setPaused(false);
-    if (event.type === 'paused') overlay.setPaused(true);
+    if (event.type === 'playing') {
+      paused = false;
+      lastAdvanceAt = Date.now();
+      overlay.setPaused(false);
+    }
+    if (event.type === 'paused') {
+      paused = true;
+      overlay.setPaused(true);
+    }
     if (event.type === 'subtitle') overlay.setCaption(event.text);
   });
 
@@ -2261,6 +2317,7 @@ function playScreen(
     active = false;
     if (retryTimer !== null) window.clearTimeout(retryTimer);
     retryTimer = null;
+    window.clearInterval(stallWatch);
     document.removeEventListener('visibilitychange', onVisibility);
     releaseKeys();
   };
@@ -2268,6 +2325,12 @@ function playScreen(
 
 /** The waits before each attempt to reopen a stream that dropped - about a minute in all. */
 const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000, 5000, 8000, 10000, 15000];
+
+/** How long a playing stream may show no progress before it is opened again. */
+const STALL_MS = 15_000;
+
+/** Shown while a channel keeps trying after its first minute of attempts. */
+const STOPPED_MESSAGE = 'The channel stopped sending a picture. Trying again…';
 
 /* ------------------------------------------------------------------- boot */
 
