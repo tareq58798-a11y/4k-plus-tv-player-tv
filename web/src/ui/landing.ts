@@ -20,7 +20,8 @@
 import { t } from '../shared/i18n';
 import type { PlaylistItem } from '../shared/models';
 import { itemKey } from '../shared/models';
-import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
+import { isFavorite, toggleFavorite, watchPoint } from '../shared/library';
+import { watchBar } from './watchBar';
 import type { Backdrop } from './backdrop';
 import { focus } from './focus';
 import { lazyImage, posterArtwork } from './images';
@@ -261,10 +262,9 @@ export function renderLanding(host: HTMLElement, options: LandingOptions): void 
       // height whether its title needs one line or two, and it is what made the rows here look so
       // much heavier than the same rows on Android.
       const foot = el('div', { class: 'card-foot' }, el('div', { class: 'label' }, item.name));
-      const progress = progressOf(item);
-      if (progress !== null) {
-        foot.append(el('div', { class: 'progress' }, el('div', { class: 'progress-fill', style: `width:${progress * 100}%` })));
-      }
+      // Where it was stopped, with the time: a series shows its last played episode.
+      const point = watchPoint(item);
+      if (point) foot.append(watchBar(point));
       card.append(foot);
       const column = row.items.indexOf(item);
       card.addEventListener('focus', () => onCardFocus(item, card, rowIndex, column));

@@ -289,11 +289,22 @@ export function resumePosition(item: PlaylistItem): number | null {
  * own, so its card shows the episode last played - where that episode was stopped (owner's request).
  */
 export function progressOf(item: PlaylistItem): number | null {
+  const point = watchPoint(item);
+  if (!point) return null;
+  return point.kind === 'finished' ? 1 : Math.min(1, Math.max(0, point.positionMs / point.durationMs));
+}
+
+/** The exact stopping point behind progressOf, for drawing it with its time. */
+export type WatchPoint = { kind: 'partial'; positionMs: number; durationMs: number } | { kind: 'finished' };
+
+export function watchPoint(item: PlaylistItem): WatchPoint | null {
   const key = item.kind === 'series' ? readJson<Record<string, string>>(LAST_EPISODE, {})[itemKey(item)] : itemKey(item);
   if (!key) return null;
   const entry = resumeStore()[key];
-  if (entry && entry.durationMs > 0) return Math.min(1, Math.max(0, entry.positionMs / entry.durationMs));
-  return finishedStore().has(key) ? 1 : null;
+  if (entry && entry.durationMs > 0 && entry.positionMs > 0) {
+    return { kind: 'partial', positionMs: entry.positionMs, durationMs: entry.durationMs };
+  }
+  return finishedStore().has(key) ? { kind: 'finished' } : null;
 }
 
 /** Notes [episodeId] as the episode of [series] last played, for the series card's red line. */

@@ -1827,6 +1827,62 @@ body.playing .backdrop-scrim {
   background: #e50914;
 }
 
+/*
+ * Where a title was stopped (watchBar.ts): the whole length in grey, red up to the stopping point,
+ * a white marker ringed in red standing exactly on it, and the time over the length above.
+ */
+.watch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.watch-time {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.watch-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+}
+
+.watch-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  background: #e50914;
+}
+
+.watch-bar-mark {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid #e50914;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+}
+
+/* On an episode's picture, laid over its foot with room either side for the marker. */
+.episode-thumb .watch,
+.pc-episode-thumb .watch {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+}
+
 /* ------------------------------------------------------------------ info */
 
 /*

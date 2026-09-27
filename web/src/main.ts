@@ -15,7 +15,7 @@ import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from '
 import { itemKey } from './shared/models';
 import {
   clearActivity, favoriteItems, recentlyWatchedAll, recordWatched, watchedLately, isFavorite, recentlyAdded, rememberPosition,
-  resumePosition, toggleFavorite, recordEpisode, progressOf,
+  resumePosition, toggleFavorite, recordEpisode, watchPoint,
 } from './shared/library';
 import { askResume } from './ui/resumeChoice';
 import { iconElement, type IconName } from './ui/icons';
@@ -1847,7 +1847,7 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
               label: `${item.name} • ${entry.title}`,
               thumbnailUrl: entry.thumbnailUrl,
               fallbackImageUrls: [details.backdropUrl, details.posterUrl, item.logoUrl],
-              progress: progressOf({ ...item, kind: 'movie', channelId: entry.id }),
+              watched: watchPoint({ ...item, kind: 'movie', channelId: entry.id }),
               streamUrl: entry.streamUrl,
             })),
         );
@@ -2031,7 +2031,7 @@ function playScreen(
         // resume point and a new title, and rebuilding is how all three stay in step. The season
         // is handed on so the strip is still there on the next episode.
         // Red lines redrawn, so the episode just left shows where it was stopped.
-        const refreshed = siblings.map((entry) => ({ ...entry, progress: progressOf({ ...item, kind: 'movie', channelId: entry.id }) }));
+        const refreshed = siblings.map((entry) => ({ ...entry, watched: watchPoint({ ...item, kind: 'movie', channelId: entry.id }) }));
         playScreen(next, refreshed, false, [], startAt);
       };
       // Asked here rather than in playScreen, while this episode is still playing behind the

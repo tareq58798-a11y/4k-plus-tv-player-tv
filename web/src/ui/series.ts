@@ -17,6 +17,7 @@ import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
 import { lazyImageWithFallbacks } from './images';
 import { trailerButton } from './trailer';
+import { watchBar } from './watchBar';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -157,7 +158,7 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
       const state = watchState({ ...series, channelId: episode.id });
       const meta: string[] = [];
       if (duration) meta.push(duration);
-      if (state?.kind === 'partial') meta.push(t('resume_time', clock(state.positionMs)));
+      if (state?.kind === 'partial') meta.push(`${t('resume_time', clock(state.positionMs))} / ${clock(state.durationMs)}`);
       if (state?.kind === 'finished') meta.push(t('watched_label'));
       const text = el(
         'div',
@@ -166,10 +167,8 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
         el('div', { class: `episode-meta${state ? ' watched' : ''}` }, meta.join('  •  ')),
       );
       if (state) {
-        const fraction = state.kind === 'finished' ? 1 : Math.min(1, state.positionMs / state.durationMs);
-        thumb.append(
-          el('div', { class: 'episode-progress' }, el('div', { class: 'episode-progress-fill', style: `width:${(fraction * 100).toFixed(1)}%` })),
-        );
+        // The line with a marker on the exact stopping point; the time is already in the meta line.
+        thumb.append(watchBar(state, false));
         if (state.kind === 'finished') row.classList.add('finished');
       }
       row.append(thumb, text);

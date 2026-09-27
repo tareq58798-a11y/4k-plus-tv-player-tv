@@ -54,6 +54,8 @@
  */
 import { focus } from './focus';
 import { lazyImageWithFallbacks } from './images';
+import { watchBar } from './watchBar';
+import type { WatchPoint } from '../shared/library';
 import { t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
@@ -92,8 +94,8 @@ export interface StripEpisode {
   thumbnailUrl: string | null;
   /** Shown in order when the episode has no picture of its own, or it will not load. */
   fallbackImageUrls?: ReadonlyArray<string | null>;
-  /** How far it was watched, 0 to 1, for the red line along its picture; null when not started. */
-  progress?: number | null;
+  /** Where it was stopped, for the timeline along its picture; null when not started. */
+  watched?: WatchPoint | null;
   streamUrl: string;
 }
 
@@ -920,15 +922,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
       thumb.append(image);
     }
     // The same red line as the series page: exactly where this episode was stopped.
-    if (episode.progress != null && episode.progress > 0) {
-      const bar = document.createElement('div');
-      bar.className = 'episode-progress';
-      const fill = document.createElement('div');
-      fill.className = 'episode-progress-fill';
-      fill.style.width = `${(episode.progress * 100).toFixed(1)}%`;
-      bar.append(fill);
-      thumb.append(bar);
-    }
+    if (episode.watched) thumb.append(watchBar(episode.watched));
     const label = document.createElement('div');
     label.className = 'pc-episode-label';
     label.textContent = episode.label;
