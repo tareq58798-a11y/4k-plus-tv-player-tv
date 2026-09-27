@@ -1583,6 +1583,7 @@ body.playing #app {
 }
 
 .pc-episode-thumb {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   background: var(--tone-glass-strong);

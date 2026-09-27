@@ -92,6 +92,8 @@ export interface StripEpisode {
   thumbnailUrl: string | null;
   /** Shown in order when the episode has no picture of its own, or it will not load. */
   fallbackImageUrls?: ReadonlyArray<string | null>;
+  /** How far it was watched, 0 to 1, for the red line along its picture; null when not started. */
+  progress?: number | null;
   streamUrl: string;
 }
 
@@ -916,6 +918,16 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // Each fallback in turn; only when none loads is the tile left as a plain box.
     if (lazyImageWithFallbacks(image, [episode.thumbnailUrl, ...(episode.fallbackImageUrls ?? [])])) {
       thumb.append(image);
+    }
+    // The same red line as the series page: exactly where this episode was stopped.
+    if (episode.progress != null && episode.progress > 0) {
+      const bar = document.createElement('div');
+      bar.className = 'episode-progress';
+      const fill = document.createElement('div');
+      fill.className = 'episode-progress-fill';
+      fill.style.width = `${(episode.progress * 100).toFixed(1)}%`;
+      bar.append(fill);
+      thumb.append(bar);
     }
     const label = document.createElement('div');
     label.className = 'pc-episode-label';
