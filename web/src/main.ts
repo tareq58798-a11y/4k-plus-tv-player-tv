@@ -1839,6 +1839,7 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
               id: entry.id,
               label: `${item.name} • ${entry.title}`,
               thumbnailUrl: entry.thumbnailUrl,
+              fallbackImageUrls: [details.backdropUrl, details.posterUrl, item.logoUrl],
               streamUrl: entry.streamUrl,
             })),
         );

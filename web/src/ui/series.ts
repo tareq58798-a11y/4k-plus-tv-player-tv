@@ -15,7 +15,7 @@ import type { PlaylistItem, SeriesDetails, SeriesEpisode } from '../shared/model
 import { isFavorite, toggleFavorite, watchState } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { focus, pushKeyHandler } from './focus';
-import { lazyImage } from './images';
+import { lazyImageWithFallbacks } from './images';
 import { trailerButton } from './trailer';
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -139,10 +139,10 @@ export function renderSeries(host: HTMLElement, options: SeriesOptions): void {
         'data-focus-id': `episode-${episode.id}`,
       });
       const thumb = el('div', { class: 'episode-thumb' });
-      if (episode.thumbnailUrl) {
-        const image = el('img', { alt: '' }) as HTMLImageElement;
-        lazyImage(image, episode.thumbnailUrl);
-        image.addEventListener('error', () => image.remove());
+      // Many panels give only some episodes a picture, or links that no longer load. Those fall
+      // back to the series' own artwork, wide backdrop first, so no episode is an empty box.
+      const image = el('img', { alt: '' }) as HTMLImageElement;
+      if (lazyImageWithFallbacks(image, [episode.thumbnailUrl, details.backdropUrl, details.posterUrl, series.logoUrl])) {
         thumb.append(image);
       }
       const duration = readableDuration(episode.duration);

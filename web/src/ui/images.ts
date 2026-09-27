@@ -86,6 +86,27 @@ export function lazyImage(image: HTMLImageElement, url: string | null | undefine
 }
 
 /**
+ * [lazyImage] with pictures to fall back on: the first address that is given and loads is shown,
+ * each failure moving on to the next. Returns false when there was nothing to try at all.
+ */
+export function lazyImageWithFallbacks(
+  image: HTMLImageElement,
+  urls: ReadonlyArray<string | null | undefined>,
+  eager = false,
+): boolean {
+  const candidates = urls.filter((url, index): url is string => !!url && urls.indexOf(url) === index);
+  if (!candidates.length) return false;
+  let next = 1;
+  // Registered after lazyImage's own listener, which clears the failed src first.
+  lazyImage(image, candidates[0], eager);
+  image.addEventListener('error', () => {
+    if (next < candidates.length) image.src = candidates[next++]!;
+    else image.remove();
+  });
+  return true;
+}
+
+/**
  * Starts the artwork of the [count] entries after [from], wherever they are.
  *
  * The margin above only reaches past the edge of the *screen*. A poster grid and a channel list

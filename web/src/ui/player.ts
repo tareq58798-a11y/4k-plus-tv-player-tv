@@ -53,7 +53,7 @@
  * a lasting choice is made. Recorded in web/README.md.
  */
 import { focus } from './focus';
-import { lazyImage } from './images';
+import { lazyImageWithFallbacks } from './images';
 import { t } from '../shared/i18n';
 import {
   SKIP_CHOICES,
@@ -90,6 +90,8 @@ export interface StripEpisode {
   id: string;
   label: string;
   thumbnailUrl: string | null;
+  /** Shown in order when the episode has no picture of its own, or it will not load. */
+  fallbackImageUrls?: ReadonlyArray<string | null>;
   streamUrl: string;
 }
 
@@ -909,12 +911,10 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     card.setAttribute('aria-selected', String(episode.id === options.currentEpisodeId));
     const thumb = document.createElement('div');
     thumb.className = 'pc-episode-thumb';
-    if (episode.thumbnailUrl) {
-      const image = document.createElement('img');
-      lazyImage(image, episode.thumbnailUrl);
-      image.alt = '';
-      // A thumbnail that will not load leaves the tile as a plain box rather than a broken icon.
-      image.addEventListener('error', () => image.remove());
+    const image = document.createElement('img');
+    image.alt = '';
+    // Each fallback in turn; only when none loads is the tile left as a plain box.
+    if (lazyImageWithFallbacks(image, [episode.thumbnailUrl, ...(episode.fallbackImageUrls ?? [])])) {
       thumb.append(image);
     }
     const label = document.createElement('div');
