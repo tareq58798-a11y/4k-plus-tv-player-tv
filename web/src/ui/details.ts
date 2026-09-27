@@ -14,7 +14,7 @@
  */
 import { t } from '../shared/i18n';
 import type { MovieDetails, PlaylistItem } from '../shared/models';
-import { isFavorite, progressOf, toggleFavorite } from '../shared/library';
+import { isFavorite, resumePosition, toggleFavorite } from '../shared/library';
 import type { Backdrop } from './backdrop';
 import { pushKeyHandler } from './focus';
 import { trailerButton } from './trailer';
@@ -85,7 +85,7 @@ export function renderDetails(host: HTMLElement, options: DetailsOptions): HTMLE
 
   // Resume rather than Play once there is somewhere to resume to, so the button says what it will
   // actually do. The progress is the app's own record, not the provider's.
-  const started = (progressOf(movie) ?? 0) > 0;
+  const started = resumePosition(movie) !== null;
   const play = el(
     'div',
     { class: 'button details-play', tabindex: '-1', 'data-focus': '', 'data-focus-id': 'details-play' },

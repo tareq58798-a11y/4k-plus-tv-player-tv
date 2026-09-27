@@ -18,6 +18,8 @@ const RECENT_SERIES = 'recent_series';
 const WATCHED_AT = 'watched_at';
 /** Titles watched through to the end - see rememberPosition and watchState. */
 const FINISHED = 'finished';
+/** Each series' last played episode id, keyed by the series - see recordEpisode. */
+const LAST_EPISODE = 'last_episode';
 
 export type ResumeMap = Record<string, { positionMs: number; durationMs: number; at: number }>;
 
@@ -281,10 +283,24 @@ export function resumePosition(item: PlaylistItem): number | null {
   return entry && entry.positionMs > 0 ? entry.positionMs : null;
 }
 
+/**
+ * How far along the red line on a card goes: the exact point a film was stopped at, the whole
+ * width for one watched to the end, or null for one not started. A series has no position of its
+ * own, so its card shows the episode last played - where that episode was stopped (owner's request).
+ */
 export function progressOf(item: PlaylistItem): number | null {
-  const entry = resumeStore()[itemKey(item)];
-  if (!entry || entry.durationMs <= 0) return null;
-  return Math.min(1, entry.positionMs / entry.durationMs);
+  const key = item.kind === 'series' ? readJson<Record<string, string>>(LAST_EPISODE, {})[itemKey(item)] : itemKey(item);
+  if (!key) return null;
+  const entry = resumeStore()[key];
+  if (entry && entry.durationMs > 0) return Math.min(1, Math.max(0, entry.positionMs / entry.durationMs));
+  return finishedStore().has(key) ? 1 : null;
+}
+
+/** Notes [episodeId] as the episode of [series] last played, for the series card's red line. */
+export function recordEpisode(series: PlaylistItem, episodeId: string): void {
+  const map = readJson<Record<string, string>>(LAST_EPISODE, {});
+  map[itemKey(series)] = episodeId;
+  writeJson(LAST_EPISODE, map);
 }
 
 /** Most recently left, first. */

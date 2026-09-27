@@ -15,7 +15,7 @@ import type { LoadedPlaylist, MovieDetails, PlaylistItem, ProviderLogin } from '
 import { itemKey } from './shared/models';
 import {
   clearActivity, favoriteItems, recentlyWatchedAll, recordWatched, watchedLately, isFavorite, recentlyAdded, rememberPosition,
-  resumePosition, toggleFavorite,
+  resumePosition, toggleFavorite, recordEpisode,
 } from './shared/library';
 import { askResume } from './ui/resumeChoice';
 import { iconElement, type IconName } from './ui/icons';
@@ -1805,6 +1805,9 @@ function browseScreen(current: Section, favoritesOnly = false): void {
  * list is fetched here rather than on the landing page because it is several hundred kilobytes
  * for a long-running show, and nobody wants that for every series they scroll past.
  */
+/** The series whose episode is playing, so the episode strip can keep its card's red line current. */
+let playingSeries: PlaylistItem | null = null;
+
 async function seriesScreen(item: PlaylistItem): Promise<void> {
   if (!login || !item.channelId) return;
   clear();
@@ -1819,8 +1822,11 @@ async function seriesScreen(item: PlaylistItem): Promise<void> {
       details,
       backdrop,
       onEpisode: (episode) => {
-        // The series goes on Series' Recently watched when one of its episodes is played.
+        // The series goes on Series' Recently watched when one of its episodes is played, and its
+        // card's red line follows this episode.
         recordWatched(item);
+        recordEpisode(item, episode.id);
+        playingSeries = item;
         playScreen(
           {
             ...item,
@@ -2014,6 +2020,7 @@ function playScreen(
     onEpisode: (episode) => {
       const next: PlaylistItem = { ...item, name: episode.label, streamUrl: episode.streamUrl, channelId: episode.id };
       const go = (startAt: number): void => {
+        if (playingSeries) recordEpisode(playingSeries, episode.id);
         // The position belongs to the episode being left, not to the one arriving.
         rememberPosition(item, positionMs, durationMs);
         player.stop();
