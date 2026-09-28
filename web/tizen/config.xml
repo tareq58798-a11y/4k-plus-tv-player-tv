@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   The Samsung widget manifest. Copied next to the built files to make a .wgt.
 
@@ -23,7 +23,7 @@
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://fourkplus.com/tvplayer"
-        version="10.37.0"
+        version="10.37.1"
         viewmodes="maximized">
 
   <tizen:application id="4KPlusTVXX.FourKPlusTVPlayer"
