@@ -2348,11 +2348,28 @@ const STOPPED_MESSAGE = 'The channel stopped sending a picture. Trying again…'
 
 /* ------------------------------------------------------------------- boot */
 
+/**
+ * Tells the activation service this device exists, every time the app starts.
+ *
+ * The service lists a device in the dashboard the first time the device asks it for a playlist -
+ * and a device only asked from the welcome page or Check for playlist. One that was signed in
+ * already went straight to Home and never asked, so its MAC never appeared and nothing (an M3U, a
+ * new login) could be assigned to it. Asked here in the background, and the answer is left alone:
+ * picking up an assignment stays with Check for playlist, so a playlist in use never changes under
+ * the viewer by itself.
+ */
+function announceDevice(): void {
+  void identity()
+    .then(({ mac, key }) => activate(mac, key))
+    .catch(() => undefined);
+}
+
 function boot(): void {
   registerPlatformKeys(platform);
   setLocale(navigator.language?.slice(0, 2) ?? 'en');
   player = createPlayer(platform, video);
   backdrop = new Backdrop(backdropHost);
+  announceDevice();
 
   window.addEventListener('keydown', (event) => {
     /*
