@@ -780,8 +780,12 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    *
    * A decoder cannot say what is in a stream it has not opened, so asking at construction time
    * reliably returns nothing. The panel is the first moment the answer is both available and
-   * wanted. An empty list means a single-language file, and then this section is absent rather
-   * than empty - a menu of one invites the viewer to open it, read it, and learn nothing.
+   * wanted. It is listed even when there is only one, as media3's sheet on the television lists
+   * it; only a stream that will not say what it carries leaves the section out.
+   *
+   * The tick follows the decoder where it can report what it is playing, rather than assuming the
+   * first track - a file whose default soundtrack is its second would otherwise open with the
+   * wrong one ticked, and picking the ticked one would change nothing the viewer could hear.
    */
   const audioSection = document.createElement('div');
   audioSection.hidden = true;
@@ -800,7 +804,11 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     audioRow.textContent = '';
     audioSection.hidden = tracks.length === 0;
     if (!tracks.length) return;
-    if (selectedAudio === null) selectedAudio = tracks[0]?.id ?? null;
+    const playing = tracks.find((track) => track.selected);
+    if (playing) selectedAudio = playing.id;
+    else if (selectedAudio === null || !tracks.some((track) => track.id === selectedAudio)) {
+      selectedAudio = tracks[0]?.id ?? null;
+    }
     for (const track of tracks) {
       const option = document.createElement('div');
       option.className = 'pc-speed';

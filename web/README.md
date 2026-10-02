@@ -227,6 +227,14 @@ stops it being reopened every few months.
   renaming one) still use the set's keyboard. Space, Delete and Done's words are in strings.local.ts
   in English only; Clear is the extracted cd_clear. Added at the owner's request on 2026-09-26; the
   Android app is unchanged.
+* **A soundtrack's speakers as figures, not media3's words.** The player's settings gear lists the
+  soundtracks of a film or episode, as media3's settings sheet does on the television - including
+  when there is only one, which this used to hide. media3 names each track's speaker layout in its
+  own library strings ("Stereo", "Surround sound 5.1"); here it is the figure beside the language,
+  "English 5.1", from the channel count AVPlay reports, so no new text needs eight translations.
+  Two tracks that still read the same are numbered. The tick is put on the track AVPlay says it is
+  playing rather than on the first one. Changed at the owner's request on 2026-10-02; the Android
+  app is unchanged.
 
 ## State
 
