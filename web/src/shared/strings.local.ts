@@ -31,8 +31,8 @@ export const LOCAL_EN = {
   playback_speed: 'Playback speed',
   speed_normal: 'Normal',
   audio_track: 'Audio',
-  // The player's Audio button, for a stream that will not say what soundtracks it carries. media3
-  // has no button to put this under, so there is nothing to extract.
+  // Under the Audio heading in the player's gear, for a stream that will not say what soundtracks
+  // it carries. media3 hides its entry instead, so there is nothing to extract.
   audio_tracks_none: 'No other audio tracks',
   subtitles_label: 'Subtitles',
   subtitles_off: 'Off',

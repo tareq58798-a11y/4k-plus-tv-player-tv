@@ -233,14 +233,10 @@ stops it being reopened every few months.
   own library strings ("Stereo", "Surround sound 5.1"); here it is the figure beside the language,
   "English 5.1", from the channel count AVPlay reports, so no new text needs eight translations.
   Two tracks that still read the same are numbered. The tick is put on the track AVPlay says it is
-  playing rather than on the first one. Changed at the owner's request on 2026-10-02; the Android
+  playing rather than on the first one. A stream that reports no soundtracks still shows the Audio heading,
+  with "No other audio tracks" under it (strings.local.ts, English only), so the section is never
+  missing. Changed at the owner's request on 2026-10-02; the Android
   app is unchanged.
-* **(The other way round) an Audio button in the player's top row.** On a film or an episode the
-  options row starts with an Audio button (Material's Audiotrack glyph) whose menu lists the same
-  soundtracks as the gear, ticked the same way, or says "No other audio tracks" (strings.local.ts,
-  English only) when the stream will not say. The television has the soundtrack only inside
-  media3's gear. Added at the owner's request on 2026-10-02, after they looked for it in films and
-  series and did not find it in the gear; the Android app is unchanged.
 
 ## State
 

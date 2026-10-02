@@ -194,7 +194,6 @@ const ICONS = {
   play: 'M8 5v14l11-7L8 5z',
   pause: 'M6 5h4v14H6V5zm8 0h4v14h-4V5z',
   settings: 'M19.4 13a7.8 7.8 0 000-2l2.1-1.6-2-3.4-2.5 1a7.6 7.6 0 00-1.7-1L15 3H9l-.3 2.9a7.6 7.6 0 00-1.7 1l-2.5-1-2 3.4L4.6 11a7.8 7.8 0 000 2l-2.1 1.6 2 3.4 2.5-1c.5.4 1.1.8 1.7 1L9 21h6l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.4L19.4 13zM12 15.5A3.5 3.5 0 1112 8.5a3.5 3.5 0 010 7z',
-  audio: 'M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z',
   subtitles: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z',
   skip: 'M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9a8.994 8.994 0 007.03-14.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z',
   quality: 'M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H9.5v-2h-2v2H6V9h1.5v2.5h2V9H11v6zm7-1c0 .55-.45 1-1 1h-.75v1.5h-1.5V15H14c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v4zm-3.5-.5h2v-3h-2v3z',
@@ -436,7 +435,6 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   optionsRow.className = 'pc-options';
   optionsRow.setAttribute('data-focus-group', 'pc-options');
 
-  const audioButton = button('pc-opt-audio', t('audio_track'), ICONS.audio);
   const subtitlesButton = button('pc-opt-subtitles', t('subtitles_label'), ICONS.subtitles);
   const skipButton = button('pc-opt-skip', t('skip_interval'), ICONS.skip);
   const qualityButton = button('pc-opt-quality', t('current_resolution'), ICONS.quality);
@@ -455,15 +453,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    * is used. The television's own row for a channel has no gear either. A film or an episode keeps
    * all of its buttons.
    */
-  /*
-   * The soundtrack has a button of its own on a film or an episode, first in the row.
-   *
-   * The television keeps it only inside the settings gear, as media3 does, and so did this. The
-   * owner looked through films and series for a way to change the audio and did not find it there,
-   * so it is also here, where the other per-title choices are. The gear keeps its list as well.
-   * Recorded in web/README.md.
-   */
-  if (!live) optionsRow.append(audioButton, subtitlesButton, skipButton, qualityButton);
+  if (!live) optionsRow.append(subtitlesButton, skipButton, qualityButton);
   optionsRow.append(aspectButton);
   chrome.append(optionsRow);
 
@@ -715,33 +705,6 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    * television app makes it a choice rather than a constant. The same five values, so somebody
    * who has settled on thirty on their Android box finds thirty here.
    */
-  /*
-   * Which soundtrack, from the options row. Read when the menu opens, for the same reason the
-   * gear's list is: the decoder can only say once the stream is open. Shares the gear's
-   * selectedAudio, so the two never disagree about which one is ticked.
-   */
-  audioButton.addEventListener('click', () => {
-    const tracks = player.audioTracks();
-    if (!tracks.length) {
-      openMenu(audioButton, [{ label: t('audio_tracks_none'), id: 'pc-menu-audio-none', inert: true }]);
-      return;
-    }
-    const playing = tracks.find((track) => track.selected);
-    if (playing) selectedAudio = playing.id;
-    else if (selectedAudio === null || !tracks.some((track) => track.id === selectedAudio)) {
-      selectedAudio = tracks[0]?.id ?? null;
-    }
-    openMenu(audioButton, tracks.map((track) => ({
-      label: track.label,
-      id: `pc-menu-audio-${track.id}`,
-      selected: track.id === selectedAudio,
-      onPick: () => {
-        selectedAudio = track.id;
-        player.selectAudioTrack(track.id);
-      },
-    })));
-  });
-
   skipButton.addEventListener('click', () => {
     openMenu(skipButton, SKIP_CHOICES.map((seconds) => ({
       label: t('skip_seconds_format', String(seconds)),
@@ -818,7 +781,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    * A decoder cannot say what is in a stream it has not opened, so asking at construction time
    * reliably returns nothing. The panel is the first moment the answer is both available and
    * wanted. It is listed even when there is only one, as media3's sheet on the television lists
-   * it; only a stream that will not say what it carries leaves the section out.
+   * it, and a stream that will not say what it carries still shows the heading, with a line saying
+   * there are no other tracks, so the section is always where the viewer looks for it.
    *
    * The tick follows the decoder where it can report what it is playing, rather than assuming the
    * first track - a file whose default soundtrack is its second would otherwise open with the
@@ -839,8 +803,16 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   function buildAudioOptions(): void {
     const tracks = player.audioTracks();
     audioRow.textContent = '';
-    audioSection.hidden = tracks.length === 0;
-    if (!tracks.length) return;
+    audioSection.hidden = false;
+    if (!tracks.length) {
+      // The heading stays with a line under it rather than the section vanishing: the owner looked
+      // here for the audio and, finding nothing, took it to be missing rather than unreported.
+      const none = document.createElement('div');
+      none.className = 'pc-fact';
+      none.textContent = t('audio_tracks_none');
+      audioRow.append(none);
+      return;
+    }
     const playing = tracks.find((track) => track.selected);
     if (playing) selectedAudio = playing.id;
     else if (selectedAudio === null || !tracks.some((track) => track.id === selectedAudio)) {
