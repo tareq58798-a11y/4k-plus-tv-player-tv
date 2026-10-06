@@ -1495,6 +1495,14 @@ body.playing #app {
   border-radius: 18px;
   background: rgba(2, 6, 13, 0.96);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+  /* Scrolls rather than running off the foot of the screen. openMenu sets max-height to the room
+     left under the button; the highlight is kept in view by focus(), which scrolls its box. */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.pc-menu::-webkit-scrollbar {
+  display: none;
 }
 
 .pc-menu-item {
@@ -1617,10 +1625,20 @@ body.playing #app {
   right: 24px;
   bottom: 136px;
   min-width: 620px;
+  /* Never taller than the room above the bottom bar. A film with a long list of subtitle tracks
+     wrapped them onto row after row, the panel grew up past the top of the screen, and the
+     highlight went with it; now the panel scrolls and focus() keeps the highlight in view. */
+  max-height: calc(100% - 136px - 24px);
+  overflow-y: auto;
+  scrollbar-width: none;
   padding: var(--dim-gap-m);
   border-radius: var(--dim-radius-card);
   background: rgba(3, 7, 17, 0.94);
   border: 1px solid var(--tone-glass-border);
+}
+
+.pc-panel::-webkit-scrollbar {
+  display: none;
 }
 
 .pc-panel-title {

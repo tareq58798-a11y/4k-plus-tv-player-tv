@@ -228,6 +228,29 @@ export function forgetGroup(name: string): void {
   lastInGroup.delete(name);
 }
 
+/**
+ * The boxes [element] scrolls inside, innermost first.
+ *
+ * Up and Down look here first. Once a poster grid has scrolled, the row above the highlight is
+ * above the top of the grid's box - so on screen it is further away than the search field sitting
+ * just over the grid, and a search over the whole page went to the field from the middle of the
+ * list. The owner reported it in Movies and Series. Android's grid is a real list widget that keeps
+ * Up inside itself until the first row; this is that. Only when nothing in the list lies that way
+ * does the move leave it.
+ *
+ * All of them, not just the nearest: a row that scrolls sideways inside a page that scrolls down
+ * has nothing above it, and the page around it is the next place to look before the whole document.
+ */
+function scrollers(element: HTMLElement): HTMLElement[] {
+  const found: HTMLElement[] = [];
+  for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+    if (node.scrollHeight <= node.clientHeight) continue;
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === 'auto' || overflow === 'scroll') found.push(node);
+  }
+  return found;
+}
+
 export function move(direction: Direction): boolean {
   const from = focused();
   if (!from) {
@@ -237,7 +260,14 @@ export function move(direction: Direction): boolean {
   }
   const declared = override(from, direction);
   if (declared === from) return true;
-  const target = declared ?? nearest(from, direction);
+  let target = declared;
+  if (!target && (direction === 'up' || direction === 'down')) {
+    for (const list of scrollers(from)) {
+      target = nearest(from, direction, list);
+      if (target) break;
+    }
+  }
+  target = target ?? nearest(from, direction);
   if (!target) return false;
   focus(resolveGroupEntry(from, target));
   return true;

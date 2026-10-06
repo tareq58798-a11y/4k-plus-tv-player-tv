@@ -513,6 +513,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     const frame = chrome.getBoundingClientRect();
     menu.style.right = `${Math.max(0, frame.right - anchor.right)}px`;
     menu.style.top = `${anchor.bottom - frame.top + 8}px`;
+    // The room left below the button, so a long menu scrolls instead of running off the screen.
+    menu.style.maxHeight = `${Math.max(200, frame.bottom - anchor.bottom - 8 - 24)}px`;
     for (const entry of entries) {
       const option = document.createElement('div');
       option.className = entry.inert ? 'pc-menu-item is-fact' : 'pc-menu-item';
