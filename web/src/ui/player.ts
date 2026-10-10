@@ -575,43 +575,41 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     return true;
   }
 
-  /** The settings panel as rows of options: the soundtracks, the subtitle tracks, the speeds. */
-  function panelRows(): HTMLElement[][] {
-    return Array.from(panel.querySelectorAll<HTMLElement>('.pc-speeds'))
-      .map((row) => stopsIn(row))
-      .filter((row) => row.length > 0);
-  }
-
   /**
-   * Down and up between the panel's rows, keeping the column where it can.
-   *
-   * Clamped rather than wrapped, because the rows are different lengths - a stream with two
-   * soundtracks and six speeds would otherwise drop the highlight off the end of the short row
-   * and leave the press doing nothing with no way to tell why.
+   * Down and up the panel's list. False at either end - Up past the top is how a setting's list
+   * goes back to the short list, and the short list closes; Down at the bottom stays put.
    */
   function stepPanel(delta: number): boolean {
-    const rows = panelRows();
-    const here = document.activeElement as HTMLElement | null;
-    const row = rows.findIndex((entries) => here !== null && entries.includes(here));
-    if (row < 0) { focus(rows[0]?.[0] ?? null); return rows.length > 0; }
-    const target = rows[row + delta];
-    if (!target) return false;
-    const column = rows[row]!.indexOf(here!);
-    focus(target[Math.min(column, target.length - 1)] ?? target[0]!);
+    const items = stopsIn(panel);
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    if (at < 0) { focus(items[0] ?? null); return items.length > 0; }
+    const next = items[at + delta];
+    if (!next) return false;
+    focus(next);
     return true;
   }
 
-  /** Left and right within whichever panel row holds the highlight. */
-  function stepPanelAcross(rightward: boolean): boolean {
+  /**
+   * Sideways in the panel: the arrow pointing into the page opens the highlighted setting, the one
+   * pointing back out of it returns to the short list. Which is which follows the page, so in
+   * Arabic Left goes in and Right comes back.
+   */
+  function stepPanelAcross(rightward: boolean): void {
+    const inward = rightward !== runsRightToLeft(panel);
     const here = document.activeElement as HTMLElement | null;
-    for (const row of panelRows()) {
-      if (here === null || !row.includes(here)) continue;
-      // The panel follows the page, so it runs right to left in Arabic; see stepAcross.
-      const next = row[row.indexOf(here) + (rightward !== runsRightToLeft(panel) ? 1 : -1)];
-      if (next) focus(next);
-      return true;
+    if (panelPage === 'settings') {
+      const page = here?.dataset.page as PanelPage | undefined;
+      if (inward && page) showChoices(page);
+      return;
     }
-    return false;
+    if (!inward) showSettings(panelPage);
+  }
+
+  /** Back out of the panel one level: a setting's list to the short list, the short list closed. */
+  function panelBack(): void {
+    if (panelPage !== 'settings') { showSettings(panelPage); return; }
+    closePanel();
+    focus(settingsButton);
   }
 
   /*
@@ -769,152 +767,163 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
 
   // ----------------------------------------------------- the settings panel
   /*
-   * What the gear opens, which is what media3's own settings sheet carries: how fast, which
-   * soundtrack, which subtitle track. The on-and-off switch for subtitles is not here - it is in
-   * the options row, where the television app puts it.
+   * What the gear opens, laid out the way media3's own settings sheet is on Android (owner's
+   * request, 10.37.5): a short list - Audio, Subtitles, Playback speed - each showing what is in
+   * force, and OK on one opens that setting's own list, with a tick on the current choice.
+   * Choosing returns to the short list, now showing the new value; Back, Up past the top, or the
+   * arrow pointing back out of the page returns too. It replaced three rows of chips side by side,
+   * which were all choices at once and no list at all.
+   *
+   * The on-and-off switch for subtitles is not here - it is in the options row, where the
+   * television app puts it.
    */
   const panel = document.createElement('div');
   panel.className = 'pc-panel';
   panel.hidden = true;
+  chrome.append(panel);
+
+  type PanelPage = 'settings' | 'audio' | 'subtitles' | 'speed';
+  /** Which page is showing: the short list, or one setting's choices. */
+  let panelPage: PanelPage = 'settings';
 
   /*
-   * Soundtracks, built when the panel opens rather than now.
+   * Soundtracks and subtitle tracks are read each time the panel draws rather than once.
    *
    * A decoder cannot say what is in a stream it has not opened, so asking at construction time
-   * reliably returns nothing. The panel is the first moment the answer is both available and
-   * wanted. It is listed even when there is only one, as media3's sheet on the television lists
-   * it, and a stream that will not say what it carries still shows the heading, with a line saying
-   * there are no other tracks, so the section is always where the viewer looks for it.
+   * reliably returns nothing; and switching episode replaces the stream, and with it the tracks.
+   * Audio is listed even with only one soundtrack, as media3's sheet on the television lists it,
+   * and a stream that will not say what it carries still shows the entry, with a line saying there
+   * are no other tracks, so it is always where the viewer looks for it.
    *
    * The tick follows the decoder where it can report what it is playing, rather than assuming the
    * first track - a file whose default soundtrack is its second would otherwise open with the
    * wrong one ticked, and picking the ticked one would change nothing the viewer could hear.
    */
-  const audioSection = document.createElement('div');
-  audioSection.hidden = true;
-  const audioTitle = document.createElement('div');
-  audioTitle.className = 'pc-panel-title';
-  audioTitle.textContent = t('audio_track');
-  const audioRow = document.createElement('div');
-  audioRow.className = 'pc-speeds';
-  audioSection.append(audioTitle, audioRow);
-  panel.append(audioSection);
-
   let selectedAudio: number | null = null;
+  let selectedSubtitle: number | null = null;
+  /** The track that was showing when subtitles were last turned off, to bring back. */
+  let lastSubtitle: number | null = null;
+  let speed = 1;
 
-  function buildAudioOptions(): void {
+  function audioTracksNow(): ReturnType<typeof player.audioTracks> {
     const tracks = player.audioTracks();
-    audioRow.textContent = '';
-    audioSection.hidden = false;
-    if (!tracks.length) {
-      // The heading stays with a line under it rather than the section vanishing: the owner looked
-      // here for the audio and, finding nothing, took it to be missing rather than unreported.
-      const none = document.createElement('div');
-      none.className = 'pc-fact';
-      none.textContent = t('audio_tracks_none');
-      audioRow.append(none);
-      return;
-    }
     const playing = tracks.find((track) => track.selected);
     if (playing) selectedAudio = playing.id;
     else if (selectedAudio === null || !tracks.some((track) => track.id === selectedAudio)) {
       selectedAudio = tracks[0]?.id ?? null;
     }
-    for (const track of tracks) {
-      const option = document.createElement('div');
-      option.className = 'pc-speed';
-      option.tabIndex = -1;
-      option.textContent = track.label;
-      option.setAttribute('data-focus', '');
-      option.setAttribute('data-focus-id', `pc-audio-${track.id}`);
-      option.setAttribute('aria-selected', String(track.id === selectedAudio));
-      option.addEventListener('click', () => {
-        selectedAudio = track.id;
-        player.selectAudioTrack(track.id);
-        for (const other of audioRow.querySelectorAll('.pc-speed')) {
-          other.setAttribute('aria-selected', String(other === option));
-        }
-      });
-      audioRow.append(option);
-    }
+    return tracks;
   }
 
-  /**
-   * Which subtitle track, for a stream that carries more than one.
-   *
-   * Built when the panel opens, like the soundtracks and for the same reason. "Off" is not an
-   * entry here: that switch lives on the options row, and offering it in two places invites the
-   * two to disagree.
-   */
-  const subtitleSection = document.createElement('div');
-  subtitleSection.hidden = true;
-  const subtitleTitle = document.createElement('div');
-  subtitleTitle.className = 'pc-panel-title';
-  subtitleTitle.textContent = t('subtitles_label');
-  const subtitleRow = document.createElement('div');
-  subtitleRow.className = 'pc-speeds';
-  subtitleSection.append(subtitleTitle, subtitleRow);
-  panel.append(subtitleSection);
+  const speedLabel = (rate: number): string => (rate === 1 ? t('speed_normal') : `${rate}x`);
 
-  let selectedSubtitle: number | null = null;
-  /** The track that was showing when subtitles were last turned off, to bring back. */
-  let lastSubtitle: number | null = null;
-
-  function buildSubtitleOptions(): void {
-    const tracks = player.subtitleTracks();
-    subtitleRow.textContent = '';
-    subtitleSection.hidden = tracks.length === 0;
-    if (!tracks.length) return;
-    for (const track of tracks) {
-      const option = document.createElement('div');
-      option.className = 'pc-speed';
-      option.tabIndex = -1;
-      option.textContent = track.label;
-      option.setAttribute('data-focus', '');
-      option.setAttribute('data-focus-id', `pc-sub-${track.id}`);
-      option.setAttribute('aria-selected', String(track.id === selectedSubtitle));
-      option.addEventListener('click', () => {
-        selectedSubtitle = track.id;
-        player.selectSubtitleTrack(track.id);
-        // Choosing a track is a way of turning them on, so the row's switch follows rather than
-        // being left saying the opposite of what is on screen.
-        subtitlesOn = true;
-        subtitlesButton.classList.add('is-accent');
-        for (const other of subtitleRow.querySelectorAll('.pc-speed')) {
-          other.setAttribute('aria-selected', String(other === option));
-        }
-      });
-      subtitleRow.append(option);
-    }
+  /** One line of the panel that the highlight can land on. */
+  function panelItem(id: string, label: string, onPick: () => void): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'pc-panel-item';
+    item.tabIndex = -1;
+    item.setAttribute('data-focus', '');
+    item.setAttribute('data-focus-id', id);
+    const name = document.createElement('span');
+    name.className = 'pc-panel-label';
+    name.textContent = label;
+    item.append(name);
+    item.addEventListener('click', onPick);
+    return item;
   }
 
-  const panelTitle = document.createElement('div');
-  panelTitle.className = 'pc-panel-title';
-  panelTitle.textContent = t('playback_speed');
-  if (!live) panel.append(panelTitle);
+  /** The short list. [from] is the setting just left, so the highlight comes back to it. */
+  function showSettings(from?: PanelPage): void {
+    panelPage = 'settings';
+    panel.textContent = '';
+    // From the top on every page: the panel scrolls (app.css), and a scroll kept from a long
+    // subtitles list would open the short list with its highlight out of sight.
+    panel.scrollTop = 0;
+    const entries: [PanelPage, string, string][] = [];
+    const audio = audioTracksNow();
+    entries.push(['audio', t('audio_track'),
+      audio.find((track) => track.id === selectedAudio)?.label ?? t('audio_tracks_none')]);
+    const subtitles = player.subtitleTracks();
+    // Only for a stream that carries subtitle tracks: an entry that opens onto nothing is a dead end.
+    if (subtitles.length) {
+      const showing = subtitlesOn ? subtitles.find((track) => track.id === selectedSubtitle) : undefined;
+      entries.push(['subtitles', t('subtitles_label'), showing?.label ?? t('subtitles_off')]);
+    }
+    // A channel cannot be slowed down or sped up; there is nothing to buffer ahead into.
+    if (!live) entries.push(['speed', t('playback_speed'), speedLabel(speed)]);
+    for (const [page, label, value] of entries) {
+      const item = panelItem(`pc-panel-${page}`, label, () => showChoices(page));
+      item.classList.add('is-setting');
+      item.dataset.page = page;
+      const current = document.createElement('span');
+      current.className = 'pc-panel-value';
+      current.textContent = value;
+      item.append(current);
+      panel.append(item);
+    }
+    focus(panel.querySelector<HTMLElement>(`[data-page="${from ?? ''}"]`)
+      ?? panel.querySelector<HTMLElement>('[data-focus]'));
+  }
 
-  let speed = 1;
-  const speedRow = document.createElement('div');
-  speedRow.className = 'pc-speeds';
-  for (const rate of SPEEDS) {
-    const option = document.createElement('div');
-    option.className = 'pc-speed';
-    option.tabIndex = -1;
-    option.textContent = rate === 1 ? t('speed_normal') : `${rate}x`;
-    option.setAttribute('data-focus', '');
-    option.setAttribute('data-focus-id', `pc-speed-${rate}`);
-    option.setAttribute('aria-selected', String(rate === speed));
-    option.addEventListener('click', () => {
-      speed = rate;
-      player.setSpeed(rate);
-      for (const other of speedRow.querySelectorAll('.pc-speed')) {
-        other.setAttribute('aria-selected', String(other === option));
+  /** One setting's list: a heading that leads back, then the choices with the current one ticked. */
+  function showChoices(page: PanelPage): void {
+    panelPage = page;
+    panel.textContent = '';
+    panel.scrollTop = 0;
+    const title = page === 'audio' ? t('audio_track') : page === 'subtitles' ? t('subtitles_label') : t('playback_speed');
+    const heading = panelItem('pc-panel-back', title, () => showSettings(page));
+    heading.classList.add('is-heading');
+    heading.setAttribute('aria-label', `${t('cd_back')} - ${title}`);
+    panel.append(heading);
+
+    const choose = (id: string, label: string, selected: boolean, apply: () => void): void => {
+      const option = panelItem(id, label, () => { apply(); showSettings(page); });
+      option.setAttribute('aria-selected', String(selected));
+      panel.append(option);
+    };
+
+    if (page === 'audio') {
+      const tracks = audioTracksNow();
+      if (!tracks.length) {
+        // A line rather than an empty list: the owner looked here for the audio and, finding
+        // nothing, took it to be missing rather than unreported.
+        const none = document.createElement('div');
+        none.className = 'pc-fact';
+        none.textContent = t('audio_tracks_none');
+        panel.append(none);
       }
-    });
-    speedRow.append(option);
+      for (const track of tracks) {
+        choose(`pc-audio-${track.id}`, track.label, track.id === selectedAudio, () => {
+          selectedAudio = track.id;
+          player.selectAudioTrack(track.id);
+        });
+      }
+    } else if (page === 'subtitles') {
+      // "Off" is not a choice here: that switch lives on the options row, and offering it in two
+      // places invites the two to disagree.
+      for (const track of player.subtitleTracks()) {
+        choose(`pc-sub-${track.id}`, track.label, subtitlesOn && track.id === selectedSubtitle, () => {
+          selectedSubtitle = track.id;
+          player.selectSubtitleTrack(track.id);
+          // Choosing a track is a way of turning them on, so the row's switch follows rather than
+          // being left saying the opposite of what is on screen.
+          subtitlesOn = true;
+          subtitlesButton.classList.add('is-accent');
+        });
+      }
+    } else {
+      for (const rate of SPEEDS) {
+        choose(`pc-speed-${rate}`, speedLabel(rate), rate === speed, () => {
+          speed = rate;
+          player.setSpeed(rate);
+        });
+      }
+    }
+    // Opens on the current choice, as a list of choices does everywhere else in the player.
+    focus(panel.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?? panel.querySelector<HTMLElement>('.pc-panel-item:not(.is-heading)')
+      ?? heading);
   }
-  if (!live) panel.append(speedRow);
-  chrome.append(panel);
 
   // ------------------------------------------------------------- episode strip
   const episodes = options.episodes ?? [];
@@ -1092,20 +1101,17 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   function openPanel(): void {
     panelOpen = true;
     panel.hidden = false;
-    // Rebuilt every time it opens: switching episode replaces the stream, and with it the
-    // soundtracks. A list cached from the last thing played would offer choices that no longer
+    // Always the short list, drawn afresh: switching episode replaces the stream, and with it the
+    // soundtracks, so a list kept from the last thing played would offer choices that no longer
     // exist.
-    buildAudioOptions();
-    buildSubtitleOptions();
-    // Lands on the first section that has anything in it, so the highlight never opens on a
-    // heading with nothing under it.
-    const firstOption = panel.querySelector<HTMLElement>('div:not([hidden]) > .pc-speeds > .pc-speed');
-    focus(firstOption ?? speedRow.querySelector<HTMLElement>('.pc-speed') ?? settingsButton);
+    showSettings();
   }
 
   function closePanel(): void {
     panelOpen = false;
     panel.hidden = true;
+    panel.textContent = '';
+    panelPage = 'settings';
   }
 
   /** Where the highlight goes when the controls come up. A channel has no play button. */
@@ -1175,8 +1181,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     }
     if (panelOpen) {
       if (stepPanel(-1)) return true;
-      closePanel();
-      focus(settingsButton);
+      panelBack();
       return true;
     }
     // Up is the strip's way out, mirroring the way it was opened - and it leaves the picture
@@ -1357,7 +1362,7 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     // exception is Back, which leaves whether or not the controls are up.
     if (key === 'back') {
       if (menuOpen()) { const owner = menuOwner; closeMenu(); focus(owner); return true; }
-      if (panelOpen) { closePanel(); focus(settingsButton); return true; }
+      if (panelOpen) { panelBack(); return true; }
       if (stripOpen) { closeStrip(); focus(null); return true; }
       if (visible) { setVisible(false); return true; }
       options.onExit(positionMs);
