@@ -95,6 +95,7 @@ import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -122,6 +123,20 @@ private const val RESOLUTION_WAIT_MS = 3_500L
 
 /** How long the strip stays once the resolution is actually on screen, i.e. long enough to read. */
 private const val RESOLUTION_READ_MS = 3_000L
+
+/**
+ * The waits before each attempt to reopen a live channel that dropped - about a minute in all, the
+ * same ladder the Samsung app climbs (RECONNECT_DELAYS_MS in web/src/main.ts). The first is
+ * immediate: a provider closing the connection is the common case, and every moment spent waiting
+ * is a moment of frozen picture.
+ */
+private val LIVE_REOPEN_DELAYS_MS = longArrayOf(0, 1_000, 2_000, 3_000, 5_000, 8_000, 10_000, 15_000)
+
+/** How long a live channel may stand still before it is reopened as if it had reported the drop. */
+private const val LIVE_STALL_MS = 20_000L
+
+/** Clean playback after which the reopen ladder starts again from the bottom. */
+private const val LIVE_HEALTHY_MS = 60_000L
 
 
 /**
@@ -1543,6 +1558,39 @@ internal fun LiveChannelPreview(
     // Persists for this composable's lifetime (not reset per channel) so a chain of consecutive
     // auto-advances is bounded overall, not just per hop.
     var autoAdvanceAttempts by remember { mutableIntStateOf(0) }
+    /*
+     * A live channel that drops is opened again, not left frozen.
+     *
+     * Measured on Sky Sports Main Events in the emulator (phone build, 10.36): the provider stopped
+     * sending 26 seconds in, the player played out the 27 seconds it held, and then reported the
+     * stream ENDED - as if a film had finished - and sat on its last frame. Nothing here listened for
+     * that, so the picture stayed frozen until the viewer changed channel and back, which is what
+     * opens a fresh connection. That is the "freezes every few minutes" the owner reported. The
+     * Samsung app has reopened dropped channels since 10.37.1; this is the same rule: ENDED, a
+     * network error once the channel has played, or a position that stands still for
+     * LIVE_STALL_MS, all reopen the same channel, on the same ladder of waits.
+     */
+    var reopenRequest by remember { mutableIntStateOf(0) }
+    var reopenAttempts by remember(channel?.streamUrl) { mutableIntStateOf(0) }
+    val reopenScope = rememberCoroutineScope()
+    var reopenJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // The listener below is created once per player and outlives channel changes, so it reads the
+    // channel through this rather than the value captured when it was made.
+    val liveChannel by rememberUpdatedState(channel)
+    /** False once every wait on the ladder has been tried without the channel coming back. */
+    fun scheduleReopen(): Boolean {
+        if (liveChannel == null) return false
+        if (reopenJob?.isActive == true) return true
+        val attempt = reopenAttempts
+        if (attempt >= LIVE_REOPEN_DELAYS_MS.size) return false
+        reopenAttempts = attempt + 1
+        android.util.Log.i("LiveReopen", "attempt=${attempt + 1} wait_ms=${LIVE_REOPEN_DELAYS_MS[attempt]}")
+        reopenJob = reopenScope.launch {
+            delay(LIVE_REOPEN_DELAYS_MS[attempt])
+            reopenRequest++
+        }
+        return true
+    }
     LaunchedEffect(seekFeedback?.second) {
         if (seekFeedback != null) {
             delay(650)
@@ -1585,7 +1633,18 @@ internal fun LiveChannelPreview(
         }
     }
     val player = remember(skipSeconds) {
-        buildFourKPlusExoPlayer(context, skipSeconds, muted = settings.getBoolean("muted", false)).apply { playWhenReady = true }
+        buildFourKPlusExoPlayer(context, skipSeconds, muted = settings.getBoolean("muted", false)).apply {
+            playWhenReady = true
+            /*
+             * The same channel again the moment its stream ends, fetched in the background before the
+             * picture gets there. Measured on Sky Sports Main Events: the provider ends every response
+             * after about sixty seconds of video (57.0s, 60.1s, 46.9s, 57.7s in a row), and reopening
+             * on ENDED (below) cost two seconds of black each time. On repeat, media3 asks for the next
+             * period while the current one is still playing out its cushion, so a live channel - where
+             * asking again means the next minute, not the same one - carries straight on.
+             */
+            repeatMode = Player.REPEAT_MODE_ONE
+        }
     }
     KeepScreenOnWhilePlaying(player)
     MutePlayerWhileBackgrounded(player)
@@ -1598,7 +1657,9 @@ internal fun LiveChannelPreview(
         channelSwitchFeedback = Triple(next.name, next.logoUrl, System.nanoTime())
     }
 
-    LaunchedEffect(channel?.streamUrl, externalSubtitle) {
+    // reopenRequest is the reopen above: the same channel, set again and prepared from scratch, which
+    // is exactly what changing channel and back used to do by hand.
+    LaunchedEffect(channel?.streamUrl, externalSubtitle, reopenRequest) {
         playbackError = null
         resolutionLabel = null
         if (channel == null) {
@@ -1648,7 +1709,20 @@ internal fun LiveChannelPreview(
                     )
                 }
             }
+            // A live stream does not finish; ENDED means the provider closed the connection.
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED && liveChannel != null && !scheduleReopen()) {
+                    playbackError = "This channel stopped. Try again or choose another channel."
+                }
+            }
             override fun onPlayerError(error: PlaybackException) {
+                // A channel that was already playing and then lost its connection is reopened, not
+                // skipped: switchStartedAt is cleared by its first frame, so only a channel that
+                // never started falls through to the auto-advance below.
+                val dropped = error.errorCode in 2000..2999 ||
+                    error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
+                if (dropped && switchStartedAt == 0L && scheduleReopen()) return
+                val channel = liveChannel
                 val advanceTo = if (autoAdvanceOnFailure && channel != null && autoAdvanceAttempts < 3) {
                     val currentIndex = channelList.indexOfFirst { channelKey(it) == channelKey(channel) }
                     channelList.getOrNull(currentIndex + 1)
@@ -1665,6 +1739,38 @@ internal fun LiveChannelPreview(
         onDispose {
             player.removeListener(listener)
             player.release()
+        }
+    }
+    /*
+     * A channel that stops without saying so: no error, no ENDED, the position simply stands still.
+     * Watched every two seconds while the viewer wants it playing; LIVE_STALL_MS of standing still
+     * reopens it. A minute of clean playback starts the ladder of waits over, so a channel that
+     * drops once an hour is reopened every time rather than running out of attempts.
+     */
+    LaunchedEffect(player, channel?.streamUrl) {
+        var lastPosition = -1L
+        var stillFor = 0L
+        var healthyFor = 0L
+        while (true) {
+            delay(2_000)
+            if (channel == null || !player.playWhenReady || playbackError != null) {
+                stillFor = 0L
+                continue
+            }
+            val position = player.currentPosition
+            if (player.playbackState == Player.STATE_READY && position != lastPosition) {
+                stillFor = 0L
+                healthyFor += 2_000
+                if (healthyFor >= LIVE_HEALTHY_MS) reopenAttempts = 0
+            } else {
+                stillFor += 2_000
+                healthyFor = 0L
+            }
+            lastPosition = position
+            if (stillFor >= LIVE_STALL_MS) {
+                stillFor = 0L
+                if (!scheduleReopen()) playbackError = "This channel stopped. Try again or choose another channel."
+            }
         }
     }
 
