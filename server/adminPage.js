@@ -51,6 +51,12 @@ function layout(body) {
   button.danger { background: #8b2331; margin-top: 6px; }
   .row { display: flex; gap: 6px; }
   .muted { color: #7d8ba1; font-size: 12px; }
+  form.add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px;
+                  background: #131b2c; padding: 12px; border-radius: 10px; }
+  form.add-form input { min-width: 200px; }
+  .notice { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #1b263b; }
+  .notice.bad { background: #4a1d24; }
+  tr:target td { background: #1d2b46; }
   code { font-family: ui-monospace, Menlo, Consolas, monospace; unicode-bidi: isolate; }
 </style>
 </head>
@@ -71,16 +77,30 @@ document.querySelectorAll('select[data-type-toggle]').forEach(function(select) {
 </html>`;
 }
 
-function renderDevices(devices) {
+/** What the page says after Add device, by the notice the route redirects with. */
+const NOTICES = {
+  added: ['The device was added. Assign it a playlist below; it receives it the next time it checks in.', false],
+  exists: ['That MAC is already on the dashboard, so nothing was added. Its row is highlighted below.', true],
+  'bad-mac': ['That is not a MAC address. It needs twelve letters A-F and digits, like 1A:2B:3C:4D:5E:6F.', true],
+  'bad-key': ['The device key must be the six digits shown on the device, or left blank.', true]
+};
+
+/** A device added by hand has not been seen; its last_seen is the epoch (see db.addDevice). */
+function lastSeen(value) {
+  const date = new Date(value);
+  return date.getTime() > 0 ? date.toLocaleString() : 'Never';
+}
+
+function renderDevices(devices, notice = '') {
   const rows = devices.map((device) => {
     const statusClass = device.status === 'assigned' ? 'assigned' : 'pending';
     const mac = escapeHtml(device.mac);
-    return `<tr>
+    return `<tr id="device-${escapeHtml(String(device.mac).replace(/:/g, ''))}">
       <td dir="ltr"><code>${mac}</code></td>
-      <td dir="ltr"><code>${escapeHtml(device.device_key)}</code></td>
+      <td dir="ltr">${device.device_key ? `<code>${escapeHtml(device.device_key)}</code>` : '<span class="muted">Set on first check-in</span>'}</td>
       <td class="${statusClass}">${escapeHtml(device.status)}</td>
       <td>${device.playlist_type ? escapeHtml(device.playlist_type) : '-'}</td>
-      <td class="muted">${escapeHtml(new Date(device.last_seen).toLocaleString())}</td>
+      <td class="muted">${escapeHtml(lastSeen(device.last_seen))}</td>
       <td>
         <form class="assign-form" method="post" action="/admin/devices/${encodeURIComponent(mac)}/assign">
           <input type="text" name="playlistName" placeholder="Playlist name" value="${escapeHtml(device.playlist_name || '')}" required>
@@ -121,7 +141,14 @@ function renderDevices(devices) {
 
   return layout(`
     <h1>4K Plus TV — Device Activation</h1>
-    <p class="muted">Devices appear here automatically the first time they check in from the app's Activation screen.</p>
+    <p class="muted">Devices appear here automatically the first time they check in from the app's Activation screen. You can also add one by hand, to have its playlist ready before it does.</p>
+    ${NOTICES[notice] ? `<div class="notice${NOTICES[notice][1] ? ' bad' : ''}">${escapeHtml(NOTICES[notice][0])}</div>` : ''}
+    <form class="add-form" method="post" action="/admin/devices/add">
+      <strong>Add device</strong>
+      <input type="text" name="mac" placeholder="MAC, e.g. 1A:2B:3C:4D:5E:6F" required dir="ltr" autocomplete="off">
+      <input type="text" name="deviceKey" placeholder="Device key (optional)" inputmode="numeric" maxlength="6" dir="ltr" autocomplete="off">
+      <button type="submit">Add</button>
+    </form>
     <table>
       <thead><tr><th>MAC</th><th>Device key</th><th>Status</th><th>Type</th><th>Last seen</th><th>Assign playlist</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6" class="muted">No devices have checked in yet.</td></tr>'}</tbody>
