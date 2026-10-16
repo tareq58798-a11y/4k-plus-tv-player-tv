@@ -1624,14 +1624,16 @@ body.playing #app {
   position: absolute;
   right: 24px;
   bottom: 136px;
-  min-width: 620px;
   /* Never taller than the room above the bottom bar. A film with a long list of subtitle tracks
-     wrapped them onto row after row, the panel grew up past the top of the screen, and the
-     highlight went with it; now the panel scrolls and focus() keeps the highlight in view. */
+     grew the panel up past the top of the screen, and the highlight went with it; now the panel
+     scrolls and focus() keeps the highlight in view. */
   max-height: calc(100% - 136px - 24px);
   overflow-y: auto;
   scrollbar-width: none;
-  padding: var(--dim-gap-m);
+  /* Scrolling to the highlight stops short of the pinned heading (.is-heading), which would
+     otherwise cover the very row it was scrolled to. */
+  scroll-padding-top: 80px;
+  padding: 12px;
   border-radius: var(--dim-radius-card);
   background: rgba(3, 7, 17, 0.94);
   border: 1px solid var(--tone-glass-border);
@@ -1639,12 +1641,6 @@ body.playing #app {
 
 .pc-panel::-webkit-scrollbar {
   display: none;
-}
-
-.pc-panel-title {
-  font-size: 30px;
-  font-weight: 700;
-  margin-bottom: var(--dim-gap-s);
 }
 
 /* A read-only line in the player panel - the resolution. Sits under its heading where an option
@@ -1655,32 +1651,90 @@ body.playing #app {
   color: var(--tone-text-secondary);
 }
 
-.pc-speeds {
+/*
+ * The gear's lists (player.ts, showSettings and showChoices): media3's settings sheet - a short
+ * list of settings with what is in force beside each, and each setting's own list of choices.
+ * Lit the way the player's dropdowns are (.pc-menu-item), so every list in the player looks alike.
+ */
+.pc-panel-item {
   display: flex;
-  gap: var(--dim-gap-xs);
-  flex-wrap: wrap;
-}
-
-.pc-speed {
-  padding: 14px 26px;
-  border-radius: var(--dim-radius-pill);
+  align-items: center;
+  gap: 32px;
+  min-width: 520px;
+  padding: 16px 24px;
+  border-radius: 14px;
   font-size: 28px;
-  background: var(--tone-glass);
-  border: 3px solid transparent;
+  cursor: pointer;
 }
 
-.pc-speed[aria-selected='true'] {
-  /* Chosen and focused are different states and must not look the same: the tick says what is in
-     force, the fill says where the next press lands. */
-  color: var(--tone-accent);
-  font-weight: 700;
-}
-
-.pc-speed:focus {
+.pc-panel-item:focus {
   outline: none;
-  background: var(--tone-accent-deep);
-  border-color: var(--tone-accent);
-  color: #ffffff;
+  background: var(--tone-category-gradient);
+  color: #04131f;
+}
+
+.pc-panel-label {
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* What is in force, at the end of each setting, with a chevron saying OK opens a list. */
+.pc-panel-value {
+  color: var(--tone-text-secondary);
+  white-space: nowrap;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pc-panel-item:focus .pc-panel-value {
+  color: inherit;
+}
+
+.pc-panel-item.is-setting::after {
+  content: '\203A';
+  font-size: 36px;
+  line-height: 1;
+}
+
+/* The heading of a setting's list is also the way back to the short list, so it carries the
+   back chevron and is a stop like any other line. */
+/* Pinned while a long list scrolls under it, so the viewer always sees which list this is and
+   the way back out of it. Opaque, in the panel's own colour, so rows pass behind it cleanly. */
+.pc-panel-item.is-heading {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  font-weight: 700;
+  margin-bottom: 6px;
+  background: rgb(3, 7, 17);
+}
+
+/* The highlight still shows on the heading: the solid backing above must not cover it. */
+.pc-panel-item.is-heading:focus {
+  background: var(--tone-category-gradient);
+}
+
+.pc-panel-item.is-heading::before {
+  content: '\2039';
+  font-size: 36px;
+  line-height: 1;
+}
+
+/* The current choice, ticked as the dropdowns tick theirs: chosen and focused look different. */
+.pc-panel-item[aria-selected='true'] .pc-panel-label::before {
+  content: '\2713  ';
+  color: var(--tone-accent);
+}
+
+.pc-panel-item[aria-selected='true']:focus .pc-panel-label::before {
+  color: #04131f;
+}
+
+/* Chevrons point the way the page reads. */
+[dir='rtl'] .pc-panel-item.is-setting::after,
+[dir='rtl'] .pc-panel-item.is-heading::before {
+  transform: scaleX(-1);
 }
 
 /* ------------------------------------------------------------- backdrop */
