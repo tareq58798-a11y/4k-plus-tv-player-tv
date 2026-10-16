@@ -50,6 +50,12 @@ function layout(body) {
   button.warn { background: #7a5312; margin-top: 6px; }
   button.danger { background: #8b2331; margin-top: 6px; }
   .row { display: flex; gap: 6px; }
+  /* "+ Add playlist": a quiet button-like link until opened, so a row reads as one playlist. */
+  details.playlist2 { margin-top: 10px; }
+  details.playlist2 > summary { cursor: pointer; display: inline-block; list-style: none; color: #8fb4ff;
+                                font-size: 13px; padding: 6px 10px; border: 1px dashed #2a3a56; border-radius: 6px; }
+  details.playlist2 > summary::-webkit-details-marker { display: none; }
+  details.playlist2[open] > summary { color: #9fb3d1; border-style: solid; }
   .muted { color: #7d8ba1; font-size: 12px; }
   form.add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px;
                   background: #131b2c; padding: 12px; border-radius: 10px; }
@@ -129,7 +135,13 @@ function renderDevices(devices, notice = '') {
               onsubmit="return confirm('Delete the playlist ${escapeJsInAttribute(device.playlist_name || '(unnamed)')} from ${escapeJsInAttribute(device.mac)}? The stored server, username and password are erased. The device stays in this list, and goes back to pending unless it has a Playlist 2.');">
           <button type="submit" class="warn">Delete profile</button>
         </form>` : ''}
-        <!-- Playlist 2: the same fields, its own form and its own delete, so neither can touch the other. -->
+        <!--
+          Playlist 2: the same fields, its own form and its own delete, so neither can touch the other.
+          Folded away behind "+ Add playlist" until the device has one, so a row reads as one
+          playlist unless it really has two. A plain <details>, so it opens without any script.
+        -->
+        <details class="playlist2"${device.playlist2_type ? ' open' : ''}>
+        <summary>${device.playlist2_type ? 'Playlist 2' : '+ Add playlist'}</summary>
         <form class="assign-form" method="post" action="/admin/devices/${encodeURIComponent(mac)}/assign2" style="margin-top: 10px;">
           <strong>Playlist 2</strong>
           <input type="text" name="playlistName" placeholder="Playlist name" value="${escapeHtml(device.playlist2_name || '')}" required>
@@ -150,6 +162,7 @@ function renderDevices(devices, notice = '') {
               onsubmit="return confirm('Delete playlist 2, ${escapeJsInAttribute(device.playlist2_name || '(unnamed)')}, from ${escapeJsInAttribute(device.mac)}? Its stored server, username and password are erased. Playlist 1 is not touched.');">
           <button type="submit" class="warn">Delete playlist 2</button>
         </form>` : ''}
+        </details>
         <!--
           Its own form, deliberately outside the assign form. Sharing that one would mean the
           delete button inherited its required fields, and formnovalidate would then be the only

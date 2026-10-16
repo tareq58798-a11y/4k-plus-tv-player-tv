@@ -460,6 +460,18 @@ check('the page shows a Playlist 2 form on every row, and its delete only where 
   assert.ok(confirm2 && confirm2.includes("Kid\\'s"), 'the name is escaped inside the confirmation');
 });
 
+check('Playlist 2 is folded behind "+ Add playlist" until the device has one', async () => {
+  seedAssigned();
+  let html = renderDevices(rows);
+  assert.strictEqual((html.match(/<details class="playlist2">/g) || []).length, 2, 'both rows closed');
+  assert.strictEqual((html.match(/<summary>\+ Add playlist<\/summary>/g) || []).length, 2);
+  assert.ok(!html.includes('<details class="playlist2" open>'));
+  await post(`/admin/devices/${MAC}/assign2`, SECOND);
+  html = renderDevices(rows);
+  assert.strictEqual((html.match(/<details class="playlist2" open>/g) || []).length, 1, 'the row with a Playlist 2 shows it');
+  assert.strictEqual((html.match(/<summary>\+ Add playlist<\/summary>/g) || []).length, 1, 'the other is still folded');
+});
+
 check('a bad MAC or key is refused, and Add device needs the password', async () => {
   rows = [];
   assert.ok((await addForm({ mac: '1A:2B:3C' })).headers.get('location').includes('notice=bad-mac'));
