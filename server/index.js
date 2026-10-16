@@ -27,6 +27,26 @@ function parseTypedMac(value) {
 
 const DEVICE_KEY_PATTERN = /^[0-9]{6}$/;
 
+/**
+ * The optional playlist on the Add device form. null when none was typed (the device is added
+ * pending, as before); undefined when one was started but is incomplete, which is refused rather
+ * than saved half-filled - a device handed a playlist with no address would only show an error.
+ */
+function typedPlaylist(body) {
+  const field = (name) => String(body[name] || '').trim();
+  const name = field('playlistName');
+  const type = field('type');
+  const m3uUrl = field('m3uUrl');
+  const server = field('xtreamServer');
+  const username = field('xtreamUsername');
+  const password = field('xtreamPassword');
+  if (!name && !m3uUrl && !server && !username && !password) return null;
+  if (!name) return undefined;
+  if (type === 'm3u') return m3uUrl ? { type, name, m3uUrl } : undefined;
+  if (type === 'xtream') return server && username && password ? { type, name, server, username, password } : undefined;
+  return undefined;
+}
+
 app.post('/api/activate', async (req, res) => {
   const mac = normalizeMac(req.body.mac);
   const deviceKey = String(req.body.deviceKey || '').trim();
@@ -86,7 +106,11 @@ app.post('/admin/devices/add', requireAdmin, async (req, res) => {
   const deviceKey = String(req.body.deviceKey || '').trim();
   if (!mac) return res.redirect('/admin?notice=bad-mac');
   if (deviceKey && !DEVICE_KEY_PATTERN.test(deviceKey)) return res.redirect('/admin?notice=bad-key');
-  const added = await db.addDevice(mac, deviceKey);
+  const playlist = typedPlaylist(req.body);
+  if (playlist === undefined) return res.redirect('/admin?notice=bad-playlist');
+  // Never an update: a MAC already on the dashboard keeps the playlist it has. Changing that is
+  // what the row's own Save is for, where the existing playlist is in front of you.
+  const added = await db.addDevice(mac, deviceKey, playlist);
   const notice = added ? 'added' : 'exists';
   res.redirect(`/admin?notice=${notice}&mac=${encodeURIComponent(mac)}#device-${mac.replace(/:/g, '')}`);
 });

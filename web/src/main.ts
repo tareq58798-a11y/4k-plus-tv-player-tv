@@ -41,7 +41,8 @@ import {
 import { openCategoryMenu } from './ui/categoryMenu';
 import { lazyImage, posterArtwork, prefetchAfter } from './ui/images';
 import { appVersion, identity } from './platform/identity';
-import { activate, ActivationPending } from './shared/activation';
+import { activate, ActivationPending, type Activated } from './shared/activation';
+import { forgetDashboardLogin, fromDashboard, takenBack } from './shared/dashboard';
 import { loadM3u } from './shared/m3u';
 import {
   isCategoryLocked, isChannelLocked, isUnlocked, markUnlocked, parental,
@@ -244,6 +245,7 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
             catalogue = await loadM3u(result.name, result.url);
             login = null;
             writeJson(SAVED_M3U, { name: result.name, url: result.url });
+            dropReplacedByM3u(result);
             showSection('home');
           } catch (error) {
             status.textContent = error instanceof Error ? error.message : t('playlist_could_not_be_loaded');
@@ -329,7 +331,7 @@ function loginScreen(message = ''): void {
       activationPanel((activated) => {
         activationStop?.();
         const message = app.querySelector<HTMLElement>('.manual .message');
-        if (message) void connectAndLoad(activated, message);
+        if (message) void connectAndLoad(useFromDashboard(activated), message);
       }),
       el(
         'div',
@@ -401,8 +403,9 @@ function openPlaylist(target: ProviderLogin): void {
  * the next saved playlist opens instead, and with none left the welcome page, as the television's
  * removeSource falls back to its activation screen.
  */
-function removePlaylist(target: ProviderLogin): void {
+function removePlaylist(target: ProviderLogin, message = ''): void {
   void clearCatalogue(cacheKey(target));
+  forgetDashboardLogin(target);
   const wasActive = login !== null && sameAccount(login, target);
   const next = forgetPlaylist(target);
   if (!wasActive) return;
@@ -413,7 +416,7 @@ function removePlaylist(target: ProviderLogin): void {
   removeStored(SAVED_M3U);
   login = null;
   catalogue = null;
-  loginScreen();
+  loginScreen(message);
 }
 
 /** Add Playlist, from Settings. Back returns to Settings > Playlists, where it was opened. */
@@ -446,6 +449,7 @@ async function checkForPlaylist(): Promise<string | null> {
         writeJson(SAVED_M3U, { name: result.name, url: result.url });
         // An M3U has no login; the saved logins stay saved, but none is the one in use.
         removeStored(ACTIVE_LOGIN);
+        dropReplacedByM3u(result);
         showSection('home');
       } catch (error) {
         loginScreen(error instanceof Error ? error.message : t('playlist_could_not_be_loaded'));
@@ -455,11 +459,63 @@ async function checkForPlaylist(): Promise<string | null> {
     clear();
     const status = el('div', { class: 'status' }, t('loading_your_playlist'));
     app.append(status);
-    if (!(await connectAndLoad(result.login, status))) loginScreen(status.textContent ?? '');
+    if (!(await connectAndLoad(useFromDashboard(result.login), status))) loginScreen(status.textContent ?? '');
     return null;
   } catch (error) {
     return error instanceof ActivationPending ? t('check_device_playlist_none') : t('check_device_playlist_failed');
   }
+}
+
+/**
+ * The login to open for one the dashboard has just sent - the viewer's own saved entry when they
+ * already had that account, never overwritten (see shared/dashboard). A dashboard login this one
+ * replaces is removed, with its cached catalogue.
+ */
+function useFromDashboard(sent: ProviderLogin): ProviderLogin {
+  const { use, replaced } = fromDashboard(sent);
+  if (replaced) {
+    void clearCatalogue(cacheKey(replaced));
+    forgetPlaylist(replaced);
+  }
+  return use;
+}
+
+/** The dashboard now gives this set an M3U: the login it gave before is no longer handed out. */
+function dropReplacedByM3u(assigned: Activated): void {
+  const replaced = takenBack(assigned);
+  if (replaced) {
+    void clearCatalogue(cacheKey(replaced));
+    forgetPlaylist(replaced);
+  }
+}
+
+/**
+ * Asks the dashboard what it assigns this set now, and removes what it has taken back. Resolves to
+ * the saved login that was removed, or null. Never rejects: a set that cannot reach the dashboard
+ * keeps everything it has, and is asked again next time.
+ */
+async function syncWithDashboard(): Promise<ProviderLogin | null> {
+  let assigned: Activated | null;
+  try {
+    const { mac, key } = await identity();
+    assigned = await activate(mac, key);
+  } catch (error) {
+    if (!(error instanceof ActivationPending)) return null;
+    assigned = null;
+  }
+  // An M3U only ever arrives from the dashboard (there is no way to type one in), so a saved one
+  // the dashboard no longer assigns goes. When it is what is playing, the welcome page says why.
+  const savedM3u = readJson<{ name: string; url: string } | null>(SAVED_M3U, null);
+  if (savedM3u && !(assigned?.kind === 'm3u' && assigned.url === savedM3u.url)) {
+    removeStored(SAVED_M3U);
+    if (login === null && catalogue !== null) {
+      catalogue = null;
+      loginScreen(t('playlist_removed_from_account', savedM3u.name));
+    }
+  }
+  const gone = takenBack(assigned);
+  if (gone) removePlaylist(gone, t('playlist_removed_from_account', gone.name));
+  return gone;
 }
 
 /**
@@ -822,21 +878,27 @@ function settingsScreen(openAt?: 'language', returnTo?: 'playlist'): void {
     },
     onClearCache: () => {
       if (!login) return;
-      // Drop what is stored and fetch again, which is what a viewer means by "refresh": the
-      // provider has added channels and the copy on the set is behind.
-      void clearCatalogue(cacheKey(login)).then(() => {
-        const saved = login!;
+      const current = login;
+      void (async () => {
+        // Refresh is where a viewer looks for the dashboard's changes, so the dashboard is asked
+        // first: a playlist deleted there is removed here, not fetched again from the provider.
+        const gone = await syncWithDashboard();
+        if (gone && sameAccount(gone, current)) return;
+        // Drop what is stored and fetch again, which is what a viewer means by "refresh": the
+        // provider has added channels and the copy on the set is behind.
+        await clearCatalogue(cacheKey(current));
         catalogue = null;
         clear();
         const status = el('div', { class: 'status' }, t('loading_your_playlist'));
         app.append(status);
-        void connectAndLoad(saved, status);
-      });
+        void connectAndLoad(current, status);
+      })();
     },
     onSignOut: () => {
       // The catalogue goes with the account. Leaving one behind would mean the next sign-in
       // opened on somebody else's playlist.
       if (login) void clearCatalogue(cacheKey(login));
+      if (login) forgetDashboardLogin(login);
       removeStored(ACTIVE_LOGIN);
       // The M3U goes too. Leaving it would have the next start quietly reload the playlist the
       // viewer has just removed.
@@ -2354,14 +2416,22 @@ const STOPPED_MESSAGE = 'The channel stopped sending a picture. Trying again…'
  * The service lists a device in the dashboard the first time the device asks it for a playlist -
  * and a device only asked from the welcome page or Check for playlist. One that was signed in
  * already went straight to Home and never asked, so its MAC never appeared and nothing (an M3U, a
- * new login) could be assigned to it. Asked here in the background, and the answer is left alone:
- * picking up an assignment stays with Check for playlist, so a playlist in use never changes under
- * the viewer by itself.
+ * new login) could be assigned to it. Asked here in the background.
+ *
+ * A new assignment is still left alone - picking one up stays with Check for playlist, so a
+ * playlist in use never changes under the viewer by itself. A deletion is not: a playlist the
+ * dashboard has taken back is removed (see syncWithDashboard), or it came back on every start. The
+ * answer is acted on only once the saved playlist is open, so it cannot race start() to it.
  */
 function announceDevice(): void {
-  void identity()
-    .then(({ mac, key }) => activate(mac, key))
-    .catch(() => undefined);
+  void (async () => {
+    const opening = () =>
+      (activeLogin() !== null && login === null) || (readJson(SAVED_M3U, null) !== null && catalogue === null);
+    for (let waited = 0; waited < 60_000 && opening(); waited += 500) {
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+    }
+    await syncWithDashboard();
+  })();
 }
 
 function boot(): void {

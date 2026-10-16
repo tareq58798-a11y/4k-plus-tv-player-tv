@@ -463,6 +463,19 @@ Off a Samsung set - in a browser during development - there is no hardware MAC, 
 generated once with the locally-administered bit set and kept, and the page says so rather than
 sending somebody hunting through their TV settings for a number that is not there.
 
+### A playlist deleted in the dashboard is removed from the set
+
+The set remembers which saved login the dashboard gave it (`src/shared/dashboard.ts`, ported from
+`PlaylistSourceStore.dashboardSourceId` and `PlaylistRepository.syncWithDashboard`), and asks the
+dashboard again at start-up - once the saved playlist is open - and before Refresh playlist. A login
+the dashboard no longer assigns is removed with its cached catalogue; so is a saved M3U, which only
+ever comes from the dashboard. A login the viewer typed in is never removed or overwritten, even when
+the dashboard later assigns the same account. Nothing changes when the dashboard cannot be reached.
+
+One difference: the television says so in a snackbar wherever the viewer is. This app has no
+snackbar, so the sentence appears on the welcome page when nothing is left to open, and the next
+saved playlist simply opens when there is one.
+
 ### The activation service sends no CORS headers
 
 Verified directly: `POST /api/activate` with an unassigned MAC returns `{"status":"pending"}` and

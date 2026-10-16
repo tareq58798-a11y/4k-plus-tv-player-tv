@@ -500,6 +500,17 @@ private fun App() {
         }
     }
 
+    // The dashboard took back the playlist it had given this device (deleted there, or replaced
+    // by another). Said once, and with nothing left to watch the viewer is taken to activation,
+    // where the dashboard's next playlist arrives - not left on a catalogue that is no longer theirs.
+    val dashboardRemoved by playlistViewModel.dashboardRemoved.collectAsStateWithLifecycle()
+    LaunchedEffect(dashboardRemoved) {
+        val removed = dashboardRemoved ?: return@LaunchedEffect
+        message("\"${removed.name}\" was removed from your account")
+        if (playlistViewModel.uiState.value.activeSource == null && screen != Screen.LOADING) screen = Screen.ACTIVATION
+        playlistViewModel.dashboardRemovalShown()
+    }
+
     FourKPlusTheme(darkTheme = useDark) {
         // The backdrop sits behind the Scaffold rather than inside it: Scaffold insets its content
         // past the status and navigation bars, so a backdrop drawn in there leaves those strips
@@ -746,7 +757,12 @@ private fun App() {
                         scope.launch {
                             playlistViewModel.refreshActive()
                                 .onSuccess { message("Playlist refreshed") }
-                                .onFailure { message(it.message ?: "Playlist refresh failed") }
+                                .onFailure {
+                                    // Already said, by the dashboardRemoved effect above.
+                                    if (it !is com.fourkplus.tvplayer.viewmodel.DashboardPlaylistRemovedException) {
+                                        message(it.message ?: "Playlist refresh failed")
+                                    }
+                                }
                         }
                     },
                     // Asks the activation service what, if anything, is now assigned to this

@@ -32,14 +32,29 @@ async function upsertPendingDevice(mac, deviceKey) {
  *
  * last_seen is set to the epoch rather than now, because "last seen" is a claim about the device
  * and this one has not been seen; the page shows it as "Never". Returns false when the MAC is
- * already on the dashboard, which is left exactly as it was.
+ * already on the dashboard, which is left exactly as it was - its playlist included.
+ *
+ * [playlist], when given, is assigned in the same insert: { type: 'm3u', name, m3uUrl } or
+ * { type: 'xtream', name, server, username, password }. One statement, so a MAC that is already
+ * there can never have a playlist written over it by an Add that lost the race.
  */
-async function addDevice(mac, deviceKey) {
+async function addDevice(mac, deviceKey, playlist = null) {
+  const p = playlist || {};
   const result = await pool.query(
-    `insert into devices (mac, device_key, last_seen)
-     values ($1, $2, 'epoch')
+    `insert into devices (mac, device_key, last_seen, status, playlist_type, playlist_name,
+                          m3u_url, xtream_server, xtream_username, xtream_password)
+     values ($1, $2, 'epoch', $3, $4, $5, $6, $7, $8, $9)
      on conflict (mac) do nothing`,
-    [mac, deviceKey]
+    [
+      mac, deviceKey,
+      playlist ? 'assigned' : 'pending',
+      playlist ? p.type : null,
+      playlist ? p.name : null,
+      p.type === 'm3u' ? p.m3uUrl : null,
+      p.type === 'xtream' ? p.server : null,
+      p.type === 'xtream' ? p.username : null,
+      p.type === 'xtream' ? p.password : null
+    ]
   );
   return result.rowCount > 0;
 }

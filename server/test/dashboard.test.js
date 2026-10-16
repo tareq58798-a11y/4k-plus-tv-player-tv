@@ -23,11 +23,18 @@ const fakeDb = {
       last_seen: new Date().toISOString()
     });
   },
-  addDevice: async (mac, deviceKey) => {
+  addDevice: async (mac, deviceKey, playlist = null) => {
     if (rows.find((r) => r.mac === mac)) return false;
+    const p = playlist || {};
     rows.push({
-      mac, device_key: deviceKey, status: 'pending', playlist_type: null, playlist_name: null,
-      m3u_url: null, xtream_server: null, xtream_username: null, xtream_password: null,
+      mac, device_key: deviceKey,
+      status: playlist ? 'assigned' : 'pending',
+      playlist_type: playlist ? p.type : null,
+      playlist_name: playlist ? p.name : null,
+      m3u_url: p.type === 'm3u' ? p.m3uUrl : null,
+      xtream_server: p.type === 'xtream' ? p.server : null,
+      xtream_username: p.type === 'xtream' ? p.username : null,
+      xtream_password: p.type === 'xtream' ? p.password : null,
       last_seen: new Date(0).toISOString()
     });
     return true;
@@ -290,6 +297,52 @@ check('adding a MAC already on the dashboard changes nothing', async () => {
   const res = await addForm({ mac: MAC, deviceKey: '000000' });
   assert.ok(res.headers.get('location').includes('notice=exists'));
   assert.strictEqual(JSON.stringify(rows), before);
+});
+
+check('Add device can bring an Xtream playlist with it, and the first check-in gets it', async () => {
+  rows = [];
+  const res = await addForm({
+    mac: '1A:2B:3C:4D:5E:6F', playlistName: 'Home', type: 'xtream',
+    xtreamServer: 'http://example.invalid', xtreamUsername: 'u', xtreamPassword: 'p'
+  });
+  assert.ok(res.headers.get('location').includes('notice=added'));
+  assert.strictEqual(rows[0].status, 'assigned');
+  const body = await poll('1A:2B:3C:4D:5E:6F', '424242');
+  assert.strictEqual(body.status, 'assigned');
+  assert.strictEqual(body.type, 'xtream');
+  assert.strictEqual(body.name, 'Home');
+});
+
+check('Add device can bring an M3U playlist with it', async () => {
+  rows = [];
+  await addForm({ mac: '1A:2B:3C:4D:5E:6F', playlistName: 'List', type: 'm3u', m3uUrl: 'http://example.invalid/list.m3u' });
+  const body = await poll('1A:2B:3C:4D:5E:6F', '424242');
+  assert.strictEqual(body.type, 'm3u');
+  assert.strictEqual(body.url, 'http://example.invalid/list.m3u');
+});
+
+check('adding a MAC already listed never overwrites its playlist', async () => {
+  seedAssigned();
+  const before = JSON.stringify(rows);
+  const res = await addForm({
+    mac: MAC, playlistName: 'Other', type: 'xtream',
+    xtreamServer: 'http://other.invalid', xtreamUsername: 'x', xtreamPassword: 'y'
+  });
+  assert.ok(res.headers.get('location').includes('notice=exists'));
+  assert.strictEqual(JSON.stringify(rows), before, 'the existing playlist is exactly as it was');
+});
+
+check('a half-filled playlist is refused and nothing is added', async () => {
+  rows = [];
+  for (const fields of [
+    { mac: '1A:2B:3C:4D:5E:6F', playlistName: 'Home', type: 'xtream', xtreamServer: 'http://example.invalid' },
+    { mac: '1A:2B:3C:4D:5E:6F', type: 'm3u', m3uUrl: 'http://example.invalid/list.m3u' },
+    { mac: '1A:2B:3C:4D:5E:6F', playlistName: 'Home', type: 'm3u' }
+  ]) {
+    const res = await addForm(fields);
+    assert.ok(res.headers.get('location').includes('notice=bad-playlist'), JSON.stringify(fields));
+  }
+  assert.strictEqual(rows.length, 0);
 });
 
 check('a bad MAC or key is refused, and Add device needs the password', async () => {

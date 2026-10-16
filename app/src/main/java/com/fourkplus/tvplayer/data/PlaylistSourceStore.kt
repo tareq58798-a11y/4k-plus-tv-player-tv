@@ -75,6 +75,36 @@ internal class PlaylistSourceStore(context: Context) {
         writeActiveSource(cleaned)
     }
 
+    /**
+     * Which saved source the dashboard gave this device, by [sourceId], or null for none.
+     *
+     * Only that one is the dashboard's to take away. A source the viewer typed in themselves is
+     * theirs, and stays theirs even when the dashboard later assigns the same account - so the
+     * marker is never set on a source that was already saved before the dashboard sent it.
+     */
+    fun dashboardSourceId(): String? = preferences.getString("dashboard_source_id", null)
+
+    fun setDashboardSourceId(id: String?) {
+        preferences.edit().apply { if (id == null) remove("dashboard_source_id") else putString("dashboard_source_id", id) }.apply()
+    }
+
+    /**
+     * Removes the saved source with [id], whether or not it is the active one. When it was active,
+     * the first remaining source becomes active. Does not touch cache files - the caller owns that.
+     */
+    fun removeSource(id: String) {
+        val wasActive = savedSource()?.sourceId() == id
+        val remaining = savedSources().filterNot { it.sourceId() == id }
+        if (remaining.isEmpty()) {
+            preferences.edit().remove("sources_json").remove("active_source_id")
+                .remove("name").remove("kind").remove("address").remove("username").remove("password").apply()
+            return
+        }
+        val active = if (wasActive) remaining.first() else savedSource() ?: remaining.first()
+        writeSources(remaining, active.sourceId())
+        writeActiveSource(active)
+    }
+
     /** Clears the active source's saved credentials/preferences. Does not touch cache files on disk — the caller owns that. */
     fun clearActiveSource() {
         val active = savedSource()

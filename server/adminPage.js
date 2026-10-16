@@ -79,8 +79,9 @@ document.querySelectorAll('select[data-type-toggle]').forEach(function(select) {
 
 /** What the page says after Add device, by the notice the route redirects with. */
 const NOTICES = {
-  added: ['The device was added. Assign it a playlist below; it receives it the next time it checks in.', false],
-  exists: ['That MAC is already on the dashboard, so nothing was added. Its row is highlighted below.', true],
+  added: ['The device was added. It receives its playlist the next time it checks in; if you added it without one, assign it below.', false],
+  exists: ['That MAC is already on the dashboard, so nothing was added and its playlist was not changed. Its row is highlighted below.', true],
+  'bad-playlist': ['The playlist is incomplete, so nothing was added. Give it a name and either an M3U URL, or a server, username and password - or leave all of the playlist fields empty.', true],
   'bad-mac': ['That is not a MAC address. It needs twelve letters A-F and digits, like 1A:2B:3C:4D:5E:6F.', true],
   'bad-key': ['The device key must be the six digits shown on the device, or left blank.', true]
 };
@@ -147,7 +148,18 @@ function renderDevices(devices, notice = '') {
       <strong>Add device</strong>
       <input type="text" name="mac" placeholder="MAC, e.g. 1A:2B:3C:4D:5E:6F" required dir="ltr" autocomplete="off">
       <input type="text" name="deviceKey" placeholder="Device key (optional)" inputmode="numeric" maxlength="6" dir="ltr" autocomplete="off">
+      <span class="muted">Playlist (optional):</span>
+      <input type="text" name="playlistName" placeholder="Playlist name" autocomplete="off">
+      <select name="type" data-type-toggle>
+        <option value="xtream">Xtream login</option>
+        <option value="m3u">M3U URL</option>
+      </select>
+      <input data-m3u type="text" name="m3uUrl" placeholder="M3U URL" autocomplete="off">
+      <input data-xtream type="text" name="xtreamServer" placeholder="Server (http://host)" autocomplete="off">
+      <input data-xtream type="text" name="xtreamUsername" placeholder="Username" autocomplete="off">
+      <input data-xtream type="text" name="xtreamPassword" placeholder="Password" autocomplete="off">
       <button type="submit">Add</button>
+      <span class="muted">A MAC that is already listed is never changed by Add.</span>
     </form>
     <table>
       <thead><tr><th>MAC</th><th>Device key</th><th>Status</th><th>Type</th><th>Last seen</th><th>Assign playlist</th></tr></thead>
