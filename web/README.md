@@ -472,6 +472,16 @@ the dashboard no longer assigns is removed with its cached catalogue; so is a sa
 ever comes from the dashboard. A login the viewer typed in is never removed or overwritten, even when
 the dashboard later assigns the same account. Nothing changes when the dashboard cannot be reached.
 
+The dashboard can assign a set two playlists. The activation reply keeps the first at the top level,
+as it always was, and lists both under `playlists` (`activateAll` in `src/shared/activation.ts`).
+The first is opened; a second login is saved beside it for the viewer to switch to, and is the
+dashboard's to take back like the first. A second playlist added in the dashboard later is saved at
+the next start or Refresh, never switched to.
+
+Second difference: the television keeps any number of saved sources of any kind, but this app keeps
+one M3U at a time (`SAVED_M3U`), so when both dashboard playlists are M3U links only the first is
+kept here. Two logins, or a login and an M3U, are both kept.
+
 One difference: the television says so in a snackbar wherever the viewer is. This app has no
 snackbar, so the sentence appears on the welcome page when nothing is left to open, and the next
 saved playlist simply opens when there is one.

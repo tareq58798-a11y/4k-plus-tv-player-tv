@@ -28,7 +28,12 @@ internal object DeviceActivationClient {
     /** [input] carries the MAC in [PlaylistInput.username] and the device key in
      *  [PlaylistInput.password]. Returns a resolved M3U_URL or PROVIDER_LOGIN input, or throws
      *  if the activation server hasn't had a playlist assigned to this device yet. */
-    suspend fun resolve(input: PlaylistInput, activationUrl: String = ACTIVATION_URL): PlaylistInput {
+    suspend fun resolve(input: PlaylistInput, activationUrl: String = ACTIVATION_URL): PlaylistInput =
+        resolveAll(input, activationUrl).first()
+
+    /** Every playlist the dashboard assigns this device, first one first - up to two. A service that
+     *  sends no `playlists` list (or an older one) gives the single top-level playlist, as always. */
+    suspend fun resolveAll(input: PlaylistInput, activationUrl: String = ACTIVATION_URL): List<PlaylistInput> {
         val requestBody = JSONObject()
             .put("mac", input.username)
             .put("deviceKey", input.password)
@@ -64,6 +69,15 @@ internal object DeviceActivationClient {
             throw ActivationPendingException()
         }
         require(json.optString("status") == "assigned") { "The activation service returned an unexpected status." }
+        val listed = json.optJSONArray("playlists")
+        if (listed != null && listed.length() > 0) {
+            val all = (0 until listed.length()).mapNotNull { index -> listed.optJSONObject(index)?.let(::playlistOf) }
+            if (all.isNotEmpty()) return all
+        }
+        return listOf(playlistOf(json) ?: throw IllegalArgumentException("The activation service returned an unsupported playlist type."))
+    }
+
+    private fun playlistOf(json: JSONObject): PlaylistInput? {
         val name = json.optString("name").takeIf(String::isNotBlank) ?: "Activated playlist"
         return when (json.optString("type")) {
             "m3u" -> PlaylistInput(
@@ -78,7 +92,7 @@ internal object DeviceActivationClient {
                 username = json.optString("username"),
                 password = json.optString("password")
             )
-            else -> throw IllegalArgumentException("The activation service returned an unsupported playlist type.")
+            else -> null
         }
     }
 }

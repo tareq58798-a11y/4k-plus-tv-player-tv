@@ -1,6 +1,7 @@
 /**
- * Which saved playlist the dashboard gave this set, ported from PlaylistSourceStore.kt's
- * dashboardSourceId and PlaylistRepository.kt's saveFromDashboard / syncWithDashboard.
+ * Which saved playlists the dashboard gave this set - up to two - ported from
+ * PlaylistSourceStore.kt's dashboardSourceIds and PlaylistRepository.kt's saveFromDashboard /
+ * syncWithDashboard.
  *
  * Deleting a playlist in the dashboard used to wipe it there and nowhere else: the set had saved
  * its own copy as an ordinary login, Refresh playlist reloaded that copy from the provider without
@@ -8,25 +9,31 @@
  * reseller had deleted carried on, and "came back" on every refresh. The dashboard decides what it
  * hands out; this is where the set remembers what that was, and hears when it is taken back.
  *
- * Only the dashboard's own login is ever taken away. One the viewer typed in is theirs, and stays
+ * Only the dashboard's own logins are ever taken away. One the viewer typed in is theirs, and stays
  * theirs even when the dashboard later assigns the same account.
+ *
+ * Logins only. This app keeps one M3U at a time (SAVED_M3U in main.ts), which can only ever have
+ * come from the dashboard, so main.ts handles it directly; a second M3U is not kept.
  */
 import { readJson, remove, writeJson } from '../platform/storage';
 import type { Activated } from './activation';
 import type { ProviderLogin } from './models';
 import { sameAccount, savedPlaylists } from './playlists';
 
-/** The account the dashboard gave, by the identity sameAccount compares: address and username. */
+/** The accounts the dashboard gave, by the identity sameAccount compares: address and username. */
 const DASHBOARD = 'dashboard';
 
 type Marker = { address: string; username: string };
 
-function marker(): Marker | null {
-  return readJson<Marker | null>(DASHBOARD, null);
+/** The marked accounts. An earlier build kept a single one, not a list; that still reads. */
+function markers(): Marker[] {
+  const stored = readJson<Marker | Marker[] | null>(DASHBOARD, null);
+  if (!stored) return [];
+  return Array.isArray(stored) ? stored : [stored];
 }
 
-function setMarker(login: ProviderLogin | null): void {
-  if (login) writeJson(DASHBOARD, { address: login.address, username: login.username });
+function setMarkers(logins: ProviderLogin[]): void {
+  if (logins.length > 0) writeJson(DASHBOARD, logins.map(({ address, username }) => ({ address, username })));
   else remove(DASHBOARD);
 }
 
@@ -34,47 +41,78 @@ function asLogin(m: Marker): ProviderLogin {
   return { name: '', address: m.address, username: m.username, password: '' };
 }
 
-/**
- * What to open for a login the dashboard has just sent.
- *
- * The viewer's own saved entry when they already had that account - their name, their password,
- * not overwritten - and otherwise what was sent, now remembered as the dashboard's. [replaced] is
- * the dashboard login this one takes over from, for the caller to remove: the dashboard no longer
- * gives it out.
- */
-export function fromDashboard(sent: ProviderLogin): { use: ProviderLogin; replaced: ProviderLogin | null } {
-  const previous = marker();
-  const isPrevious = previous !== null && sameAccount(asLogin(previous), sent);
-  const own = savedPlaylists().find((entry) => sameAccount(entry, sent));
-  if (own && !isPrevious) return { use: own, replaced: null };
-  setMarker(sent);
-  const replaced = previous && !isPrevious ? savedPlaylists().find((entry) => sameAccount(entry, asLogin(previous))) ?? null : null;
-  return { use: sent, replaced };
+function isMarked(login: ProviderLogin, list: Marker[]): boolean {
+  return list.some((m) => sameAccount(asLogin(m), login));
 }
 
-/** The dashboard's login, if the viewer has removed it themselves: it is no longer anybody's. */
+function loginsOf(assigned: Activated[]): ProviderLogin[] {
+  return assigned.flatMap((entry) => (entry.kind === 'xtream' ? [entry.login] : []));
+}
+
+/**
+ * What to do with the playlists the dashboard has just sent.
+ *
+ * [first] is the login to open when the first playlist is a login (null for an M3U, which main.ts
+ * opens itself): the viewer's own saved entry when they already had that account - their name,
+ * their password, not overwritten - and otherwise what was sent, now remembered as the dashboard's.
+ * [extras] are the other logins, for the caller to save beside it without opening them; [replaced]
+ * are dashboard logins it no longer sends, for the caller to remove.
+ */
+export function fromDashboard(sent: Activated[]): {
+  first: ProviderLogin | null;
+  extras: ProviderLogin[];
+  replaced: ProviderLogin[];
+} {
+  const previous = markers();
+  const saved = savedPlaylists();
+  const logins = loginsOf(sent);
+  const replaced = saved.filter((entry) => isMarked(entry, previous) && !logins.some((l) => sameAccount(l, entry)));
+  const marked: ProviderLogin[] = [];
+  const resolved = logins.map((login) => {
+    const own = saved.find((entry) => sameAccount(entry, login) && !isMarked(entry, previous));
+    if (own) return own;
+    marked.push(login);
+    return login;
+  });
+  setMarkers(marked);
+  const firstIsLogin = sent[0]?.kind === 'xtream';
+  return {
+    first: firstIsLogin ? resolved[0] ?? null : null,
+    extras: firstIsLogin ? resolved.slice(1) : resolved,
+    replaced,
+  };
+}
+
+/** A dashboard login the viewer has removed themselves: it is no longer anybody's. */
 export function forgetDashboardLogin(login: ProviderLogin): void {
-  const current = marker();
-  if (current && sameAccount(asLogin(current), login)) setMarker(null);
+  const current = markers();
+  if (isMarked(login, current)) setMarkers(current.filter((m) => !sameAccount(asLogin(m), login)).map(asLogin));
 }
 
 /**
- * The saved login the dashboard has taken back, given what it now assigns ([assigned], or null for
- * nothing) - for the caller to remove. Null when nothing is to go.
+ * Given what the dashboard assigns now ([assigned], empty for nothing): the saved logins it has
+ * taken back, for the caller to remove, and new logins it has given since - a Playlist 2 added later
+ * - for the caller to save beside the others without opening them.
  *
- * Saved by a build that did not keep the marker, the login matching what the dashboard assigns now
- * is evidently the one it gave, so it is adopted and a later deletion reaches it. One the dashboard
- * no longer assigns cannot be told apart from a login the viewer typed in, so it is left alone.
+ * Saved by a build that did not keep the marker, the logins matching what the dashboard assigns now
+ * are evidently the ones it gave, so they are adopted and a later deletion reaches them. One the
+ * dashboard no longer assigns cannot be told apart from a login the viewer typed in, so it is left
+ * alone - and with nothing adopted, the set is not one the dashboard looks after, so nothing is
+ * added to it either.
  */
-export function takenBack(assigned: Activated | null): ProviderLogin | null {
-  const current = marker();
-  const now = assigned?.kind === 'xtream' ? assigned.login : null;
-  if (!current) {
-    const adopt = now ? savedPlaylists().find((entry) => sameAccount(entry, now)) : undefined;
-    if (adopt) setMarker(adopt);
-    return null;
+export function takenBack(assigned: Activated[]): { removed: ProviderLogin[]; added: ProviderLogin[] } {
+  const saved = savedPlaylists();
+  const logins = loginsOf(assigned);
+  let current = markers();
+  if (current.length === 0) {
+    const adopted = logins.filter((login) => saved.some((entry) => sameAccount(entry, login)));
+    setMarkers(adopted);
+    if (adopted.length === 0) return { removed: [], added: [] };
+    current = adopted;
   }
-  if (now && sameAccount(asLogin(current), now)) return null;
-  setMarker(null);
-  return savedPlaylists().find((entry) => sameAccount(entry, asLogin(current))) ?? null;
+  const removed = saved.filter((entry) => isMarked(entry, current) && !logins.some((l) => sameAccount(l, entry)));
+  const added = logins.filter((login) => !isMarked(login, current) && !saved.some((entry) => sameAccount(entry, login)));
+  const kept = current.map(asLogin).filter((m) => logins.some((l) => sameAccount(l, m)));
+  setMarkers([...kept, ...added]);
+  return { removed, added };
 }

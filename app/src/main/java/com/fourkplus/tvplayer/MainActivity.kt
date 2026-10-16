@@ -505,8 +505,9 @@ private fun App() {
     // where the dashboard's next playlist arrives - not left on a catalogue that is no longer theirs.
     val dashboardRemoved by playlistViewModel.dashboardRemoved.collectAsStateWithLifecycle()
     LaunchedEffect(dashboardRemoved) {
-        val removed = dashboardRemoved ?: return@LaunchedEffect
-        message("\"${removed.name}\" was removed from your account")
+        if (dashboardRemoved.isEmpty()) return@LaunchedEffect
+        message(dashboardRemoved.joinToString(" and ") { "\"${it.name}\"" } +
+            (if (dashboardRemoved.size == 1) " was" else " were") + " removed from your account")
         if (playlistViewModel.uiState.value.activeSource == null && screen != Screen.LOADING) screen = Screen.ACTIVATION
         playlistViewModel.dashboardRemovalShown()
     }

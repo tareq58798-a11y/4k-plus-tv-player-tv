@@ -67,25 +67,47 @@ internal class PlaylistSourceStore(context: Context) {
         writeActiveSource(renamed)
     }
 
-    fun saveSource(input: PlaylistInput) {
+    /** Saves [input], and makes it the one in use unless [makeActive] is false - a second dashboard
+     *  playlist is saved beside the one playing, not switched to. */
+    fun saveSource(input: PlaylistInput, makeActive: Boolean = true) {
         val cleaned = input.copy(name = input.name.trim(), address = input.address.trim())
         val id = cleaned.sourceId()
-        val updated = savedSources().filterNot { it.sourceId() == id } + cleaned
-        writeSources(updated, id)
-        writeActiveSource(cleaned)
+        val active = if (makeActive) null else savedSource()
+        val existingIndex = savedSources().indexOfFirst { it.sourceId() == id }
+        val updated = if (makeActive || existingIndex < 0) {
+            savedSources().filterNot { it.sourceId() == id } + cleaned
+        } else {
+            savedSources().toMutableList().also { it[existingIndex] = cleaned }
+        }
+        if (active == null) {
+            writeSources(updated, id)
+            writeActiveSource(cleaned)
+        } else {
+            writeSources(updated, active.sourceId())
+        }
     }
 
     /**
-     * Which saved source the dashboard gave this device, by [sourceId], or null for none.
+     * Which saved sources the dashboard gave this device, by [sourceId] - up to two, since it can
+     * assign a device two playlists.
      *
-     * Only that one is the dashboard's to take away. A source the viewer typed in themselves is
-     * theirs, and stays theirs even when the dashboard later assigns the same account - so the
-     * marker is never set on a source that was already saved before the dashboard sent it.
+     * Only those are the dashboard's to take away. A source the viewer typed in themselves is
+     * theirs, and stays theirs even when the dashboard later assigns the same account - so a source
+     * already saved before the dashboard sent it is never marked. Reads the single id an earlier
+     * build kept, so a set upgrading from it keeps its marker.
      */
-    fun dashboardSourceId(): String? = preferences.getString("dashboard_source_id", null)
+    fun dashboardSourceIds(): Set<String> {
+        preferences.getString("dashboard_source_ids", null)?.let { stored ->
+            return runCatching { JSONArray(stored).let { array -> (0 until array.length()).map(array::getString).toSet() } }
+                .getOrDefault(emptySet())
+        }
+        return setOfNotNull(preferences.getString("dashboard_source_id", null))
+    }
 
-    fun setDashboardSourceId(id: String?) {
-        preferences.edit().apply { if (id == null) remove("dashboard_source_id") else putString("dashboard_source_id", id) }.apply()
+    fun setDashboardSourceIds(ids: Set<String>) {
+        preferences.edit().remove("dashboard_source_id").apply {
+            if (ids.isEmpty()) remove("dashboard_source_ids") else putString("dashboard_source_ids", JSONArray(ids.toList()).toString())
+        }.apply()
     }
 
     /**

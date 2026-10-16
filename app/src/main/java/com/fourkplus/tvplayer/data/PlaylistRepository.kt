@@ -27,10 +27,11 @@ class PlaylistRepository(context: Context) {
             // Resolved via our own trusted activation backend, not raw end-user text entry,
             // so it deliberately skips the ApprovedServers host allowlist below.
             if (input.kind == PlaylistKind.DEVICE_ACTIVATION) {
-                val resolved = DeviceActivationClient.resolve(input)
+                val all = DeviceActivationClient.resolveAll(input)
+                val resolved = all.first()
                 val playlist = client.load(resolved)
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                saveFromDashboard(resolved)
+                saveFromDashboard(all)
                 cacheStore.save(resolved, playlist)
                 return@runCatching playlist
             }
@@ -54,15 +55,17 @@ class PlaylistRepository(context: Context) {
     ): Result<LoadedPlaylist> = withContext(Dispatchers.IO) {
         try {
             val fromDashboard = input.kind == PlaylistKind.DEVICE_ACTIVATION
-            val resolved = if (fromDashboard) {
-                PlaylistTiming.measure("activation") { DeviceActivationClient.resolve(input) }
+            // From the dashboard: every playlist it assigns, the first of which is the one opened.
+            val all = if (fromDashboard) {
+                PlaylistTiming.measure("activation") { DeviceActivationClient.resolveAll(input) }
             } else {
                 require(sourceStore.savedSources().any { it.sourceId() == input.sourceId() } || ApprovedServers.allows(input)) {
                     "Please add an account using Server 1 or Server 2."
                 }
-                input
+                listOf(input)
             }
-            val save: (PlaylistInput) -> Unit = if (fromDashboard) ::saveFromDashboard else sourceStore::saveSource
+            val resolved = all.first()
+            val save: (PlaylistInput) -> Unit = if (fromDashboard) { _ -> saveFromDashboard(all) } else { source -> sourceStore.saveSource(source) }
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             val playlist = client.loadProgressively(resolved) { partial ->
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -84,36 +87,44 @@ class PlaylistRepository(context: Context) {
     }
 
     /**
-     * Saves a playlist the dashboard sent, and remembers that it is the dashboard's.
+     * Saves the playlists the dashboard sent - one or two - and remembers that they are the
+     * dashboard's. The first is made the one in use; a second is saved beside it, for the viewer to
+     * switch to from Playlists.
      *
      * One the viewer had already saved themselves is left exactly as they saved it - their name,
-     * their password - and only made the one in use: the dashboard handing out the same account
-     * does not make it the dashboard's to rename, or later to take away. And a dashboard playlist
-     * that this one replaces goes, cache and all, since the dashboard no longer gives it out.
+     * their password - and only made the one in use when it comes first: the dashboard handing out
+     * the same account does not make it the dashboard's to rename, or later to take away. And a
+     * dashboard playlist it no longer sends goes, cache and all, since it no longer gives it out.
      */
-    private fun saveFromDashboard(resolved: PlaylistInput) {
-        val id = resolved.sourceId()
-        val previousId = sourceStore.dashboardSourceId()
-        val existing = sourceStore.savedSources().firstOrNull { it.sourceId() == id }
-        if (existing != null && previousId != id) {
-            sourceStore.selectSavedSource(existing)
-            return
-        }
-        if (previousId != null && previousId != id) {
-            sourceStore.savedSources().firstOrNull { it.sourceId() == previousId }?.let { replaced ->
-                sourceStore.removeSource(previousId)
-                cacheStore.deleteFor(replaced)
+    private fun saveFromDashboard(all: List<PlaylistInput>) {
+        val markers = sourceStore.dashboardSourceIds()
+        val sentIds = all.map { it.sourceId() }.toSet()
+        (markers - sentIds).forEach { goneId ->
+            sourceStore.savedSources().firstOrNull { it.sourceId() == goneId }?.let { gone ->
+                sourceStore.removeSource(goneId)
+                cacheStore.deleteFor(gone)
             }
         }
-        sourceStore.saveSource(resolved)
-        sourceStore.setDashboardSourceId(id)
+        val nowMarked = (markers intersect sentIds).toMutableSet()
+        all.forEachIndexed { index, sent ->
+            val id = sent.sourceId()
+            val own = sourceStore.savedSources().firstOrNull { it.sourceId() == id }?.takeIf { id !in markers }
+            if (own != null) {
+                if (index == 0) sourceStore.selectSavedSource(own)
+            } else {
+                sourceStore.saveSource(sent, makeActive = index == 0)
+                nowMarked += id
+            }
+        }
+        sourceStore.setDashboardSourceIds(nowMarked)
     }
 
     /** What [syncWithDashboard] found. */
     sealed interface DashboardSync {
         data object Unchanged : DashboardSync
-        /** [source], which the dashboard had given this device, has been removed from it. */
-        data class Removed(val source: PlaylistInput) : DashboardSync
+        /** The dashboard took back [removed] (already off the device) and/or gave new playlists, now
+         *  saved beside the others ([added]). */
+        data class Changed(val removed: List<PlaylistInput>, val added: Boolean) : DashboardSync
     }
 
     /**
@@ -126,15 +137,18 @@ class PlaylistRepository(context: Context) {
      * "came back" on every refresh. The dashboard decides what it hands out; this is where the
      * device hears that it took something back.
      *
-     * Only the dashboard's own source is ever removed (see [PlaylistSourceStore.dashboardSourceId]).
+     * Only the dashboard's own sources are ever removed (see [PlaylistSourceStore.dashboardSourceIds]).
      * Nothing changes when the dashboard cannot be reached: a television without internet must not
      * lose its playlist, and the question is asked again next time.
+     *
+     * A playlist the dashboard has given since - a Playlist 2 added later - is saved beside the
+     * others, never switched to: what is on screen does not change under the viewer.
      */
     suspend fun syncWithDashboard(): DashboardSync = withContext(Dispatchers.IO) {
         val saved = sourceStore.savedSources()
-        val markerId = sourceStore.dashboardSourceId()
+        var markers = sourceStore.dashboardSourceIds()
         if (saved.isEmpty()) {
-            if (markerId != null) sourceStore.setDashboardSourceId(null)
+            if (markers.isNotEmpty()) sourceStore.setDashboardSourceIds(emptySet())
             return@withContext DashboardSync.Unchanged
         }
         val identity = PlaylistInput(
@@ -144,29 +158,35 @@ class PlaylistRepository(context: Context) {
             username = DeviceIdentity.mac(appContext),
             password = DeviceIdentity.deviceKey(appContext)
         )
-        val assignedId = try {
-            DeviceActivationClient.resolve(identity).sourceId()
+        val assigned = try {
+            DeviceActivationClient.resolveAll(identity)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: ActivationPendingException) {
-            null
+            emptyList()
         } catch (e: Exception) {
             return@withContext DashboardSync.Unchanged
         }
-        if (markerId == null) {
-            // Saved by a build that did not keep the marker. The source matching what the dashboard
-            // assigns now is evidently the one it gave, so it is adopted, and a later deletion in the
-            // dashboard reaches it. One the dashboard no longer assigns cannot be told apart from a
-            // source the viewer typed in, so it is left alone.
-            if (assignedId != null && saved.any { it.sourceId() == assignedId }) sourceStore.setDashboardSourceId(assignedId)
-            return@withContext DashboardSync.Unchanged
+        val assignedIds = assigned.map { it.sourceId() }.toSet()
+        if (markers.isEmpty()) {
+            // Saved by a build that did not keep the marker. Sources matching what the dashboard
+            // assigns now are evidently the ones it gave, so they are adopted, and a later deletion
+            // in the dashboard reaches them. One the dashboard no longer assigns cannot be told apart
+            // from a source the viewer typed in, so it is left alone - and with nothing adopted, the
+            // device is not one the dashboard looks after, and nothing is added to it either.
+            markers = assignedIds.filter { id -> saved.any { it.sourceId() == id } }.toSet()
+            sourceStore.setDashboardSourceIds(markers)
+            if (markers.isEmpty()) return@withContext DashboardSync.Unchanged
         }
-        if (markerId == assignedId) return@withContext DashboardSync.Unchanged
-        sourceStore.setDashboardSourceId(null)
-        val gone = saved.firstOrNull { it.sourceId() == markerId } ?: return@withContext DashboardSync.Unchanged
-        sourceStore.removeSource(markerId)
-        cacheStore.deleteFor(gone)
-        DashboardSync.Removed(gone)
+        val removed = (markers - assignedIds).mapNotNull { id -> saved.firstOrNull { it.sourceId() == id } }
+        removed.forEach { gone ->
+            sourceStore.removeSource(gone.sourceId())
+            cacheStore.deleteFor(gone)
+        }
+        val added = assigned.filter { sent -> sent.sourceId() !in markers && saved.none { it.sourceId() == sent.sourceId() } }
+        added.forEach { sourceStore.saveSource(it, makeActive = false) }
+        sourceStore.setDashboardSourceIds((markers intersect assignedIds) + added.map { it.sourceId() })
+        if (removed.isEmpty() && added.isEmpty()) DashboardSync.Unchanged else DashboardSync.Changed(removed, added.isNotEmpty())
     }
 
     fun savedSources(): List<PlaylistInput> = sourceStore.savedSources()
@@ -179,7 +199,7 @@ class PlaylistRepository(context: Context) {
 
     fun clearSavedSource() {
         val active = sourceStore.savedSource()
-        if (active != null && active.sourceId() == sourceStore.dashboardSourceId()) sourceStore.setDashboardSourceId(null)
+        if (active != null) sourceStore.setDashboardSourceIds(sourceStore.dashboardSourceIds() - active.sourceId())
         sourceStore.clearActiveSource()
         active?.let { cacheStore.deleteFor(it) }
         cacheStore.deleteLegacy()
