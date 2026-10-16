@@ -50,6 +50,11 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
 
     private var bootstrapJob: kotlinx.coroutines.Job? = null
 
+    // A playlist the dashboard took back, until the screen has said so. See syncWithDashboard.
+    private val _dashboardRemoved = MutableStateFlow<PlaylistInput?>(null)
+    val dashboardRemoved: StateFlow<PlaylistInput?> = _dashboardRemoved.asStateFlow()
+    fun dashboardRemovalShown() { _dashboardRemoved.value = null }
+
     init {
         bootstrap()
     }
@@ -109,7 +114,27 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
             repository.savedSources().filterNot { it.let(::memoryKey) == memoryKey(activeSource) }.forEach { source ->
                 repository.loadCached(source)?.let { memoryCache[memoryKey(source)] = it }
             }
+            // After the playlist is on screen, never before it: the viewer is not kept waiting on
+            // the dashboard, and a television without internet opens exactly as it did.
+            (repository.syncWithDashboard() as? PlaylistRepository.DashboardSync.Removed)?.let { applyDashboardRemoval(it.source) }
         }
+    }
+
+    /** Takes [removed] off the screen: the next saved playlist when it was the one in use. */
+    private suspend fun applyDashboardRemoval(removed: PlaylistInput) {
+        memoryCache.remove(memoryKey(removed))
+        val wasActive = _uiState.value.activeSource?.let(::memoryKey) == memoryKey(removed)
+        if (wasActive) {
+            val next = repository.savedSource()
+            val nextPlaylist = next?.let { candidate ->
+                memoryCache[memoryKey(candidate)] ?: repository.loadCached(candidate) ?: repository.load(candidate).getOrNull()
+            }
+            if (next != null && nextPlaylist != null) memoryCache[memoryKey(next)] = nextPlaylist
+            _uiState.update { it.copy(loadedPlaylist = nextPlaylist, activeSource = next, savedPlaylists = repository.savedSources()) }
+        } else {
+            _uiState.update { it.copy(savedPlaylists = repository.savedSources()) }
+        }
+        _dashboardRemoved.value = removed
     }
 
     private fun shouldAutoRefresh(source: PlaylistInput): Boolean {
@@ -201,6 +226,14 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
 
     suspend fun refreshActive(): Result<LoadedPlaylist> {
         stopCatalogueLoad()
+        // Refresh is where a viewer looks for the dashboard's changes, so it asks the dashboard
+        // first: a playlist deleted there is removed here rather than reloaded from the provider.
+        val sync = repository.syncWithDashboard()
+        if (sync is PlaylistRepository.DashboardSync.Removed) {
+            val wasActive = _uiState.value.activeSource?.let(::memoryKey) == memoryKey(sync.source)
+            applyDashboardRemoval(sync.source)
+            if (wasActive) return Result.failure(DashboardPlaylistRemovedException())
+        }
         val source = repository.savedSource() ?: return Result.failure(IllegalStateException("No saved playlist."))
         return repository.load(source).onSuccess { playlist ->
             memoryCache[memoryKey(source)] = playlist
@@ -229,3 +262,6 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
         const val DAY_MS = 24 * 60 * 60 * 1000L
     }
 }
+
+/** Refresh found that the playlist in use had been deleted in the dashboard, and removed it. */
+class DashboardPlaylistRemovedException : IllegalStateException("This playlist was removed from your account.")

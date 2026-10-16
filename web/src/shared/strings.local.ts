@@ -20,6 +20,9 @@ export const LOCAL_EN = {
   expiry_today: '{1} (today)',
   expiry_expired: '{1} (expired)',
   connect: 'Connect',
+  // Said when the dashboard has taken back the playlist in use (shared/dashboard.ts). The
+  // television writes the same sentence as a literal in MainActivity's dashboardRemoved effect.
+  playlist_removed_from_account: '"{1}" was removed from your account',
   enter_all_fields: 'Fill in the address, username and password.',
   server_address_label: 'Server address',
   press_back_to_return: 'Press Back to return',
