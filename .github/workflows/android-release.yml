@@ -1,0 +1,127 @@
+name: Publish Android release
+
+# Builds the Android TV and phone release APKs, signs them with the app's release key, and publishes
+# them as a GitHub release. Started by hand from the Actions tab ("Run workflow"), never on a push:
+# publishing is the owner's decision each time.
+#
+# Why this exists: until now release APKs were built on one laptop and signed there, so a release
+# could only come from that laptop. The key is now held as repository secrets instead, and any
+# release built here is signed with the same key - which is what lets each one install as an update
+# over the last.
+#
+# The four secrets (Settings > Secrets and variables > Actions), created once by the owner:
+#   ANDROID_KEYSTORE_BASE64   the .jks file, base64-encoded
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+# None of them is ever printed; the keystore and keystore.properties exist only on the runner, which
+# is thrown away after the job.
+#
+# Each release carries every APK twice: once with its version in the name, as the releases always
+# have, and once under a fixed name. The fixed name is what makes
+#   https://github.com/tareq58798-a11y/4k-plus-tv-player-tv/releases/latest/download/4KPlusTV-AndroidTV.apk
+# always mean the newest TV build, so a Downloader code pointed at it never has to change.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check the signing secrets are there
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for name in KEYSTORE STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "::error::Secret for $name is not set."; missing=1; fi
+          done
+          exit $missing
+
+      - name: Read the version
+        id: version
+        run: |
+          name=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' app/build.gradle.kts | head -1)
+          code=$(sed -n 's/^ *versionCode = \([0-9]*\)/\1/p' app/build.gradle.kts | head -1)
+          if [ -z "$name" ] || [ -z "$code" ]; then echo "::error::Could not read versionName/versionCode."; exit 1; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$name" >/dev/null; then
+            echo "::error::A release v$name already exists. Bump versionName and versionCode first."
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Building $name (versionCode $code)"
+
+      - name: Put the signing key in place
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE" | base64 --decode > release.jks
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Build the release APKs
+        run: gradle --no-daemon :app:assembleTvRelease :app:assemblePhoneRelease
+
+      # Without keystore.properties the release build quietly produces an unsigned APK, which
+      # Android refuses to install. Checked here so that can never be published.
+      - name: Check both APKs are signed, and name them
+        run: |
+          v="${{ steps.version.outputs.name }}"
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          tv=$(ls app/build/outputs/apk/tv/release/*.apk | head -1)
+          phone=$(ls app/build/outputs/apk/phone/release/*.apk | head -1)
+          "$apksigner" verify "$tv"
+          "$apksigner" verify "$phone"
+          "$apksigner" verify --print-certs "$tv" | grep -i "SHA-256 digest"
+          mkdir -p dist
+          cp "$tv" "dist/4KPlusTV-AndroidTV-$v.apk"
+          cp "$tv" "dist/4KPlusTV-AndroidTV.apk"
+          cp "$phone" "dist/4KPlusTV-Phone-$v.apk"
+          cp "$phone" "dist/4KPlusTV-Phone.apk"
+          ls -l dist
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f release.jks keystore.properties
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.version.outputs.name }}"
+          gh release create "v$v" dist/*.apk \
+            --target "$GITHUB_SHA" \
+            --title "4K Plus TV Player $v" \
+            --latest \
+            --notes "Android TV and phone, version $v (versionCode ${{ steps.version.outputs.code }}), built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. On Android TV / Fire TV, install with Downloader from https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/4KPlusTV-AndroidTV.apk"
