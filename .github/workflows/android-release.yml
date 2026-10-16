@@ -21,6 +21,12 @@ name: Publish Android release
 # have, and once under a fixed name. The fixed name is what makes
 #   https://github.com/tareq58798-a11y/4k-plus-tv-player-tv/releases/latest/download/4KPlusTV-AndroidTV.apk
 # always mean the newest TV build, so a Downloader code pointed at it never has to change.
+#
+# The owner's existing Downloader code points at a fixed release instead -
+#   https://github.com/tareq58798-a11y/4k-plus-tv-player-tv/releases/download/v2.0/4KPlusTV-AndroidTV.apk
+# - whose file was replaced by hand with every new build. The last step here does the same, so that
+# code keeps installing the newest build without being edited. The release called v2.0 therefore
+# holds whatever is newest, not version 2.0; that is how it already was.
 
 on:
   workflow_dispatch:
@@ -125,3 +131,11 @@ jobs:
             --title "4K Plus TV Player $v" \
             --latest \
             --notes "Android TV and phone, version $v (versionCode ${{ steps.version.outputs.code }}), built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. On Android TV / Fire TV, install with Downloader from https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/4KPlusTV-AndroidTV.apk"
+
+      # See the note at the top: the Downloader code that points at v2.0. Uploaded under a temporary
+      # name, then swapped in, so the link never answers 404 part way through.
+      - name: Replace the TV app in the v2.0 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/refresh-downloader-release.sh dist/4KPlusTV-AndroidTV.apk
+
