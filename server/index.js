@@ -15,6 +15,18 @@ function normalizeMac(value) {
   return String(value || '').trim().toUpperCase();
 }
 
+/**
+ * A MAC as somebody types it into the dashboard: any case, with colons, dashes, dots, spaces or
+ * nothing between the pairs. Returns the AA:BB:CC:DD:EE:FF form the apps send, or null.
+ */
+function parseTypedMac(value) {
+  const hex = String(value || '').replace(/[\s:.-]/g, '').toUpperCase();
+  if (!/^[0-9A-F]{12}$/.test(hex)) return null;
+  return hex.match(/.{2}/g).join(':');
+}
+
+const DEVICE_KEY_PATTERN = /^[0-9]{6}$/;
+
 app.post('/api/activate', async (req, res) => {
   const mac = normalizeMac(req.body.mac);
   const deviceKey = String(req.body.deviceKey || '').trim();
@@ -58,7 +70,25 @@ function requireAdmin(req, res, next) {
 
 app.get('/admin', requireAdmin, async (req, res) => {
   const devices = await db.listDevices();
-  res.send(renderDevices(devices));
+  res.send(renderDevices(devices, String(req.query.notice || '')));
+});
+
+/**
+ * Adds a device by hand, so a playlist can be assigned before the device first checks in.
+ *
+ * The device key is optional. The apps derive it in more than one way (Android from the device
+ * id, Samsung from the MAC), so the dashboard cannot always work it out; left blank, the device
+ * supplies it on its first check-in. Given, it must be the six digits the device shows, and the
+ * device is only handed its playlist when its key matches.
+ */
+app.post('/admin/devices/add', requireAdmin, async (req, res) => {
+  const mac = parseTypedMac(req.body.mac);
+  const deviceKey = String(req.body.deviceKey || '').trim();
+  if (!mac) return res.redirect('/admin?notice=bad-mac');
+  if (deviceKey && !DEVICE_KEY_PATTERN.test(deviceKey)) return res.redirect('/admin?notice=bad-key');
+  const added = await db.addDevice(mac, deviceKey);
+  const notice = added ? 'added' : 'exists';
+  res.redirect(`/admin?notice=${notice}&mac=${encodeURIComponent(mac)}#device-${mac.replace(/:/g, '')}`);
 });
 
 app.post('/admin/devices/:mac/assign', requireAdmin, async (req, res) => {

@@ -12,12 +12,25 @@ const fakeDb = {
   getDevice: async (mac) => rows.find((r) => r.mac === mac) || null,
   upsertPendingDevice: async (mac, deviceKey) => {
     const existing = rows.find((r) => r.mac === mac);
-    if (existing) { existing.last_seen = new Date().toISOString(); return; }
+    if (existing) {
+      existing.last_seen = new Date().toISOString();
+      if (existing.device_key === '') existing.device_key = deviceKey;
+      return;
+    }
     rows.push({
       mac, device_key: deviceKey, status: 'pending', playlist_type: null, playlist_name: null,
       m3u_url: null, xtream_server: null, xtream_username: null, xtream_password: null,
       last_seen: new Date().toISOString()
     });
+  },
+  addDevice: async (mac, deviceKey) => {
+    if (rows.find((r) => r.mac === mac)) return false;
+    rows.push({
+      mac, device_key: deviceKey, status: 'pending', playlist_type: null, playlist_name: null,
+      m3u_url: null, xtream_server: null, xtream_username: null, xtream_password: null,
+      last_seen: new Date(0).toISOString()
+    });
+    return true;
   },
   deleteProfile: async (mac) => {
     const existing = rows.find((r) => r.mac === mac);
@@ -34,7 +47,14 @@ const fakeDb = {
     return rows.length < before;
   },
   assignM3u: async () => {},
-  assignXtream: async () => {}
+  assignXtream: async (mac, playlistName, server, username, password) => {
+    const existing = rows.find((r) => r.mac === mac);
+    if (!existing) return;
+    Object.assign(existing, {
+      status: 'assigned', playlist_type: 'xtream', playlist_name: playlistName,
+      xtream_server: server, xtream_username: username, xtream_password: password, m3u_url: null
+    });
+  }
 };
 
 const originalLoad = Module._load;
@@ -187,6 +207,105 @@ check('both removal routes are behind the admin password', async () => {
     assert.strictEqual(res.status, 401, `${path} needs authentication`);
   }
   assert.ok(rows.find((r) => r.mac === MAC), 'and nothing happened');
+});
+
+function addForm(fields) {
+  return fetch(`${base}/admin/devices/add`, {
+    method: 'POST',
+    headers: { Authorization: AUTH, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(fields).toString(),
+    redirect: 'manual'
+  });
+}
+
+function poll(mac, deviceKey) {
+  return fetch(`${base}/api/activate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mac, deviceKey })
+  }).then((res) => res.json());
+}
+
+check('the page has an Add device form', () => {
+  seedAssigned();
+  const html = renderDevices(rows);
+  assert.ok(html.includes('action="/admin/devices/add"'));
+});
+
+check('a MAC typed in any common shape is added in the form the apps send', async () => {
+  rows = [];
+  const res = await addForm({ mac: ' 1a-2b-3c-4d-5e-6f ', deviceKey: '' });
+  assert.strictEqual(res.status, 302);
+  assert.ok(res.headers.get('location').includes('notice=added'));
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].mac, '1A:2B:3C:4D:5E:6F');
+  assert.strictEqual(rows[0].status, 'pending');
+  await addForm({ mac: 'aabbccddeeff' });
+  assert.ok(rows.find((r) => r.mac === 'AA:BB:CC:DD:EE:FF'), 'no separators at all is accepted too');
+});
+
+check('a hand-added device is shown as never seen, with its key still to come', () => {
+  rows = [];
+  rows.push({ mac: '1A:2B:3C:4D:5E:6F', device_key: '', status: 'pending', last_seen: new Date(0).toISOString() });
+  const html = renderDevices(rows, 'added');
+  assert.ok(html.includes('Never'));
+  assert.ok(html.includes('Set on first check-in'));
+  assert.ok(html.includes('The device was added'));
+  assert.ok(html.includes('id="device-1A2B3C4D5E6F"'), 'the row can be scrolled to after adding');
+});
+
+check('a playlist assigned before the first check-in reaches the device, which supplies its key', async () => {
+  rows = [];
+  await addForm({ mac: '1A:2B:3C:4D:5E:6F' });
+  await fetch(`${base}/admin/devices/1A:2B:3C:4D:5E:6F/assign`, {
+    method: 'POST',
+    headers: { Authorization: AUTH, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ playlistName: 'Home', type: 'xtream', xtreamServer: 'http://example.invalid', xtreamUsername: 'u', xtreamPassword: 'p' }).toString(),
+    redirect: 'manual'
+  });
+  const first = await poll('1A:2B:3C:4D:5E:6F', '424242');
+  assert.strictEqual(first.status, 'assigned', 'the first check-in gets the waiting playlist');
+  assert.strictEqual(rows[0].device_key, '424242', 'and its key is kept');
+  const other = await poll('1A:2B:3C:4D:5E:6F', '999999');
+  assert.deepStrictEqual(other, { status: 'pending' }, 'a different key afterwards gets nothing');
+});
+
+check('a key given when adding must match the device', async () => {
+  rows = [];
+  await addForm({ mac: '1A:2B:3C:4D:5E:6F', deviceKey: '123456' });
+  await fetch(`${base}/admin/devices/1A:2B:3C:4D:5E:6F/assign`, {
+    method: 'POST',
+    headers: { Authorization: AUTH, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ playlistName: 'Home', type: 'xtream', xtreamServer: 'http://example.invalid', xtreamUsername: 'u', xtreamPassword: 'p' }).toString(),
+    redirect: 'manual'
+  });
+  assert.deepStrictEqual(await poll('1A:2B:3C:4D:5E:6F', '654321'), { status: 'pending' });
+  assert.strictEqual(rows[0].device_key, '123456', 'a wrong key does not replace the one typed in');
+  assert.strictEqual((await poll('1A:2B:3C:4D:5E:6F', '123456')).status, 'assigned');
+});
+
+check('adding a MAC already on the dashboard changes nothing', async () => {
+  seedAssigned();
+  const before = JSON.stringify(rows);
+  const res = await addForm({ mac: MAC, deviceKey: '000000' });
+  assert.ok(res.headers.get('location').includes('notice=exists'));
+  assert.strictEqual(JSON.stringify(rows), before);
+});
+
+check('a bad MAC or key is refused, and Add device needs the password', async () => {
+  rows = [];
+  assert.ok((await addForm({ mac: '1A:2B:3C' })).headers.get('location').includes('notice=bad-mac'));
+  assert.ok((await addForm({ mac: 'ZZ:2B:3C:4D:5E:6F' })).headers.get('location').includes('notice=bad-mac'));
+  assert.ok((await addForm({ mac: '1A:2B:3C:4D:5E:6F', deviceKey: '12ab' })).headers.get('location').includes('notice=bad-key'));
+  assert.strictEqual(rows.length, 0);
+  const res = await fetch(`${base}/admin/devices/add`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'mac=1A2B3C4D5E6F',
+    redirect: 'manual'
+  });
+  assert.strictEqual(res.status, 401);
+  assert.strictEqual(rows.length, 0);
 });
 
 (async () => {

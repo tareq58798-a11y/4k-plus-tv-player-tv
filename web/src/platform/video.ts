@@ -56,6 +56,11 @@ export interface AudioTrack {
   readonly id: number;
   /** What to show. A language name where the stream declares one, else something like "Audio 2". */
   readonly label: string;
+  /**
+   * True for the track the decoder is actually playing, where the platform can say. Absent means
+   * it cannot, and the caller falls back on what it last asked for.
+   */
+  readonly selected?: boolean;
 }
 
 export interface MediaPlayer {
@@ -84,8 +89,9 @@ export interface MediaPlayer {
    * The soundtracks this stream carries, or an empty list.
    *
    * Only meaningful once playback has started - a decoder cannot say what is in a stream it has
-   * not opened. Empty is the normal answer for a single-language file, and the caller is expected
-   * to offer nothing rather than an empty menu.
+   * not opened. A single-language file gives a list of one, which is still shown: media3's settings
+   * sheet on the television lists the one soundtrack too, and a section that appears only on some
+   * films reads as a feature that is missing on the rest. Empty means the stream would not say.
    */
   audioTracks(): AudioTrack[];
   selectAudioTrack(id: number): void;
@@ -160,6 +166,34 @@ function languageOf(extraInfo: string | undefined): string | null {
 }
 
 /**
+ * A soundtrack's speaker layout - "2.0", "5.1", "7.1" - from the channel count AVPlay puts in
+ * `extra_info`, or null when it is not given.
+ *
+ * media3 names the layout beside the language in the television app's track list, in words
+ * ("Stereo", "Surround sound 5.1") that are its own library strings, not this app's. The figures
+ * say the same in every one of the eight languages, so they are used instead of eight new
+ * translations of media3's words. Recorded in web/README.md.
+ */
+function channelLayoutOf(extraInfo: string | undefined): string | null {
+  if (!extraInfo) return null;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(extraInfo) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const channels = Number(parsed.channels);
+  switch (channels) {
+    case 1: return '1.0';
+    case 2: return '2.0';
+    case 3: return '2.1';
+    case 6: return '5.1';
+    case 8: return '7.1';
+    default: return null;
+  }
+}
+
+/**
  * Turns a language tag into something a viewer reads, using the set's own language data.
  *
  * Intl.DisplayNames is in Chromium from 81 and these sets run 69, so this is expected to be absent
@@ -201,6 +235,8 @@ interface AvPlay {
   setSpeed?(rate: number): void;
   /** Every track in the stream, audio and video and subtitle together. Only valid once prepared. */
   getTotalTrackInfo?(): AvTrack[];
+  /** The tracks being played right now, one per type. Only valid once prepared. */
+  getCurrentStreamInfo?(): AvTrack[];
   setSelectTrack?(type: 'AUDIO' | 'VIDEO' | 'TEXT', index: number): void;
   /** True stops the cue callbacks, which is how subtitles are turned off on AVPlay. */
   setSilentSubtitle?(silent: boolean): void;
@@ -554,13 +590,30 @@ class TizenPlayer implements MediaPlayer {
       return [];
     }
     const audio = tracks.filter((track) => String(track.type).toUpperCase() === 'AUDIO');
-    // One soundtrack is not a choice. Offering a menu of one invites the viewer to open it, read
-    // it, and close it again having learned nothing.
-    if (audio.length < 2) return [];
-    return audio.map((track, position) => ({
-      id: track.index,
-      label: languageOf(track.extra_info) ?? `${AUDIO_FALLBACK_LABEL} ${position + 1}`,
-    }));
+    let playing: number | null = null;
+    try {
+      const current = this.av.getCurrentStreamInfo?.() ?? [];
+      const found = current.find((track) => String(track.type).toUpperCase() === 'AUDIO');
+      if (found) playing = Number(found.index);
+    } catch {
+      /* Not known. The overlay ticks whatever it last chose instead. */
+    }
+    const labels = audio.map((track, position) => {
+      const language = languageOf(track.extra_info) ?? `${AUDIO_FALLBACK_LABEL} ${position + 1}`;
+      const layout = channelLayoutOf(track.extra_info);
+      return layout ? `${language} ${layout}` : language;
+    });
+    return audio.map((track, position) => {
+      let label = labels[position]!;
+      // Two tracks that still read the same - a dub and a commentary, both "English 2.0" - are
+      // numbered, so the viewer can at least tell which one they tried last.
+      if (labels.filter((other) => other === label).length > 1) label = `${label} (${position + 1})`;
+      return {
+        id: track.index,
+        label,
+        selected: playing === null ? undefined : Number(track.index) === playing,
+      };
+    });
   }
 
   selectAudioTrack(id: number): void {
@@ -927,22 +980,28 @@ class BrowserPlayer implements MediaPlayer {
    * the honest answer when neither can say.
    */
   audioTracks(): AudioTrack[] {
-    const fromHls = (this.hls as { audioTracks?: { id: number; name?: string; lang?: string }[] } | null)?.audioTracks;
-    if (fromHls && fromHls.length > 1) {
+    const hls = this.hls as { audioTracks?: { id: number; name?: string; lang?: string }[]; audioTrack?: number } | null;
+    const fromHls = hls?.audioTracks;
+    if (fromHls && fromHls.length > 0) {
       return fromHls.map((track, position) => ({
         id: track.id,
         label: track.name || track.lang || `${AUDIO_FALLBACK_LABEL} ${position + 1}`,
+        selected: typeof hls?.audioTrack === 'number' ? hls.audioTrack === track.id : undefined,
       }));
     }
     const native = (this.video as HTMLVideoElement & {
-      audioTracks?: { length: number; [index: number]: { id: string; label?: string; language?: string } };
+      audioTracks?: { length: number; [index: number]: { id: string; label?: string; language?: string; enabled?: boolean } };
     }).audioTracks;
-    if (!native || native.length < 2) return [];
+    if (!native || native.length < 1) return [];
     const tracks: AudioTrack[] = [];
     for (let i = 0; i < native.length; i++) {
       const track = native[i];
       if (!track) continue;
-      tracks.push({ id: i, label: track.label || track.language || `${AUDIO_FALLBACK_LABEL} ${i + 1}` });
+      tracks.push({
+        id: i,
+        label: track.label || track.language || `${AUDIO_FALLBACK_LABEL} ${i + 1}`,
+        selected: typeof track.enabled === 'boolean' ? track.enabled : undefined,
+      });
     }
     return tracks;
   }

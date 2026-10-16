@@ -513,6 +513,8 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
     const frame = chrome.getBoundingClientRect();
     menu.style.right = `${Math.max(0, frame.right - anchor.right)}px`;
     menu.style.top = `${anchor.bottom - frame.top + 8}px`;
+    // The room left below the button, so a long menu scrolls instead of running off the screen.
+    menu.style.maxHeight = `${Math.max(200, frame.bottom - anchor.bottom - 8 - 24)}px`;
     for (const entry of entries) {
       const option = document.createElement('div');
       option.className = entry.inert ? 'pc-menu-item is-fact' : 'pc-menu-item';
@@ -780,8 +782,13 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
    *
    * A decoder cannot say what is in a stream it has not opened, so asking at construction time
    * reliably returns nothing. The panel is the first moment the answer is both available and
-   * wanted. An empty list means a single-language file, and then this section is absent rather
-   * than empty - a menu of one invites the viewer to open it, read it, and learn nothing.
+   * wanted. It is listed even when there is only one, as media3's sheet on the television lists
+   * it, and a stream that will not say what it carries still shows the heading, with a line saying
+   * there are no other tracks, so the section is always where the viewer looks for it.
+   *
+   * The tick follows the decoder where it can report what it is playing, rather than assuming the
+   * first track - a file whose default soundtrack is its second would otherwise open with the
+   * wrong one ticked, and picking the ticked one would change nothing the viewer could hear.
    */
   const audioSection = document.createElement('div');
   audioSection.hidden = true;
@@ -798,9 +805,21 @@ export function createPlayerOverlay(options: PlayerOverlayOptions): PlayerOverla
   function buildAudioOptions(): void {
     const tracks = player.audioTracks();
     audioRow.textContent = '';
-    audioSection.hidden = tracks.length === 0;
-    if (!tracks.length) return;
-    if (selectedAudio === null) selectedAudio = tracks[0]?.id ?? null;
+    audioSection.hidden = false;
+    if (!tracks.length) {
+      // The heading stays with a line under it rather than the section vanishing: the owner looked
+      // here for the audio and, finding nothing, took it to be missing rather than unreported.
+      const none = document.createElement('div');
+      none.className = 'pc-fact';
+      none.textContent = t('audio_tracks_none');
+      audioRow.append(none);
+      return;
+    }
+    const playing = tracks.find((track) => track.selected);
+    if (playing) selectedAudio = playing.id;
+    else if (selectedAudio === null || !tracks.some((track) => track.id === selectedAudio)) {
+      selectedAudio = tracks[0]?.id ?? null;
+    }
     for (const track of tracks) {
       const option = document.createElement('div');
       option.className = 'pc-speed';

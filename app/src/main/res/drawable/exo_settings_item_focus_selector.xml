@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The highlight on a row of media3's settings popup - the gear's Playback speed and Audio track,
+     their lists, and the subtitles button's list of languages.
+
+     media3 draws those rows with ?android:attr/selectableItemBackground, which on a television is a
+     faint grey wash on a dark grey sheet: the owner moved down the gear's list on the TV and could
+     not see which row was selected. This is the same cyan ring and dark fill as
+     exo_control_focus_selector, which marks the player's own buttons, in the shape of a row. Pressed
+     is kept for touch on the phone build. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#D9041C2B" />
+            <stroke android:width="3dp" android:color="#23D7EE" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#33FFFFFF" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <item>
+        <color android:color="@android:color/transparent" />
+    </item>
+</selector>

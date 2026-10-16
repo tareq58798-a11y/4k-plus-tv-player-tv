@@ -10,13 +10,38 @@ async function getDevice(mac) {
   return result.rows[0] || null;
 }
 
+/**
+ * Records a check-in. A device added by hand without its key (see addDevice) has an empty one,
+ * and takes the key from its first check-in; a key already stored is never replaced, so a second
+ * set cannot take over a MAC that is already someone's by claiming a different key.
+ */
 async function upsertPendingDevice(mac, deviceKey) {
   await pool.query(
     `insert into devices (mac, device_key)
      values ($1, $2)
-     on conflict (mac) do update set last_seen = now()`,
+     on conflict (mac) do update set
+       last_seen = now(),
+       device_key = case when devices.device_key = '' then excluded.device_key else devices.device_key end`,
     [mac, deviceKey]
   );
+}
+
+/**
+ * Adds a device from the dashboard, before it has ever checked in, so a playlist can be waiting
+ * for it. [deviceKey] may be empty: the device then supplies it on its first check-in.
+ *
+ * last_seen is set to the epoch rather than now, because "last seen" is a claim about the device
+ * and this one has not been seen; the page shows it as "Never". Returns false when the MAC is
+ * already on the dashboard, which is left exactly as it was.
+ */
+async function addDevice(mac, deviceKey) {
+  const result = await pool.query(
+    `insert into devices (mac, device_key, last_seen)
+     values ($1, $2, 'epoch')
+     on conflict (mac) do nothing`,
+    [mac, deviceKey]
+  );
+  return result.rowCount > 0;
 }
 
 async function listDevices() {
@@ -99,6 +124,7 @@ async function deleteDevice(mac) {
 module.exports = {
   getDevice,
   upsertPendingDevice,
+  addDevice,
   listDevices,
   assignM3u,
   assignXtream,

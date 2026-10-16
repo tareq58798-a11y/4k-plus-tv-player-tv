@@ -69,6 +69,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -546,6 +547,17 @@ internal fun MoviePlayer(
     }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            // Choosing a language from media3's CC button turns subtitles on, whatever the options
+            // row's switch said. The switch follows, and is remembered the same way, so the two
+            // never disagree about whether subtitles are on.
+            override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) {
+                val on = C.TRACK_TYPE_TEXT !in parameters.disabledTrackTypes
+                if (on != subtitlesEnabled) {
+                    subtitlesEnabled = on
+                    settings.edit().putBoolean("subtitles_enabled", on).apply()
+                }
+            }
+
             override fun onPlayerError(playbackException: PlaybackException) {
                 // A panel that does not report the container leaves the catalogue guessing, and a
                 // request for the wrong file is answered with an error page rather than video -
@@ -665,6 +677,12 @@ internal fun MoviePlayer(
                         setControllerShowTimeoutMs(CONTROLS_TIMEOUT_MS)
                         setShowPreviousButton(false)
                         setShowNextButton(false)
+                        // media3's CC button, beside the gear: its list is the stream's subtitle
+                        // languages, plus None. The gear's own list only ever has speed and audio,
+                        // so without this a viewer had no way to choose which subtitles they got -
+                        // the owner looked for it in the gear on the TV and it was not there. The
+                        // button is greyed out by media3 when a stream has no subtitles.
+                        setShowSubtitleButton(true)
                         setControllerVisibilityListener(
                             PlayerView.ControllerVisibilityListener { visibility ->
                                 controllerVisible = visibility == android.view.View.VISIBLE
@@ -1022,9 +1040,10 @@ private const val TimeBarRestingScrubber = 0xFFFFFFFF.toInt()
 /**
  * Moves focus one step down through the player's controls, and says whether it did.
  *
- * Two stops, in the order they appear on screen: the timeline, then the settings gear under it. A
- * third press does nothing. The episode strip is not one of them - it opens from the bare picture,
- * not from the controls (see the Down handling in dispatchKeyEvent).
+ * Three stops, in the order they appear on screen: the timeline, then the subtitles button, then
+ * the settings gear beside it. A further press does nothing. The subtitles button is skipped when
+ * the stream has none and media3 has greyed it out. The episode strip is not one of them - it
+ * opens from the bare picture, not from the controls (see the Down handling in dispatchKeyEvent).
  *
  * Derived from where focus actually is rather than from a counter of presses. A counter drifts the
  * moment anything else moves focus - the options row hands off to play/pause, the controller hides
@@ -1034,9 +1053,12 @@ private const val TimeBarRestingScrubber = 0xFFFFFFFF.toInt()
 private fun advanceDownThroughControls(view: PlayerView): Boolean {
     val timeBar = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)
     val settings = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)
+    val subtitles = view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+        ?.takeIf { it.visibility == android.view.View.VISIBLE && it.isEnabled }
     return when (view.findFocus()) {
         null -> timeBar?.requestFocus() ?: false
-        timeBar -> settings?.requestFocus() ?: false
+        timeBar -> (subtitles ?: settings)?.requestFocus() ?: false
+        subtitles -> settings?.requestFocus() ?: false
         settings -> false
         // Anywhere else in the controller - play/pause, rewind, fast-forward - is the top row, so
         // the first press down from it lands on the timeline like it does from nowhere at all.
