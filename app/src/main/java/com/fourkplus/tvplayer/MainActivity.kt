@@ -598,6 +598,9 @@ private fun App() {
                     onBack = { screen = Screen.HOME },
                     onAdd = { screen = Screen.MANUAL },
                     onSelect = { source ->
+                        // A playlist not yet on the device is fetched from its provider, which takes
+                        // a while on a big account; said, so the press does not look ignored.
+                        message("Loading ${source.name}…")
                         scope.launch {
                             playlistViewModel.switchTo(source)
                                 .onSuccess {

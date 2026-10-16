@@ -110,10 +110,10 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
                         }
                     }
             }
-            // Pre-warm the cache for the user's other saved playlists so switching between them is instant.
-            repository.savedSources().filterNot { it.let(::memoryKey) == memoryKey(activeSource) }.forEach { source ->
-                repository.loadCached(source)?.let { memoryCache[memoryKey(source)] = it }
-            }
+            // The other saved playlists are no longer pre-loaded into memory here. Each is a whole
+            // catalogue - tens of thousands of entries - and holding every saved one at once is
+            // what a low-memory box cannot afford once a device has two large playlists. Switching
+            // reads the one chosen from its on-disk cache, which is quick, or from the provider.
             // After the playlist is on screen, never before it: the viewer is not kept waiting on
             // the dashboard, and a television without internet opens exactly as it did.
             (repository.syncWithDashboard() as? PlaylistRepository.DashboardSync.Changed)?.let { applyDashboardChange(it) }
@@ -201,15 +201,30 @@ class PlaylistViewModel(private val repository: PlaylistRepository, private val 
     suspend fun switchTo(source: PlaylistInput): Result<Unit> {
         stopCatalogueLoad()
         val previous = repository.savedSource()
-        return runCatching {
-            repository.selectSavedSource(source)
-            val playlist = memoryCache[memoryKey(source)]
-                ?: repository.loadCached(source)
-                ?: repository.load(source).getOrThrow()
-            memoryCache[memoryKey(source)] = playlist
-            _uiState.update { it.copy(loadedPlaylist = playlist, activeSource = source, savedPlaylists = repository.savedSources()) }
-        }.onFailure {
-            previous?.let { runCatching { repository.selectSavedSource(it) } }
+        // Only the playlist being watched is kept in memory: a second whole catalogue held beside
+        // the first is what ran a Mi TV Stick out of memory when switching between two large ones.
+        memoryCache.keys.retainAll(setOf(memoryKey(source)))
+        val ready = memoryCache[memoryKey(source)] ?: repository.loadCached(source)
+        if (ready != null) {
+            return runCatching {
+                repository.selectSavedSource(source)
+                memoryCache[memoryKey(source)] = ready
+                _uiState.update { it.copy(loadedPlaylist = ready, activeSource = source, savedPlaylists = repository.savedSources()) }
+            }.onFailure { previous?.let { runCatching { repository.selectSavedSource(it) } } }
+        }
+        // Nothing on the device yet: fetched the way a new playlist is, Live TV first and films and
+        // series after, so a catalogue too large for the box still opens with its live channels
+        // rather than failing outright.
+        repository.selectSavedSource(source)
+        _uiState.update { it.copy(loadedPlaylist = null, activeSource = source) }
+        return addPlaylist(source).map { }.onFailure {
+            if (_uiState.value.loadedPlaylist == null) {
+                previous?.let { prior ->
+                    runCatching { repository.selectSavedSource(prior) }
+                    val back = repository.loadCached(prior)
+                    _uiState.update { it.copy(loadedPlaylist = back, activeSource = prior, savedPlaylists = repository.savedSources()) }
+                }
+            }
         }
     }
 

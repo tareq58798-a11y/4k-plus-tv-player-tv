@@ -77,7 +77,7 @@ internal fun buildFourKPlusExoPlayer(context: android.content.Context, skipSecon
     val dataSourceFactory = OkHttpDataSource.Factory(
         if (mode == ConnectionMode.SLOW) slowPlaybackClient else fastPlaybackClient
     )
-        .setUserAgent("VLC/3.0.20 LibVLC/3.0.20")
+        .setUserAgent(com.fourkplus.tvplayer.data.PROVIDER_USER_AGENT)
         .setTransferListener(DefaultBandwidthMeter.getSingletonInstance(context))
     val mediaSourceFactory = DefaultMediaSourceFactory(context)
         .setDataSourceFactory(dataSourceFactory)
