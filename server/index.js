@@ -99,7 +99,7 @@ function requireAdmin(req, res, next) {
 
 app.get('/admin', requireAdmin, async (req, res) => {
   const devices = await db.listDevices();
-  res.send(renderDevices(devices, String(req.query.notice || '')));
+  res.send(renderDevices(devices, String(req.query.notice || ''), normalizeMac(req.query.mac)));
 });
 
 /**
@@ -124,6 +124,14 @@ app.post('/admin/devices/add', requireAdmin, async (req, res) => {
   res.redirect(`/admin?notice=${notice}&mac=${encodeURIComponent(mac)}#device-${mac.replace(/:/g, '')}`);
 });
 
+/**
+ * Back to the dashboard with [mac]'s options open and scrolled to, so saving or deleting one of its
+ * playlists does not fold it away with every other device (see adminPage's "Show more").
+ */
+function backTo(mac, notice = '') {
+  return `/admin?${notice ? `notice=${notice}&` : ''}mac=${encodeURIComponent(mac)}#device-${mac.replace(/:/g, '')}`;
+}
+
 app.post('/admin/devices/:mac/assign', requireAdmin, async (req, res) => {
   const mac = normalizeMac(req.params.mac);
   const { playlistName, type, m3uUrl, xtreamServer, xtreamUsername, xtreamPassword } = req.body;
@@ -132,7 +140,7 @@ app.post('/admin/devices/:mac/assign', requireAdmin, async (req, res) => {
   } else {
     await db.assignXtream(mac, playlistName, xtreamServer, xtreamUsername, xtreamPassword);
   }
-  res.redirect('/admin');
+  res.redirect(MAC_PATTERN.test(mac) ? backTo(mac) : '/admin');
 });
 
 /**
@@ -143,9 +151,9 @@ app.post('/admin/devices/:mac/assign2', requireAdmin, async (req, res) => {
   const mac = normalizeMac(req.params.mac);
   if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
   const playlist = typedPlaylist(req.body);
-  if (!playlist) return res.redirect(`/admin?notice=bad-playlist2#device-${mac.replace(/:/g, '')}`);
+  if (!playlist) return res.redirect(backTo(mac, 'bad-playlist2'));
   await db.assignSecond(mac, playlist);
-  res.redirect(`/admin#device-${mac.replace(/:/g, '')}`);
+  res.redirect(backTo(mac));
 });
 
 /** Wipes a device's second playlist, credentials and all. POST-only and confirmed, like the others. */
@@ -153,7 +161,7 @@ app.post('/admin/devices/:mac/delete-playlist2', requireAdmin, async (req, res) 
   const mac = normalizeMac(req.params.mac);
   if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
   await db.deleteSecond(mac);
-  res.redirect('/admin');
+  res.redirect(backTo(mac));
 });
 
 /**
@@ -167,7 +175,7 @@ app.post('/admin/devices/:mac/delete-profile', requireAdmin, async (req, res) =>
   const mac = normalizeMac(req.params.mac);
   if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
   await db.deleteProfile(mac);
-  res.redirect('/admin');
+  res.redirect(backTo(mac));
 });
 
 /**
