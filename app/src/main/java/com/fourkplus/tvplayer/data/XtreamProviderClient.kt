@@ -10,14 +10,22 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import com.fourkplus.tvplayer.trustModernRoots
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+
+/**
+ * The name the app gives providers, for playback (PlayerEngine) and for logins and lists alike.
+ *
+ * Logins and lists used to go out under OkHttp's own default, "okhttp/4.12.0", while playback said
+ * VLC. Many panels refuse that default - it is what scripts and scrapers send - and some answer with
+ * codes no browser would, such as HTTP 513: a provider that works in every other player failed here
+ * at sign-in or on switching to it. One name, the one panels already accept from this app's player.
+ */
+internal const val PROVIDER_USER_AGENT = "VLC/3.0.20 LibVLC/3.0.20"
 
 /**
  * Network access to Xtream Codes-style provider panels (player_api.php auth, category/stream
@@ -63,10 +71,8 @@ internal class XtreamProviderClient {
                         input.name.trim(), items, items.map { it.group }.distinct(),
                         status.takeIf(String::isNotBlank), expiry
                     )
-                    val liveGroups = async { progressiveCategories(apiUrl(server, input, "get_live_categories")) }
-                    val liveData = PlaylistTiming.measure("live_download") { download(apiUrl(server, input, "get_live_streams")) }
-                    val groups = liveGroups.await()
-                    val live = PlaylistTiming.measure("live_parse") { liveItems(JSONArray(liveData), groups, server, input) }
+                    val groups = progressiveCategories(apiUrl(server, input, "get_live_categories"))
+                    val live = PlaylistTiming.measure("live_download_parse") { liveItems(apiUrl(server, input, "get_live_streams"), groups, server, input) }
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     if (live.isNotEmpty()) {
                         published = true
@@ -75,18 +81,14 @@ internal class XtreamProviderClient {
                     // Capture each catalogue failure so one failed response cannot cancel
                     // the sibling request or the already usable live list.
                     //
-                    // The two downloads still overlap, but the parses take turns: org.json holds
-                    // the whole response as a tree several times the size of its text, and a
-                    // full catalogue's films and series parsed at once can exhaust the heap on a
-                    // low-memory television box - reported as a crash while loading the playlist.
-                    // OutOfMemoryError is an Error, not an Exception, so it is caught by name and
-                    // turned into an ordinary failure; the live list already published survives.
-                    val parseTurn = Mutex()
+                    // Each list is streamed (streamObjects), so neither holds its text or a tree of
+                    // it - only the items kept. OutOfMemoryError is an Error, not an Exception, so
+                    // it is still caught by name and turned into an ordinary failure for a
+                    // catalogue too large for the box; the live list already published survives.
                     val movies = async {
                         try {
                             val movieGroups = progressiveCategories(apiUrl(server, input, "get_vod_categories"))
-                            val data = PlaylistTiming.measure("movies_download") { download(apiUrl(server, input, "get_vod_streams")) }
-                            Result.success(parseTurn.withLock { PlaylistTiming.measure("movies_parse") { movieItems(JSONArray(data), movieGroups, server, input) } })
+                            Result.success(PlaylistTiming.measure("movies_download_parse") { movieItems(apiUrl(server, input, "get_vod_streams"), movieGroups, server, input) })
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (e: Exception) { Result.failure<List<PlaylistItem>>(e) }
                         catch (e: OutOfMemoryError) { Result.failure<List<PlaylistItem>>(outOfMemory(e)) }
@@ -94,8 +96,7 @@ internal class XtreamProviderClient {
                     val series = async {
                         try {
                             val seriesGroups = progressiveCategories(apiUrl(server, input, "get_series_categories"))
-                            val data = PlaylistTiming.measure("series_download") { download(apiUrl(server, input, "get_series")) }
-                            Result.success(parseTurn.withLock { PlaylistTiming.measure("series_parse") { seriesItems(JSONArray(data), seriesGroups) } })
+                            Result.success(PlaylistTiming.measure("series_download_parse") { seriesItems(apiUrl(server, input, "get_series"), seriesGroups) })
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (e: Exception) { Result.failure<List<PlaylistItem>>(e) }
                         catch (e: OutOfMemoryError) { Result.failure<List<PlaylistItem>>(outOfMemory(e)) }
@@ -315,17 +316,17 @@ internal class XtreamProviderClient {
         val liveCategoriesDeferred = async { runCatching { categories(apiUrl(server, input, "get_live_categories")) }.getOrDefault(emptyMap()) }
         val movieCategoriesDeferred = async { runCatching { categories(apiUrl(server, input, "get_vod_categories")) }.getOrDefault(emptyMap()) }
         val seriesCategoriesDeferred = async { runCatching { categories(apiUrl(server, input, "get_series_categories")) }.getOrDefault(emptyMap()) }
-        // Only the downloads run together. Each response is parsed as it is used, one at a time,
-        // so at most one org.json tree is alive at once rather than all three held to the end -
-        // the difference between loading and running out of memory on a low-memory box.
-        val liveStreamsDeferred = async { download(apiUrl(server, input, "get_live_streams")) }
-        val movieStreamsDeferred = async { download(apiUrl(server, input, "get_vod_streams")) }
-        val seriesDeferred = async { download(apiUrl(server, input, "get_series")) }
+        // The three lists are streamed, each into its items as it arrives (streamObjects), so no
+        // response is ever held whole as text or as an org.json tree - the difference between
+        // loading and running out of memory on a low-memory box with a large account.
+        val liveDeferred = async { liveItems(apiUrl(server, input, "get_live_streams"), liveCategoriesDeferred.await(), server, input) }
+        val moviesDeferred = async { movieItems(apiUrl(server, input, "get_vod_streams"), movieCategoriesDeferred.await(), server, input) }
+        val seriesDeferred = async { seriesItems(apiUrl(server, input, "get_series"), seriesCategoriesDeferred.await()) }
 
         val items = buildList {
-            addAll(liveItems(JSONArray(liveStreamsDeferred.await()), liveCategoriesDeferred.await(), server, input))
-            addAll(movieItems(JSONArray(movieStreamsDeferred.await()), movieCategoriesDeferred.await(), server, input))
-            addAll(seriesItems(JSONArray(seriesDeferred.await()), seriesCategoriesDeferred.await()))
+            addAll(liveDeferred.await())
+            addAll(moviesDeferred.await())
+            addAll(seriesDeferred.await())
         }
         require(items.isNotEmpty()) { "The account connected successfully but contains no available content." }
         val expiry = userInfo.optString("exp_date").toLongOrNull()?.takeIf { it > 0L }
@@ -349,15 +350,87 @@ internal class XtreamProviderClient {
         }
     }
 
-    private fun liveItems(array: JSONArray, groups: Map<String, String>, server: String, input: PlaylistInput) = buildList {
+    /**
+     * Streams the list at [url] and calls [onItem] with each entry, one small JSONObject at a time.
+     *
+     * The lists used to be downloaded whole into one String and parsed into one org.json tree. On a
+     * large account that cannot fit: a 70-million-character film list needs a single 268 MB buffer
+     * just to hold the text - more than a Mi TV Stick's whole 384 MB heap allows in one piece - and
+     * its tree several times that again. That was the "Failed to allocate a 268501000 byte
+     * allocation" a viewer saw switching to a big second playlist. Here the response is read as it
+     * arrives and only the entry being read is ever in memory, so the size of a catalogue costs
+     * only the items kept from it.
+     *
+     * The top level is normally an array; some panel forks send an object keyed by id instead, and
+     * its values are read the same way. Anything else - an error page, a bare word - is refused as
+     * an unsupported response, as org.json refused it when the list was parsed whole.
+     */
+    private fun streamObjects(url: String, onItem: (JSONObject) -> Unit) {
+        // Never log request URLs: the query contains account credentials.
+        val request = Request.Builder().url(url).get().build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                require(response.isSuccessful) { "The server returned HTTP ${response.code}. Please try again." }
+                val body = response.body ?: throw IllegalArgumentException("The server returned an empty response.")
+                val reader = java.io.PushbackReader(body.charStream(), 1)
+                reader.read().let { first -> if (first != -1 && first != 0xFEFF) reader.unread(first) }
+                android.util.JsonReader(reader).use { json ->
+                    json.isLenient = true
+                    when (json.peek()) {
+                        android.util.JsonToken.BEGIN_ARRAY -> {
+                            json.beginArray()
+                            while (json.hasNext()) readEntry(json)?.let(onItem)
+                            json.endArray()
+                        }
+                        android.util.JsonToken.BEGIN_OBJECT -> {
+                            json.beginObject()
+                            while (json.hasNext()) { json.nextName(); readEntry(json)?.let(onItem) }
+                            json.endObject()
+                        }
+                        else -> throw IllegalArgumentException("This server returned an unsupported response.")
+                    }
+                }
+            }
+        } catch (error: IOException) {
+            // Transport exception messages can contain the credential-bearing URL.
+            throw IllegalArgumentException("Could not connect to the server. Check the address and your connection.")
+        } catch (error: IllegalStateException) {
+            throw IllegalArgumentException("This server returned an unsupported response.")
+        }
+    }
+
+    /** One entry as a JSONObject, or null (skipped) when it is not an object. */
+    private fun readEntry(json: android.util.JsonReader): JSONObject? {
+        if (json.peek() != android.util.JsonToken.BEGIN_OBJECT) { json.skipValue(); return null }
+        return readValue(json) as JSONObject
+    }
+
+    private fun readValue(json: android.util.JsonReader): Any? = when (json.peek()) {
+        android.util.JsonToken.BEGIN_OBJECT -> JSONObject().also { obj ->
+            json.beginObject()
+            while (json.hasNext()) obj.put(json.nextName(), readValue(json) ?: JSONObject.NULL)
+            json.endObject()
+        }
+        android.util.JsonToken.BEGIN_ARRAY -> JSONArray().also { array ->
+            json.beginArray()
+            while (json.hasNext()) array.put(readValue(json) ?: JSONObject.NULL)
+            json.endArray()
+        }
+        // Numbers are kept as their text, exactly as JSONObject.optString would have given them.
+        android.util.JsonToken.NUMBER, android.util.JsonToken.STRING -> json.nextString()
+        android.util.JsonToken.BOOLEAN -> json.nextBoolean()
+        android.util.JsonToken.NULL -> { json.nextNull(); null }
+        else -> { json.skipValue(); null }
+    }
+
+    private fun liveItems(url: String, groups: Map<String, String>, server: String, input: PlaylistInput) = buildList {
         // Percent-encoding the account once outside the loop rather than twice per entry: this runs
         // over every channel the panel returns (tens of thousands on a full playlist), and the
         // result is identical every time.
         val streamPrefix = "$server/live/${encode(input.username)}/${encode(input.password)}/"
-        for (index in 0 until array.length()) {
-            val item = array.optJSONObject(index) ?: continue
+        streamObjects(url) { item ->
             val id = item.optString("stream_id")
-            if (id.isBlank()) continue
+            if (id.isBlank()) return@streamObjects
             add(PlaylistItem(
                 item.optString("name", "Unnamed channel"),
                 "$streamPrefix$id.ts",
@@ -372,13 +445,12 @@ internal class XtreamProviderClient {
         }
     }
 
-    private fun movieItems(array: JSONArray, groups: Map<String, String>, server: String, input: PlaylistInput) = buildList {
+    private fun movieItems(url: String, groups: Map<String, String>, server: String, input: PlaylistInput) = buildList {
         // See liveItems: hoisted out of a loop that runs once per title in the whole VOD catalogue.
         val streamPrefix = "$server/movie/${encode(input.username)}/${encode(input.password)}/"
-        for (index in 0 until array.length()) {
-            val item = array.optJSONObject(index) ?: continue
+        streamObjects(url) { item ->
             val id = item.optString("stream_id")
-            if (id.isBlank()) continue
+            if (id.isBlank()) return@streamObjects
             val extension = item.optText("container_extension") ?: "mp4"
             add(PlaylistItem(
                 item.optString("name", "Unnamed movie"),
@@ -399,11 +471,10 @@ internal class XtreamProviderClient {
         }
     }
 
-    private fun seriesItems(array: JSONArray, groups: Map<String, String>) = buildList {
-        for (index in 0 until array.length()) {
-            val item = array.optJSONObject(index) ?: continue
+    private fun seriesItems(url: String, groups: Map<String, String>) = buildList {
+        streamObjects(url) { item ->
             val id = item.optString("series_id")
-            if (id.isBlank()) continue
+            if (id.isBlank()) return@streamObjects
             add(PlaylistItem(
                 item.optString("name", "Unnamed series"), "series://$id",
                 groups[item.optString("category_id")] ?: "Other",
@@ -502,6 +573,9 @@ internal class XtreamProviderClient {
 
     private companion object {
         val httpClient = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().header("User-Agent", PROVIDER_USER_AGENT).build())
+            }
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)

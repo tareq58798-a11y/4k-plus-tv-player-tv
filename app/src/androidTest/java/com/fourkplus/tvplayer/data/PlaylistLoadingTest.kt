@@ -12,6 +12,7 @@ class PlaylistLoadingTest : InstrumentationTestCase() {
         private val socket = ServerSocket(0)
         val address = "http://127.0.0.1:${socket.localPort}"
         val actions = CopyOnWriteArrayList<String>()
+        val userAgents = CopyOnWriteArrayList<String>()
         private val acceptor = thread(isDaemon = true) {
             while (!socket.isClosed) {
                 val peer = try { socket.accept() } catch (_: Exception) { break }
@@ -24,6 +25,7 @@ class PlaylistLoadingTest : InstrumentationTestCase() {
                             val header = reader.readLine() ?: break
                             if (header.isEmpty()) break
                             if (header.startsWith("Content-Length:", true)) length = header.substringAfter(':').trim().toInt()
+                            if (header.startsWith("User-Agent:", true)) userAgents += header.substringAfter(':').trim()
                         }
                         repeat(length) { reader.read() }
                         val action = request.substringAfter("action=", "auth").substringBefore(' ').substringBefore('&')
@@ -67,6 +69,15 @@ class PlaylistLoadingTest : InstrumentationTestCase() {
         }
     }
 
+    /** Panels that refuse OkHttp's default name (HTTP 513 from one) are sent the player's name. */
+    fun testLoginAndListsSendThePlayersName() = runBlocking {
+        Provider().use { server ->
+            XtreamProviderClient().loadProgressively(server.source()) { }
+            assertTrue(server.userAgents.isNotEmpty())
+            assertTrue(server.userAgents.toString(), server.userAgents.all { it == PROVIDER_USER_AGENT })
+        }
+    }
+
     fun testMovieFailureKeepsLiveAndSuccessfulSeries() = runBlocking {
         Provider(failMovies = true).use { server ->
             var last: LoadedPlaylist? = null
@@ -107,6 +118,62 @@ class PlaylistLoadingTest : InstrumentationTestCase() {
             assertEquals(1, loaded.items.size)
             assertFalse(partialCalled)
         }
+    }
+
+    /**
+     * A film list far larger than the whole heap could hold as text loads, entry by entry.
+     *
+     * A Mi TV Stick switching to a big second playlist failed with "Failed to allocate a 268501000
+     * byte allocation": the list was read whole into one String before parsing. This provider
+     * streams a film list of about 100 million characters - more than that String could ever hold
+     * here - written as it is produced, so the fixture itself never holds it either. Each entry
+     * carries a long field the app ignores, as real panels do, so the items kept stay small.
+     */
+    fun testHugeListStreamsWithoutHoldingItWhole() = runBlocking {
+        val entries = 120_000
+        val filler = "x".repeat(800)
+        val socket = ServerSocket(0)
+        val address = "http://127.0.0.1:${socket.localPort}"
+        val acceptor = thread(isDaemon = true) {
+            while (!socket.isClosed) {
+                val peer = try { socket.accept() } catch (_: Exception) { break }
+                thread(isDaemon = true) {
+                    peer.use {
+                        val reader = it.getInputStream().bufferedReader()
+                        val request = reader.readLine().orEmpty()
+                        while (reader.readLine()?.isNotEmpty() == true) Unit
+                        val action = request.substringAfter("action=", "auth").substringBefore(' ').substringBefore('&')
+                        val out = java.io.BufferedOutputStream(it.getOutputStream(), 64 * 1024)
+                        // No Content-Length: the body ends when the connection closes, as a large
+                        // gzip-encoded panel response effectively does.
+                        out.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n".toByteArray())
+                        when {
+                            action == "auth" -> out.write("""{"user_info":{"auth":1,"status":"Active"}}""".toByteArray())
+                            action.endsWith("categories") -> out.write("""[{"category_id":"1","category_name":"Test"}]""".toByteArray())
+                            action == "get_live_streams" -> out.write("""[{"stream_id":1,"name":"Live","category_id":"1"}]""".toByteArray())
+                            action == "get_vod_streams" -> {
+                                out.write('['.code)
+                                for (index in 1..entries) {
+                                    if (index > 1) out.write(','.code)
+                                    out.write("""{"stream_id":$index,"name":"Film $index","category_id":"1","container_extension":"mp4","unused_text":"$filler"}""".toByteArray())
+                                }
+                                out.write(']'.code)
+                            }
+                            else -> out.write("[]".toByteArray())
+                        }
+                        out.flush()
+                    }
+                }
+            }
+        }
+        try {
+            val source = PlaylistInput("Huge", PlaylistKind.PROVIDER_LOGIN, address, "fixture", "fixture")
+            val loaded = XtreamProviderClient().loadProgressively(source) { }
+            assertEquals(1, loaded.liveCount)
+            assertEquals(entries, loaded.movieCount)
+            assertEquals("Film $entries", loaded.items.last { it.kind == MediaKind.MOVIE }.name)
+            assertTrue("about 100 million characters were sent", entries.toLong() * filler.length > 90_000_000L)
+        } finally { socket.close(); acceptor.join(1000) }
     }
 
     fun testCacheRoundTripPreservesCompleteCatalogue() = runBlocking {

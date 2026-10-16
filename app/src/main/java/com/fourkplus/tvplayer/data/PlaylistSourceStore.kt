@@ -74,8 +74,10 @@ internal class PlaylistSourceStore(context: Context) {
         val id = cleaned.sourceId()
         val active = if (makeActive) null else savedSource()
         val existingIndex = savedSources().indexOfFirst { it.sourceId() == id }
-        val updated = if (makeActive || existingIndex < 0) {
-            savedSources().filterNot { it.sourceId() == id } + cleaned
+        // A source already saved keeps its place in the list - reloading or switching to it must
+        // not shuffle the viewer's Playlists screen. A new one goes at the end.
+        val updated = if (existingIndex < 0) {
+            savedSources() + cleaned
         } else {
             savedSources().toMutableList().also { it[existingIndex] = cleaned }
         }
