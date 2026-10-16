@@ -460,6 +460,31 @@ check('the page shows a Playlist 2 form on every row, and its delete only where 
   assert.ok(confirm2 && confirm2.includes("Kid\\'s"), 'the name is escaped inside the confirmation');
 });
 
+check('Playlist 2 is folded behind "+ Add playlist" until the device has one', async () => {
+  seedAssigned();
+  let html = renderDevices(rows);
+  assert.strictEqual((html.match(/<details class="playlist2">/g) || []).length, 2, 'both rows closed');
+  assert.strictEqual((html.match(/<summary>\+ Add playlist<\/summary>/g) || []).length, 2);
+  assert.ok(!html.includes('<details class="playlist2" open>'));
+  await post(`/admin/devices/${MAC}/assign2`, SECOND);
+  html = renderDevices(rows);
+  assert.strictEqual((html.match(/<details class="playlist2" open>/g) || []).length, 1, 'the row with a Playlist 2 shows it');
+  assert.strictEqual((html.match(/<summary>\+ Add playlist<\/summary>/g) || []).length, 1, 'the other is still folded');
+});
+
+check('every device\'s options are folded behind "Show more", except the one just worked on', async () => {
+  seedAssigned();
+  let html = renderDevices(rows);
+  assert.strictEqual((html.match(/<details class="options">/g) || []).length, 2, 'both rows folded');
+  assert.strictEqual((html.match(/<summary>Show more<\/summary>/g) || []).length, 2);
+  html = renderDevices(rows, '', MAC);
+  assert.strictEqual((html.match(/<details class="options" open>/g) || []).length, 1, 'only that row open');
+  const res = await post(`/admin/devices/${MAC}/assign2`, SECOND);
+  assert.ok(res.headers.get('location').includes(`mac=${encodeURIComponent(MAC)}`), 'saving brings you back to that device, open');
+  const page = await (await fetch(`${base}/admin?mac=${encodeURIComponent(MAC)}`, { headers: { Authorization: AUTH } })).text();
+  assert.strictEqual((page.match(/<details class="options" open>/g) || []).length, 1);
+});
+
 check('a bad MAC or key is refused, and Add device needs the password', async () => {
   rows = [];
   assert.ok((await addForm({ mac: '1A:2B:3C' })).headers.get('location').includes('notice=bad-mac'));

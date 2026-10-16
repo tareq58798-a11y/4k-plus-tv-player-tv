@@ -50,6 +50,16 @@ function layout(body) {
   button.warn { background: #7a5312; margin-top: 6px; }
   button.danger { background: #8b2331; margin-top: 6px; }
   .row { display: flex; gap: 6px; }
+  /* "+ Add playlist": a quiet button-like link until opened, so a row reads as one playlist. */
+  details.options > summary { cursor: pointer; display: inline-block; list-style: none; font-size: 13px;
+                              padding: 6px 12px; border-radius: 6px; background: #3a4a68; color: #e6edf3; }
+  details.options > summary::-webkit-details-marker { display: none; }
+  details.options[open] > summary { margin-bottom: 10px; }
+  details.playlist2 { margin-top: 10px; }
+  details.playlist2 > summary { cursor: pointer; display: inline-block; list-style: none; color: #8fb4ff;
+                                font-size: 13px; padding: 6px 10px; border: 1px dashed #2a3a56; border-radius: 6px; }
+  details.playlist2 > summary::-webkit-details-marker { display: none; }
+  details.playlist2[open] > summary { color: #9fb3d1; border-style: solid; }
   .muted { color: #7d8ba1; font-size: 12px; }
   form.add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px;
                   background: #131b2c; padding: 12px; border-radius: 10px; }
@@ -93,7 +103,11 @@ function lastSeen(value) {
   return date.getTime() > 0 ? date.toLocaleString() : 'Never';
 }
 
-function renderDevices(devices, notice = '') {
+/**
+ * [openMac], when given, is the device whose options start open - the one just added, so the page
+ * it lands on has that device's forms in front of you rather than folded away with the rest.
+ */
+function renderDevices(devices, notice = '', openMac = '') {
   const rows = devices.map((device) => {
     const statusClass = device.status === 'assigned' ? 'assigned' : 'pending';
     const mac = escapeHtml(device.mac);
@@ -104,6 +118,12 @@ function renderDevices(devices, notice = '') {
       <td>${escapeHtml(device.playlist_type || '-')}${device.playlist2_type ? ` + ${escapeHtml(device.playlist2_type)}` : ''}</td>
       <td class="muted">${escapeHtml(lastSeen(device.last_seen))}</td>
       <td>
+        <!--
+          Everything you can do to a device, folded behind "Show more" so the list reads as a list:
+          one line per device until you open the one you mean. A plain <details>, so no script.
+        -->
+        <details class="options"${openMac && openMac === device.mac ? ' open' : ''}>
+        <summary>Show more</summary>
         <form class="assign-form" method="post" action="/admin/devices/${encodeURIComponent(mac)}/assign">
           <strong>Playlist 1</strong>
           <input type="text" name="playlistName" placeholder="Playlist name" value="${escapeHtml(device.playlist_name || '')}" required>
@@ -129,7 +149,13 @@ function renderDevices(devices, notice = '') {
               onsubmit="return confirm('Delete the playlist ${escapeJsInAttribute(device.playlist_name || '(unnamed)')} from ${escapeJsInAttribute(device.mac)}? The stored server, username and password are erased. The device stays in this list, and goes back to pending unless it has a Playlist 2.');">
           <button type="submit" class="warn">Delete profile</button>
         </form>` : ''}
-        <!-- Playlist 2: the same fields, its own form and its own delete, so neither can touch the other. -->
+        <!--
+          Playlist 2: the same fields, its own form and its own delete, so neither can touch the other.
+          Folded away behind "+ Add playlist" until the device has one, so a row reads as one
+          playlist unless it really has two. A plain <details>, so it opens without any script.
+        -->
+        <details class="playlist2"${device.playlist2_type ? ' open' : ''}>
+        <summary>${device.playlist2_type ? 'Playlist 2' : '+ Add playlist'}</summary>
         <form class="assign-form" method="post" action="/admin/devices/${encodeURIComponent(mac)}/assign2" style="margin-top: 10px;">
           <strong>Playlist 2</strong>
           <input type="text" name="playlistName" placeholder="Playlist name" value="${escapeHtml(device.playlist2_name || '')}" required>
@@ -150,6 +176,7 @@ function renderDevices(devices, notice = '') {
               onsubmit="return confirm('Delete playlist 2, ${escapeJsInAttribute(device.playlist2_name || '(unnamed)')}, from ${escapeJsInAttribute(device.mac)}? Its stored server, username and password are erased. Playlist 1 is not touched.');">
           <button type="submit" class="warn">Delete playlist 2</button>
         </form>` : ''}
+        </details>
         <!--
           Its own form, deliberately outside the assign form. Sharing that one would mean the
           delete button inherited its required fields, and formnovalidate would then be the only
@@ -159,6 +186,7 @@ function renderDevices(devices, notice = '') {
               onsubmit="return confirm('Remove ${escapeJsInAttribute(device.mac)} from the dashboard? Everything stored for it, including its playlist, is erased. It reappears as pending within seconds if the device is still switched on and checking in.');">
           <button type="submit" class="danger">Delete device</button>
         </form>
+        </details>
       </td>
     </tr>`;
   }).join('');
@@ -185,7 +213,7 @@ function renderDevices(devices, notice = '') {
       <span class="muted">A MAC that is already listed is never changed by Add.</span>
     </form>
     <table>
-      <thead><tr><th>MAC</th><th>Device key</th><th>Status</th><th>Type</th><th>Last seen</th><th>Assign playlist</th></tr></thead>
+      <thead><tr><th>MAC</th><th>Device key</th><th>Status</th><th>Type</th><th>Last seen</th><th>Options</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6" class="muted">No devices have checked in yet.</td></tr>'}</tbody>
     </table>
   `);
