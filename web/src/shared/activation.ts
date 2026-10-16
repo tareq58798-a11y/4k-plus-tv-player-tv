@@ -41,6 +41,14 @@ function note(outcome: string): void {
 }
 
 export async function activate(mac: string, deviceKey: string, url = ACTIVATION_URL): Promise<Activated> {
+  return (await activateAll(mac, deviceKey, url))[0];
+}
+
+/**
+ * Every playlist the dashboard assigns this set, first one first - up to two. A service that sends
+ * no `playlists` list gives the single top-level playlist, as it always has.
+ */
+export async function activateAll(mac: string, deviceKey: string, url = ACTIVATION_URL): Promise<[Activated, ...Activated[]]> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -70,6 +78,19 @@ export async function activate(mac: string, deviceKey: string, url = ACTIVATION_
   if (status === 'pending') throw new ActivationPending();
   if (status !== 'assigned') throw new Error('The activation service returned an unexpected status.');
 
+  if (Array.isArray(json.playlists)) {
+    const all = json.playlists
+      .map((entry) => (entry && typeof entry === 'object' ? playlistOf(entry as Record<string, unknown>) : null))
+      .filter((entry): entry is Activated => entry !== null);
+    const [first, ...rest] = all;
+    if (first) return [first, ...rest];
+  }
+  const single = playlistOf(json);
+  if (!single) throw new Error('The activation service returned an unsupported playlist type.');
+  return [single];
+}
+
+function playlistOf(json: Record<string, unknown>): Activated | null {
   const name = String(json.name ?? '').trim() || 'Activated playlist';
   const type = String(json.type ?? '');
   if (type === 'm3u') {
@@ -86,5 +107,5 @@ export async function activate(mac: string, deviceKey: string, url = ACTIVATION_
       },
     };
   }
-  throw new Error('The activation service returned an unsupported playlist type.');
+  return null;
 }

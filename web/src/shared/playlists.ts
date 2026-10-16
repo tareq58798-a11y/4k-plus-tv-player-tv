@@ -56,6 +56,17 @@ export function useLogin(login: ProviderLogin): void {
   writeJson(ACTIVE_LOGIN, login);
 }
 
+/**
+ * Adds [login] to the saved playlists without making it the one in use - a second playlist from the
+ * dashboard, saved beside the one playing for the viewer to switch to. Already saved: left as is.
+ */
+export function addLogin(login: ProviderLogin): void {
+  const list = savedPlaylists();
+  if (list.some((entry) => sameAccount(entry, login))) return;
+  list.push(login);
+  writeJson(SAVED, list);
+}
+
 /** Renames the saved entry for [login], and the active login if it is that one. */
 export function renamePlaylist(login: ProviderLogin, name: string): ProviderLogin {
   const renamed = { ...login, name };

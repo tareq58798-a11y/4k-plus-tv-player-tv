@@ -81,6 +81,7 @@ document.querySelectorAll('select[data-type-toggle]').forEach(function(select) {
 const NOTICES = {
   added: ['The device was added. It receives its playlist the next time it checks in; if you added it without one, assign it below.', false],
   exists: ['That MAC is already on the dashboard, so nothing was added and its playlist was not changed. Its row is highlighted below.', true],
+  'bad-playlist2': ['Playlist 2 was not saved because it is incomplete. Give it a name and either an M3U URL, or a server, username and password.', true],
   'bad-playlist': ['The playlist is incomplete, so nothing was added. Give it a name and either an M3U URL, or a server, username and password - or leave all of the playlist fields empty.', true],
   'bad-mac': ['That is not a MAC address. It needs twelve letters A-F and digits, like 1A:2B:3C:4D:5E:6F.', true],
   'bad-key': ['The device key must be the six digits shown on the device, or left blank.', true]
@@ -100,10 +101,11 @@ function renderDevices(devices, notice = '') {
       <td dir="ltr"><code>${mac}</code></td>
       <td dir="ltr">${device.device_key ? `<code>${escapeHtml(device.device_key)}</code>` : '<span class="muted">Set on first check-in</span>'}</td>
       <td class="${statusClass}">${escapeHtml(device.status)}</td>
-      <td>${device.playlist_type ? escapeHtml(device.playlist_type) : '-'}</td>
+      <td>${escapeHtml(device.playlist_type || '-')}${device.playlist2_type ? ` + ${escapeHtml(device.playlist2_type)}` : ''}</td>
       <td class="muted">${escapeHtml(lastSeen(device.last_seen))}</td>
       <td>
         <form class="assign-form" method="post" action="/admin/devices/${encodeURIComponent(mac)}/assign">
+          <strong>Playlist 1</strong>
           <input type="text" name="playlistName" placeholder="Playlist name" value="${escapeHtml(device.playlist_name || '')}" required>
           <select name="type" data-type-toggle>
             <option value="m3u" ${device.playlist_type === 'm3u' ? 'selected' : ''}>M3U URL</option>
@@ -117,15 +119,36 @@ function renderDevices(devices, notice = '') {
             <button type="submit">Save</button>
           </div>
         </form>
-        ${device.status === 'assigned' ? `
+        ${device.playlist_type ? `
         <!--
           Its own form for the same reason the delete below has one: inside the assign form this
           button would inherit that form's required fields, and formnovalidate would be the only
           thing between a mis-click and wiped credentials.
         -->
         <form method="post" action="/admin/devices/${encodeURIComponent(mac)}/delete-profile"
-              onsubmit="return confirm('Delete the playlist ${escapeJsInAttribute(device.playlist_name || '(unnamed)')} from ${escapeJsInAttribute(device.mac)}? The stored server, username and password are erased. The device stays in this list and goes back to pending.');">
+              onsubmit="return confirm('Delete the playlist ${escapeJsInAttribute(device.playlist_name || '(unnamed)')} from ${escapeJsInAttribute(device.mac)}? The stored server, username and password are erased. The device stays in this list, and goes back to pending unless it has a Playlist 2.');">
           <button type="submit" class="warn">Delete profile</button>
+        </form>` : ''}
+        <!-- Playlist 2: the same fields, its own form and its own delete, so neither can touch the other. -->
+        <form class="assign-form" method="post" action="/admin/devices/${encodeURIComponent(mac)}/assign2" style="margin-top: 10px;">
+          <strong>Playlist 2</strong>
+          <input type="text" name="playlistName" placeholder="Playlist name" value="${escapeHtml(device.playlist2_name || '')}" required>
+          <select name="type" data-type-toggle>
+            <option value="m3u" ${device.playlist2_type === 'm3u' ? 'selected' : ''}>M3U URL</option>
+            <option value="xtream" ${device.playlist2_type === 'xtream' ? 'selected' : ''}>Xtream login</option>
+          </select>
+          <input data-m3u type="text" name="m3uUrl" placeholder="M3U URL" value="${escapeHtml(device.playlist2_m3u_url || '')}">
+          <input data-xtream type="text" name="xtreamServer" placeholder="Server (http://host)" value="${escapeHtml(device.playlist2_xtream_server || '')}">
+          <input data-xtream type="text" name="xtreamUsername" placeholder="Username" value="${escapeHtml(device.playlist2_xtream_username || '')}">
+          <input data-xtream type="text" name="xtreamPassword" placeholder="Password" value="${escapeHtml(device.playlist2_xtream_password || '')}">
+          <div class="row">
+            <button type="submit">Save playlist 2</button>
+          </div>
+        </form>
+        ${device.playlist2_type ? `
+        <form method="post" action="/admin/devices/${encodeURIComponent(mac)}/delete-playlist2"
+              onsubmit="return confirm('Delete playlist 2, ${escapeJsInAttribute(device.playlist2_name || '(unnamed)')}, from ${escapeJsInAttribute(device.mac)}? Its stored server, username and password are erased. Playlist 1 is not touched.');">
+          <button type="submit" class="warn">Delete playlist 2</button>
         </form>` : ''}
         <!--
           Its own form, deliberately outside the assign form. Sharing that one would mean the

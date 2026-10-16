@@ -22,7 +22,7 @@ import { iconElement, type IconName } from './ui/icons';
 import { dropKeyHandlers, focus, handleKey, pushKeyHandler } from './ui/focus';
 import { askExit } from './ui/exitDialog';
 import { renderAddPlaylist, passwordField, serverPicker } from './ui/addPlaylist';
-import { ACTIVE_LOGIN, activeLogin, forgetPlaylist, renamePlaylist, sameAccount, savedPlaylists, useLogin } from './shared/playlists';
+import { ACTIVE_LOGIN, activeLogin, addLogin, forgetPlaylist, renamePlaylist, sameAccount, savedPlaylists, useLogin } from './shared/playlists';
 import { Backdrop } from './ui/backdrop';
 import { renderLanding, disposeLanding, focusPageStart, type LandingRow } from './ui/landing';
 import { renderNav, trackNavHighlight, type Section } from './ui/nav';
@@ -41,7 +41,7 @@ import {
 import { openCategoryMenu } from './ui/categoryMenu';
 import { lazyImage, posterArtwork, prefetchAfter } from './ui/images';
 import { appVersion, identity } from './platform/identity';
-import { activate, ActivationPending, type Activated } from './shared/activation';
+import { activateAll, ActivationPending, type Activated } from './shared/activation';
 import { forgetDashboardLogin, fromDashboard, takenBack } from './shared/dashboard';
 import { loadM3u } from './shared/m3u';
 import {
@@ -179,7 +179,7 @@ function goHome(): void {
  * Polls while the page is open, backing off after failures. "Nothing assigned yet" is the normal
  * state here, not an error: the viewer is expected to be reading the numbers out to somebody.
  */
-function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLElement {
+function activationPanel(onActivated: (all: Activated[]) => void): HTMLElement {
   const panel = el('div', { class: 'panel activation' });
   // dir=ltr on the value, not on the row. In Arabic the page runs right to left, and the bidi
   // algorithm handed "9A:D5:DA:DB:33:4D" inside a right-to-left paragraph is entitled to reorder
@@ -235,7 +235,8 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
     while (!stopped) {
       status.textContent = t('waiting_for_activation');
       try {
-        const result = await activate(mac, key);
+        const all = await activateAll(mac, key);
+        const result = all[0];
         if (stopped) return;
         if (result.kind === 'm3u') {
           // An M3U has no account behind it, so there is nothing to sign in to and nothing to
@@ -245,14 +246,14 @@ function activationPanel(onActivated: (login: ProviderLogin) => void): HTMLEleme
             catalogue = await loadM3u(result.name, result.url);
             login = null;
             writeJson(SAVED_M3U, { name: result.name, url: result.url });
-            dropReplacedByM3u(result);
+            takeFromDashboard(all);
             showSection('home');
           } catch (error) {
             status.textContent = error instanceof Error ? error.message : t('playlist_could_not_be_loaded');
           }
           return;
         }
-        onActivated(result.login);
+        onActivated(all);
         return;
       } catch (error) {
         if (stopped) return;
@@ -328,10 +329,11 @@ function loginScreen(message = ''): void {
     el(
       'div',
       { class: 'welcome' },
-      activationPanel((activated) => {
+      activationPanel((all) => {
         activationStop?.();
         const message = app.querySelector<HTMLElement>('.manual .message');
-        if (message) void connectAndLoad(useFromDashboard(activated), message);
+        const first = takeFromDashboard(all);
+        if (message && first) void connectAndLoad(first, message);
       }),
       el(
         'div',
@@ -438,7 +440,8 @@ function addPlaylistScreen(): void {
 async function checkForPlaylist(): Promise<string | null> {
   try {
     const { mac, key } = await identity();
-    const result = await activate(mac, key);
+    const all = await activateAll(mac, key);
+    const result = all[0];
     if (result.kind === 'm3u') {
       clear();
       const status = el('div', { class: 'status' }, t('loading_your_playlist'));
@@ -449,7 +452,7 @@ async function checkForPlaylist(): Promise<string | null> {
         writeJson(SAVED_M3U, { name: result.name, url: result.url });
         // An M3U has no login; the saved logins stay saved, but none is the one in use.
         removeStored(ACTIVE_LOGIN);
-        dropReplacedByM3u(result);
+        takeFromDashboard(all);
         showSection('home');
       } catch (error) {
         loginScreen(error instanceof Error ? error.message : t('playlist_could_not_be_loaded'));
@@ -459,7 +462,7 @@ async function checkForPlaylist(): Promise<string | null> {
     clear();
     const status = el('div', { class: 'status' }, t('loading_your_playlist'));
     app.append(status);
-    if (!(await connectAndLoad(useFromDashboard(result.login), status))) loginScreen(status.textContent ?? '');
+    if (!(await connectAndLoad(takeFromDashboard(all) ?? result.login, status))) loginScreen(status.textContent ?? '');
     return null;
   } catch (error) {
     return error instanceof ActivationPending ? t('check_device_playlist_none') : t('check_device_playlist_failed');
@@ -467,55 +470,54 @@ async function checkForPlaylist(): Promise<string | null> {
 }
 
 /**
- * The login to open for one the dashboard has just sent - the viewer's own saved entry when they
- * already had that account, never overwritten (see shared/dashboard). A dashboard login this one
- * replaces is removed, with its cached catalogue.
+ * Takes in the playlists the dashboard has just sent (see shared/dashboard): the logins it no
+ * longer sends are removed with their cached catalogues, a second login is saved beside the first
+ * without being opened, and the login to open is returned - the viewer's own saved entry when they
+ * already had that account, never overwritten - or null when the first playlist is an M3U.
  */
-function useFromDashboard(sent: ProviderLogin): ProviderLogin {
-  const { use, replaced } = fromDashboard(sent);
-  if (replaced) {
-    void clearCatalogue(cacheKey(replaced));
-    forgetPlaylist(replaced);
+function takeFromDashboard(sent: Activated[]): ProviderLogin | null {
+  const { first, extras, replaced } = fromDashboard(sent);
+  for (const gone of replaced) {
+    void clearCatalogue(cacheKey(gone));
+    forgetPlaylist(gone);
   }
-  return use;
-}
-
-/** The dashboard now gives this set an M3U: the login it gave before is no longer handed out. */
-function dropReplacedByM3u(assigned: Activated): void {
-  const replaced = takenBack(assigned);
-  if (replaced) {
-    void clearCatalogue(cacheKey(replaced));
-    forgetPlaylist(replaced);
-  }
+  extras.forEach(addLogin);
+  return first;
 }
 
 /**
- * Asks the dashboard what it assigns this set now, and removes what it has taken back. Resolves to
- * the saved login that was removed, or null. Never rejects: a set that cannot reach the dashboard
- * keeps everything it has, and is asked again next time.
+ * Asks the dashboard what it assigns this set now: removes what it has taken back, and saves beside
+ * the others what it has given since. Resolves to the saved logins that were removed. Never
+ * rejects: a set that cannot reach the dashboard keeps everything it has, and is asked again next
+ * time.
  */
-async function syncWithDashboard(): Promise<ProviderLogin | null> {
-  let assigned: Activated | null;
+async function syncWithDashboard(): Promise<ProviderLogin[]> {
+  let assigned: Activated[];
   try {
     const { mac, key } = await identity();
-    assigned = await activate(mac, key);
+    assigned = await activateAll(mac, key);
   } catch (error) {
-    if (!(error instanceof ActivationPending)) return null;
-    assigned = null;
+    if (!(error instanceof ActivationPending)) return [];
+    assigned = [];
   }
   // An M3U only ever arrives from the dashboard (there is no way to type one in), so a saved one
   // the dashboard no longer assigns goes. When it is what is playing, the welcome page says why.
   const savedM3u = readJson<{ name: string; url: string } | null>(SAVED_M3U, null);
-  if (savedM3u && !(assigned?.kind === 'm3u' && assigned.url === savedM3u.url)) {
+  if (savedM3u && !assigned.some((entry) => entry.kind === 'm3u' && entry.url === savedM3u.url)) {
     removeStored(SAVED_M3U);
     if (login === null && catalogue !== null) {
       catalogue = null;
       loginScreen(t('playlist_removed_from_account', savedM3u.name));
     }
   }
-  const gone = takenBack(assigned);
-  if (gone) removePlaylist(gone, t('playlist_removed_from_account', gone.name));
-  return gone;
+  const { removed, added } = takenBack(assigned);
+  added.forEach(addLogin);
+  // The one in use last, so the others are already gone when it moves to the next saved playlist.
+  const inUse = (entry: ProviderLogin) => login !== null && sameAccount(login, entry);
+  for (const gone of [...removed.filter((e) => !inUse(e)), ...removed.filter(inUse)]) {
+    removePlaylist(gone, t('playlist_removed_from_account', gone.name));
+  }
+  return removed;
 }
 
 /**
@@ -883,7 +885,7 @@ function settingsScreen(openAt?: 'language', returnTo?: 'playlist'): void {
         // Refresh is where a viewer looks for the dashboard's changes, so the dashboard is asked
         // first: a playlist deleted there is removed here, not fetched again from the provider.
         const gone = await syncWithDashboard();
-        if (gone && sameAccount(gone, current)) return;
+        if (gone.some((entry) => sameAccount(entry, current))) return;
         // Drop what is stored and fetch again, which is what a viewer means by "refresh": the
         // provider has added channels and the copy on the set is behind.
         await clearCatalogue(cacheKey(current));

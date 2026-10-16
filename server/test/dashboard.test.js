@@ -43,8 +43,29 @@ const fakeDb = {
     const existing = rows.find((r) => r.mac === mac);
     if (!existing) return false;
     Object.assign(existing, {
-      status: 'pending', playlist_type: null, playlist_name: null, m3u_url: null,
+      status: existing.playlist2_type ? 'assigned' : 'pending', playlist_type: null, playlist_name: null, m3u_url: null,
       xtream_server: null, xtream_username: null, xtream_password: null
+    });
+    return true;
+  },
+  assignSecond: async (mac, p) => {
+    const existing = rows.find((r) => r.mac === mac);
+    if (!existing) return false;
+    Object.assign(existing, {
+      status: 'assigned', playlist2_type: p.type, playlist2_name: p.name,
+      playlist2_m3u_url: p.type === 'm3u' ? p.m3uUrl : null,
+      playlist2_xtream_server: p.type === 'xtream' ? p.server : null,
+      playlist2_xtream_username: p.type === 'xtream' ? p.username : null,
+      playlist2_xtream_password: p.type === 'xtream' ? p.password : null
+    });
+    return true;
+  },
+  deleteSecond: async (mac) => {
+    const existing = rows.find((r) => r.mac === mac);
+    if (!existing) return false;
+    Object.assign(existing, {
+      status: existing.playlist_type ? 'assigned' : 'pending', playlist2_type: null, playlist2_name: null,
+      playlist2_m3u_url: null, playlist2_xtream_server: null, playlist2_xtream_username: null, playlist2_xtream_password: null
     });
     return true;
   },
@@ -343,6 +364,100 @@ check('a half-filled playlist is refused and nothing is added', async () => {
     assert.ok(res.headers.get('location').includes('notice=bad-playlist'), JSON.stringify(fields));
   }
   assert.strictEqual(rows.length, 0);
+});
+
+function post(pathname, fields) {
+  return fetch(`${base}${pathname}`, {
+    method: 'POST',
+    headers: { Authorization: AUTH, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(fields || {}).toString(),
+    redirect: 'manual'
+  });
+}
+
+const SECOND = { playlistName: 'Second', type: 'm3u', m3uUrl: 'http://example.invalid/second.m3u' };
+
+check('a device with two playlists gets the first at the top level, as before, and both in playlists', async () => {
+  seedAssigned();
+  await post(`/admin/devices/${MAC}/assign2`, SECOND);
+  const body = await poll(MAC, '123456');
+  assert.strictEqual(body.status, 'assigned');
+  assert.strictEqual(body.type, 'xtream', 'older apps read only these fields, and still get Playlist 1');
+  assert.strictEqual(body.server, 'http://example.invalid');
+  assert.strictEqual(body.playlists.length, 2);
+  assert.deepStrictEqual(body.playlists[1], { type: 'm3u', name: 'Second', url: 'http://example.invalid/second.m3u' });
+});
+
+check('a device with only one playlist answers exactly as before, plus a one-entry playlists', async () => {
+  seedAssigned();
+  const body = await poll(MAC, '123456');
+  const { playlists, ...old } = body;
+  assert.deepStrictEqual(old, {
+    status: 'assigned', type: 'xtream', name: rows[0].playlist_name,
+    server: 'http://example.invalid', username: 'someone', password: 'secret'
+  });
+  assert.strictEqual(playlists.length, 1);
+});
+
+check('Delete profile with a Playlist 2 kept: the device stays assigned and Playlist 2 moves up', async () => {
+  seedAssigned();
+  await post(`/admin/devices/${MAC}/assign2`, SECOND);
+  await post(`/admin/devices/${MAC}/delete-profile`);
+  assert.strictEqual(rows[0].status, 'assigned');
+  assert.strictEqual(rows[0].xtream_password, null, "Playlist 1's credentials are gone");
+  const body = await poll(MAC, '123456');
+  assert.strictEqual(body.type, 'm3u', 'an older app now gets Playlist 2 rather than nothing');
+  assert.strictEqual(body.playlists.length, 1);
+});
+
+check('Delete playlist 2 erases only Playlist 2', async () => {
+  seedAssigned();
+  await post(`/admin/devices/${MAC}/assign2`, SECOND);
+  const res = await post(`/admin/devices/${MAC}/delete-playlist2`);
+  assert.strictEqual(res.status, 302);
+  assert.strictEqual(rows[0].playlist2_type, null);
+  assert.strictEqual(rows[0].playlist2_m3u_url, null);
+  assert.strictEqual(rows[0].xtream_password, 'secret', 'Playlist 1 untouched');
+  assert.strictEqual((await poll(MAC, '123456')).playlists.length, 1);
+});
+
+check('deleting both playlists makes the device pending again', async () => {
+  seedAssigned();
+  await post(`/admin/devices/${MAC}/assign2`, SECOND);
+  await post(`/admin/devices/${MAC}/delete-profile`);
+  await post(`/admin/devices/${MAC}/delete-playlist2`);
+  assert.strictEqual(rows[0].status, 'pending');
+  assert.deepStrictEqual(await poll(MAC, '123456'), { status: 'pending' });
+});
+
+check('a half-filled Playlist 2 is refused and nothing changes', async () => {
+  seedAssigned();
+  const before = JSON.stringify(rows);
+  const res = await post(`/admin/devices/${MAC}/assign2`, { playlistName: 'Half', type: 'xtream', xtreamServer: 'http://x.invalid' });
+  assert.ok(res.headers.get('location').includes('notice=bad-playlist2'));
+  assert.strictEqual(JSON.stringify(rows), before);
+});
+
+check('the Playlist 2 routes need the admin password and a real MAC', async () => {
+  seedAssigned();
+  for (const p of [`/admin/devices/${MAC}/assign2`, `/admin/devices/${MAC}/delete-playlist2`]) {
+    const res = await fetch(`${base}${p}`, { method: 'POST', redirect: 'manual' });
+    assert.strictEqual(res.status, 401, `${p} needs authentication`);
+  }
+  assert.strictEqual((await post('/admin/devices/not-a-mac/assign2', SECOND)).status, 400);
+  assert.strictEqual((await post('/admin/devices/not-a-mac/delete-playlist2')).status, 400);
+});
+
+check('the page shows a Playlist 2 form on every row, and its delete only where there is one', async () => {
+  seedAssigned();
+  let html = renderDevices(rows);
+  assert.strictEqual((html.match(/\/assign2"/g) || []).length, 2);
+  assert.ok(!html.includes('>Delete playlist 2<'));
+  await post(`/admin/devices/${MAC}/assign2`, { ...SECOND, playlistName: "Kid's \"2\"" });
+  html = renderDevices(rows);
+  assert.strictEqual((html.match(/>Delete playlist 2</g) || []).length, 1);
+  const confirm2 = (html.match(/onsubmit="return confirm\('[^"]*'\);"/g) || []).find((a) => a.includes('Delete playlist 2'));
+  assert.ok(confirm2 && confirm2.includes("Kid\\'s"), 'the name is escaped inside the confirmation');
 });
 
 check('a bad MAC or key is refused, and Add device needs the password', async () => {

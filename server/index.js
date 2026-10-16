@@ -61,21 +61,30 @@ app.post('/api/activate', async (req, res) => {
     return res.json({ status: 'pending' });
   }
 
-  if (device.playlist_type === 'm3u' && device.m3u_url) {
-    return res.json({ status: 'assigned', type: 'm3u', name: device.playlist_name, url: device.m3u_url });
-  }
-  if (device.playlist_type === 'xtream' && device.xtream_server) {
-    return res.json({
-      status: 'assigned',
-      type: 'xtream',
-      name: device.playlist_name,
-      server: device.xtream_server,
-      username: device.xtream_username,
-      password: device.xtream_password
-    });
-  }
-  return res.json({ status: 'pending' });
+  const playlists = [
+    playlistOf(device.playlist_type, device.playlist_name, device.m3u_url,
+      device.xtream_server, device.xtream_username, device.xtream_password),
+    playlistOf(device.playlist2_type, device.playlist2_name, device.playlist2_m3u_url,
+      device.playlist2_xtream_server, device.playlist2_xtream_username, device.playlist2_xtream_password)
+  ].filter(Boolean);
+  if (playlists.length === 0) return res.json({ status: 'pending' });
+
+  /*
+   * The first playlist goes out exactly as it always has, at the top level, so every app already
+   * installed - which reads only those fields - carries on with one playlist and never knows there
+   * is a second. `playlists` is new and optional: both of them, in order, for the apps that read it.
+   * When Playlist 1 has been deleted and Playlist 2 kept, Playlist 2 is the first, so an older app
+   * still gets something to play.
+   */
+  return res.json({ status: 'assigned', ...playlists[0], playlists });
 });
+
+/** One playlist as the apps receive it, or null when the slot is empty or incomplete. */
+function playlistOf(type, name, m3uUrl, server, username, password) {
+  if (type === 'm3u' && m3uUrl) return { type: 'm3u', name, url: m3uUrl };
+  if (type === 'xtream' && server) return { type: 'xtream', name, server, username, password };
+  return null;
+}
 
 function requireAdmin(req, res, next) {
   const header = req.headers.authorization || '';
@@ -123,6 +132,27 @@ app.post('/admin/devices/:mac/assign', requireAdmin, async (req, res) => {
   } else {
     await db.assignXtream(mac, playlistName, xtreamServer, xtreamUsername, xtreamPassword);
   }
+  res.redirect('/admin');
+});
+
+/**
+ * Sets a device's second playlist. Refused unless complete - name, and an M3U URL or a server,
+ * username and password - so a device is never handed half a login.
+ */
+app.post('/admin/devices/:mac/assign2', requireAdmin, async (req, res) => {
+  const mac = normalizeMac(req.params.mac);
+  if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
+  const playlist = typedPlaylist(req.body);
+  if (!playlist) return res.redirect(`/admin?notice=bad-playlist2#device-${mac.replace(/:/g, '')}`);
+  await db.assignSecond(mac, playlist);
+  res.redirect(`/admin#device-${mac.replace(/:/g, '')}`);
+});
+
+/** Wipes a device's second playlist, credentials and all. POST-only and confirmed, like the others. */
+app.post('/admin/devices/:mac/delete-playlist2', requireAdmin, async (req, res) => {
+  const mac = normalizeMac(req.params.mac);
+  if (!MAC_PATTERN.test(mac)) return res.status(400).send('Invalid MAC address.');
+  await db.deleteSecond(mac);
   res.redirect('/admin');
 });
 
@@ -189,7 +219,13 @@ app.get('/', (req, res) => {
 // port of its own instead of racing the real one.
 if (require.main === module) {
   const port = process.env.PORT || 3000;
-  app.listen(port, () => console.log(`Activation server listening on port ${port}`));
+  // The Playlist 2 columns, added if missing (see db.ensureSchema). The server listens either way:
+  // devices must keep getting Playlist 1 even if this fails, and the reason is logged - the
+  // message only, never the connection string.
+  db.ensureSchema()
+    .then(() => console.log('Database schema up to date (Playlist 2 columns present).'))
+    .catch((error) => console.error(`Could not add the Playlist 2 columns: ${error.message}`))
+    .finally(() => app.listen(port, () => console.log(`Activation server listening on port ${port}`)));
 }
 
 module.exports = app;

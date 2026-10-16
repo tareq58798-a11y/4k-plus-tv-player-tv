@@ -5,6 +5,27 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+/**
+ * Adds the Playlist 2 columns when they are missing. Run once at start-up (index.js).
+ *
+ * Nothing created the table on deploy - schema.sql was run by hand, once - so a column added there
+ * alone would never reach the live database. This is additive and safe to run any number of times:
+ * ADD COLUMN IF NOT EXISTS leaves a column that is already there exactly as it is, and the new ones
+ * start empty (null) on every existing row. Nothing is dropped, renamed or rewritten; every device
+ * and Playlist 1 stay where they were.
+ */
+async function ensureSchema() {
+  await pool.query(
+    `alter table devices
+       add column if not exists playlist2_type text,
+       add column if not exists playlist2_name text,
+       add column if not exists playlist2_m3u_url text,
+       add column if not exists playlist2_xtream_server text,
+       add column if not exists playlist2_xtream_username text,
+       add column if not exists playlist2_xtream_password text`
+  );
+}
+
 async function getDevice(mac) {
   const result = await pool.query('select * from devices where mac = $1', [mac]);
   return result.rows[0] || null;
@@ -108,13 +129,57 @@ async function assignXtream(mac, playlistName, server, username, password) {
 async function deleteProfile(mac) {
   const result = await pool.query(
     `update devices set
-       status = 'pending',
+       status = case when playlist2_type is not null then 'assigned' else 'pending' end,
        playlist_type = null,
        playlist_name = null,
        m3u_url = null,
        xtream_server = null,
        xtream_username = null,
        xtream_password = null
+     where mac = $1`,
+    [mac]
+  );
+  return result.rowCount > 0;
+}
+
+/**
+ * Sets a device's second playlist, alongside the first. [playlist] is shaped as for addDevice.
+ * The columns of the other type are cleared, for the same reason assignM3u/assignXtream clear
+ * theirs: a login left behind under an M3U is somebody's credentials sitting in the row.
+ */
+async function assignSecond(mac, playlist) {
+  const result = await pool.query(
+    `update devices set
+       status = 'assigned',
+       playlist2_type = $2,
+       playlist2_name = $3,
+       playlist2_m3u_url = $4,
+       playlist2_xtream_server = $5,
+       playlist2_xtream_username = $6,
+       playlist2_xtream_password = $7
+     where mac = $1`,
+    [
+      mac, playlist.type, playlist.name,
+      playlist.type === 'm3u' ? playlist.m3uUrl : null,
+      playlist.type === 'xtream' ? playlist.server : null,
+      playlist.type === 'xtream' ? playlist.username : null,
+      playlist.type === 'xtream' ? playlist.password : null
+    ]
+  );
+  return result.rowCount > 0;
+}
+
+/** Wipes the second playlist, credentials and all. The device stays assigned if it has a first. */
+async function deleteSecond(mac) {
+  const result = await pool.query(
+    `update devices set
+       status = case when playlist_type is not null then 'assigned' else 'pending' end,
+       playlist2_type = null,
+       playlist2_name = null,
+       playlist2_m3u_url = null,
+       playlist2_xtream_server = null,
+       playlist2_xtream_username = null,
+       playlist2_xtream_password = null
      where mac = $1`,
     [mac]
   );
@@ -137,6 +202,7 @@ async function deleteDevice(mac) {
 }
 
 module.exports = {
+  ensureSchema,
   getDevice,
   upsertPendingDevice,
   addDevice,
@@ -144,5 +210,7 @@ module.exports = {
   assignM3u,
   assignXtream,
   deleteProfile,
+  assignSecond,
+  deleteSecond,
   deleteDevice
 };
